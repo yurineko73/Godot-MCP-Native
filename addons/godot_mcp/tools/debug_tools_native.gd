@@ -10,6 +10,7 @@ var _max_log_lines: int = 1000
 var _server_core: RefCounted = null
 var _log_mutex: Mutex = Mutex.new()
 var _execution_mutex: Mutex = Mutex.new()
+var _pending_runtime_probe_requests: Dictionary = {}
 
 func initialize(editor_interface: EditorInterface) -> void:
 	_editor_interface = editor_interface
@@ -1781,29 +1782,86 @@ func _request_runtime_probe(command: String, payload: Array, response_messages: 
 	var bridge: RefCounted = _get_debugger_bridge()
 	if not bridge:
 		return {"error": "Debugger bridge is not available"}
-	var refresh_result: Dictionary = bridge.send_debugger_message(
-		"mcp:" + command,
-		payload,
-		int(params.get("session_id", -1))
-	)
-	if refresh_result.has("error"):
-		return refresh_result
-	if refresh_result.get("status", "") == "no_active_sessions":
-		return {"status": "no_active_sessions", "refresh_result": refresh_result}
+	var session_id: int = int(params.get("session_id", -1))
+	var timeout_ms: int = maxi(int(params.get("timeout_ms", 1500)), 1)
+	var request_key: String = _make_runtime_probe_request_key(command, payload, session_id, response_messages, match_fields)
+	var now_ms: int = Time.get_ticks_msec()
+	var pending_entry: Dictionary = _pending_runtime_probe_requests.get(request_key, {})
+
+	if pending_entry.is_empty() or now_ms > int(pending_entry.get("expires_at_ms", 0)):
+		if not pending_entry.is_empty():
+			_pending_runtime_probe_requests.erase(request_key)
+		var baseline_sequence: int = bridge.get_message_sequence() if bridge.has_method("get_message_sequence") else 0
+		var refresh_result: Dictionary = bridge.send_debugger_message("mcp:" + command, payload, session_id)
+		if refresh_result.has("error"):
+			return refresh_result
+		if refresh_result.get("status", "") == "no_active_sessions":
+			return {"status": "no_active_sessions", "refresh_result": refresh_result}
+		pending_entry = {
+			"baseline_sequence": baseline_sequence,
+			"refresh_result": refresh_result,
+			"expires_at_ms": now_ms + timeout_ms
+		}
+		_pending_runtime_probe_requests[request_key] = pending_entry
+
+	var response: Dictionary = _extract_pending_runtime_probe_response(bridge, pending_entry, response_messages, match_fields)
+	if not response.is_empty():
+		_pending_runtime_probe_requests.erase(request_key)
+		response["refresh_result"] = pending_entry.get("refresh_result", {})
+		return response
+
+	return {
+		"status": "pending",
+		"refresh_result": pending_entry.get("refresh_result", {}),
+		"response_messages": response_messages
+	}
+
+func _make_runtime_probe_request_key(command: String, payload: Array, session_id: int, response_messages: Array, match_fields: Dictionary) -> String:
+	return JSON.stringify({
+		"command": command,
+		"payload": payload,
+		"session_id": session_id,
+		"response_messages": response_messages,
+		"match_fields": match_fields
+	}, "", false)
+
+func _extract_pending_runtime_probe_response(bridge: RefCounted, pending_entry: Dictionary, response_messages: Array, match_fields: Dictionary) -> Dictionary:
 	# Force the debugger bridge to refresh captured message visibility before querying
 	# for the latest runtime payload. Without this, headless editor sessions can leave
 	# freshly received custom EngineDebugger captures invisible until another bridge read.
 	bridge.get_captured_messages(1, 0, "desc")
+
+	var response_entry: Dictionary = {}
+	if bridge.has_method("get_captured_message_after_sequence"):
+		response_entry = bridge.get_captured_message_after_sequence(
+			int(pending_entry.get("baseline_sequence", 0)),
+			response_messages,
+			["mcp:error"],
+			match_fields
+		)
+
+	if not response_entry.is_empty():
+		var message_name: String = str(response_entry.get("message", ""))
+		var captured_data: Array = response_entry.get("data", [])
+		var runtime_payload: Variant = captured_data[0] if not captured_data.is_empty() else null
+		if message_name == "mcp:error":
+			return {"error": str(runtime_payload.get("message", runtime_payload)) if runtime_payload is Dictionary else str(runtime_payload)}
+		if runtime_payload is Dictionary:
+			var response: Dictionary = runtime_payload.duplicate(true)
+			response["status"] = "success"
+			return response
+		if runtime_payload != null:
+			return {"status": "success", "value": runtime_payload}
+
 	for message_name in response_messages:
 		var runtime_payload: Variant = bridge.get_latest_message_payload(message_name, match_fields)
 		if runtime_payload is Dictionary:
 			var response: Dictionary = runtime_payload.duplicate(true)
 			response["status"] = "success"
-			response["refresh_result"] = refresh_result
 			return response
 		if runtime_payload != null:
-			return {"status": "success", "value": runtime_payload, "refresh_result": refresh_result}
-	return {"status": "pending", "refresh_result": refresh_result, "response_messages": response_messages}
+			return {"status": "success", "value": runtime_payload}
+	return {}
 
 func _is_truthy_runtime_value(value: Variant) -> bool:
 	match typeof(value):

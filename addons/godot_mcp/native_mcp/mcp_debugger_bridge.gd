@@ -29,6 +29,9 @@ var _evaluation_variables_references: Dictionary = {}
 var _pending_stack_vars_frame: int = 0
 var _message_sequence: int = 0
 
+func get_message_sequence() -> int:
+	return _message_sequence
+
 func _setup_session(session_id: int) -> void:
 	call_deferred("_refresh_script_debugger_connections")
 
@@ -227,6 +230,20 @@ func get_latest_message_payload(message: String, match_fields: Dictionary = {}) 
 		if _payload_matches(payload, match_fields):
 			return payload
 	return null
+
+func get_captured_message_after_sequence(sequence: int, response_messages: Array, error_messages: Array = [], match_fields: Dictionary = {}) -> Dictionary:
+	for entry in _captured_messages:
+		if int(entry.get("sequence", 0)) <= sequence:
+			continue
+		var message: String = str(entry.get("message", ""))
+		if not response_messages.has(message) and not error_messages.has(message):
+			continue
+		var captured_data: Array = entry.get("data", [])
+		var payload: Variant = captured_data[0] if not captured_data.is_empty() else null
+		if response_messages.has(message) and not _payload_matches(payload, match_fields):
+			continue
+		return entry
+	return {}
 
 func request_runtime_message(message: String, data: Array = [], response_messages: Array = [], error_messages: Array = ["mcp:error"], session_id: int = -1, timeout_ms: int = 1500) -> Dictionary:
 	var baseline_sequence: int = _message_sequence

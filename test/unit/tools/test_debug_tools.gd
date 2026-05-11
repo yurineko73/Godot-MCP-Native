@@ -1,5 +1,66 @@
 extends "res://addons/gut/test.gd"
 
+class FakeRuntimeBridge:
+	extends RefCounted
+
+	var send_count: int = 0
+	var capture_refresh_count: int = 0
+	var message_sequence: int = 0
+	var latest_payload: Variant = null
+
+	func get_message_sequence() -> int:
+		return message_sequence
+
+	func send_debugger_message(message: String, data: Array, session_id: int = -1) -> Dictionary:
+		send_count += 1
+		return {"status": "success", "sessions_updated": 1}
+
+	func get_captured_messages(count: int = 100, offset: int = 0, order: String = "desc") -> Dictionary:
+		capture_refresh_count += 1
+		if capture_refresh_count >= 2 and latest_payload == null:
+			message_sequence += 1
+			latest_payload = {
+				"fps": 60.0,
+				"physics_frames": 10,
+				"process_frames": 20,
+				"debugger_active": true,
+				"current_scene": "/root/TestScene",
+				"node_count": 3
+			}
+		return {"messages": [], "count": 0, "total_available": 0}
+
+	func get_captured_message_after_sequence(sequence: int, response_messages: Array, error_messages: Array = [], match_fields: Dictionary = {}) -> Dictionary:
+		if latest_payload != null and message_sequence > sequence and response_messages.has("mcp:runtime_info"):
+			return {"message": "mcp:runtime_info", "data": [latest_payload], "sequence": message_sequence}
+		return {}
+
+	func get_latest_message_payload(message: String, match_fields: Dictionary = {}) -> Variant:
+		if message == "mcp:runtime_info":
+			return latest_payload
+		return null
+
+class FakeRuntimePlugin:
+	extends RefCounted
+
+	var bridge: RefCounted
+
+	func _init(runtime_bridge: RefCounted) -> void:
+		bridge = runtime_bridge
+
+	func get_debugger_bridge() -> RefCounted:
+		return bridge
+
+var _runtime_bridge: RefCounted = null
+
+func before_each() -> void:
+	if Engine.has_meta("GodotMCPPlugin"):
+		Engine.remove_meta("GodotMCPPlugin")
+
+func after_each() -> void:
+	_runtime_bridge = null
+	if Engine.has_meta("GodotMCPPlugin"):
+		Engine.remove_meta("GodotMCPPlugin")
+
 func test_debug_print_format():
 	var message: String = "[TEST] Hello world"
 	assert_true(message.contains("[TEST]"), "Debug message should have category prefix")
@@ -106,3 +167,17 @@ func test_get_debug_stack_variables_rejects_negative_frame():
 	var result: Dictionary = debug_tools._tool_get_debug_stack_variables({"frame": -1})
 	assert_has(result, "error", "Should return error for invalid frame")
 	assert_true(str(result.error).contains("frame"), "Error should mention frame")
+
+func test_runtime_probe_polling_reuses_pending_request():
+	var debug_tools: RefCounted = load("res://addons/godot_mcp/tools/debug_tools_native.gd").new()
+	_runtime_bridge = FakeRuntimeBridge.new()
+	Engine.set_meta("GodotMCPPlugin", FakeRuntimePlugin.new(_runtime_bridge))
+
+	var first_result: Dictionary = debug_tools._tool_get_runtime_info({"timeout_ms": 1500})
+	assert_eq(first_result.get("status"), "pending", "First runtime probe request should remain pending before bridge response arrives")
+	assert_eq(_runtime_bridge.send_count, 1, "First poll should send exactly one runtime probe message")
+
+	var second_result: Dictionary = debug_tools._tool_get_runtime_info({"timeout_ms": 1500})
+	assert_eq(second_result.get("status"), "success", "Second poll should consume the response that arrived for the pending request")
+	assert_eq(second_result.get("node_count"), 3, "Runtime info payload should come from the bridge response")
+	assert_eq(_runtime_bridge.send_count, 1, "Polling a pending runtime request should not re-send the debugger message")

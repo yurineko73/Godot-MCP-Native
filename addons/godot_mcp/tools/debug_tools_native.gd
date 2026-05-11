@@ -901,6 +901,48 @@ func _expand_debug_object_entries(value: Variant, parent_path: Array) -> Array:
 		return []
 	var entries: Array = []
 	var seen: Dictionary = {}
+	entries.append({
+		"name": "@class_name",
+		"path": parent_path + ["@class_name"],
+		"type": "String",
+		"value": object_value.get_class(),
+		"has_children": false
+	})
+	entries.append({
+		"name": "@instance_id",
+		"path": parent_path + ["@instance_id"],
+		"type": "int",
+		"value": object_value.get_instance_id(),
+		"has_children": false
+	})
+	var script: Script = object_value.get_script() as Script
+	entries.append({
+		"name": "@script_path",
+		"path": parent_path + ["@script_path"],
+		"type": "String",
+		"value": String(script.resource_path) if script else "",
+		"has_children": false
+	})
+	if object_value is Node:
+		var node_value: Node = object_value as Node
+		var node_path: String = str(node_value.get_path())
+		if node_path.is_empty() and not String(node_value.name).is_empty():
+			node_path = "/" + String(node_value.name)
+		entries.append({
+			"name": "@node_path",
+			"path": parent_path + ["@node_path"],
+			"type": "NodePath",
+			"value": node_path,
+			"has_children": false
+		})
+	elif object_value is Resource:
+		entries.append({
+			"name": "@resource_path",
+			"path": parent_path + ["@resource_path"],
+			"type": "String",
+			"value": String((object_value as Resource).resource_path),
+			"has_children": false
+		})
 	for property_info in object_value.get_property_list():
 		var property_name: String = str(property_info.get("name", ""))
 		if property_name.is_empty() or seen.has(property_name):

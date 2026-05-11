@@ -676,6 +676,18 @@ func _build_object_variable_entries(value: Variant) -> Array:
 		return []
 	var entries: Array = []
 	var seen: Dictionary = {}
+	entries.append(_build_variable_entry("@class_name", object_value.get_class(), "String"))
+	entries.append(_build_variable_entry("@instance_id", object_value.get_instance_id(), "int"))
+	var script: Script = object_value.get_script() as Script
+	entries.append(_build_variable_entry("@script_path", String(script.resource_path) if script else "", "String"))
+	if object_value is Node:
+		var node_value: Node = object_value as Node
+		var node_path: String = str(node_value.get_path())
+		if node_path.is_empty() and not String(node_value.name).is_empty():
+			node_path = "/" + String(node_value.name)
+		entries.append(_build_variable_entry("@node_path", node_path, "NodePath"))
+	elif object_value is Resource:
+		entries.append(_build_variable_entry("@resource_path", String((object_value as Resource).resource_path), "String"))
 	for property_info in object_value.get_property_list():
 		var property_name: String = str(property_info.get("name", ""))
 		if property_name.is_empty() or seen.has(property_name):

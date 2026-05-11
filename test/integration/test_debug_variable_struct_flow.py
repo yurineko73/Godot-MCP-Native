@@ -256,9 +256,11 @@ def main() -> int:
             request_id=13,
         )
         object_children = {entry["name"]: entry for entry in object_variables.get("variables", [])}
-        for required_name in ("display_name", "grid", "hit_points"):
+        for required_name in ("@class_name", "@instance_id", "@script_path", "display_name", "grid", "hit_points"):
             if required_name not in object_children:
                 raise AssertionError(f"Missing expected object child {required_name}: {object_variables}")
+        if object_children["@class_name"]["value"] != "RefCounted" or not isinstance(object_children["@instance_id"]["value"], int):
+            raise AssertionError(f"Unexpected object metadata values: {object_variables}")
         if object_children["display_name"]["value"] != "Probe" or object_children["hit_points"]["value"] != 42:
             raise AssertionError(f"Unexpected object scalar values: {object_variables}")
         if object_children["grid"]["variables_reference"] <= 0:
@@ -368,8 +370,12 @@ def main() -> int:
                     'var result := {\n'
                     '\t"node_object_serialized": tools._serialize_runtime_value(inspect_node),\n'
                     '\t"resource_object_serialized": tools._serialize_runtime_value(inspect_resource),\n'
+                    '\t"node_object_entries": tools._expand_debug_object_entries(inspect_node, ["node_value"]),\n'
+                    '\t"resource_object_entries": tools._expand_debug_object_entries(inspect_resource, ["resource_value"]),\n'
                     '\t"bridge_node_object_serialized": bridge._serialize_debug_value(inspect_node),\n'
-                    '\t"bridge_resource_object_serialized": bridge._serialize_debug_value(inspect_resource)\n'
+                    '\t"bridge_resource_object_serialized": bridge._serialize_debug_value(inspect_resource),\n'
+                    '\t"bridge_node_object_entries": bridge._build_object_variable_entries(inspect_node),\n'
+                    '\t"bridge_resource_object_entries": bridge._build_object_variable_entries(inspect_resource)\n'
                     '}\n'
                     '_custom_print(JSON.stringify(result))\n'
                 ),
@@ -382,15 +388,27 @@ def main() -> int:
         node_object_serialized = object_metadata_result.get("node_object_serialized", {})
         if node_object_serialized.get("class_name") != "Node" or node_object_serialized.get("node_path") != "/InspectableNode" or "instance_id" not in node_object_serialized or "script_path" not in node_object_serialized:
             raise AssertionError(f"Unexpected node object serialization: {object_metadata_result}")
+        node_entry_names = {entry.get("name") for entry in object_metadata_result.get("node_object_entries", [])}
+        if not {"@class_name", "@instance_id", "@node_path"}.issubset(node_entry_names):
+            raise AssertionError(f"Unexpected node object entries: {object_metadata_result}")
         resource_object_serialized = object_metadata_result.get("resource_object_serialized", {})
         if resource_object_serialized.get("class_name") != "ShaderMaterial" or "resource_path" not in resource_object_serialized or "instance_id" not in resource_object_serialized or "script_path" not in resource_object_serialized:
             raise AssertionError(f"Unexpected resource object serialization: {object_metadata_result}")
+        resource_entry_names = {entry.get("name") for entry in object_metadata_result.get("resource_object_entries", [])}
+        if not {"@class_name", "@instance_id", "@resource_path"}.issubset(resource_entry_names):
+            raise AssertionError(f"Unexpected resource object entries: {object_metadata_result}")
         bridge_node_object_serialized = object_metadata_result.get("bridge_node_object_serialized", {})
         if bridge_node_object_serialized.get("class_name") != "Node" or bridge_node_object_serialized.get("node_path") != "/InspectableNode" or "instance_id" not in bridge_node_object_serialized or "script_path" not in bridge_node_object_serialized:
             raise AssertionError(f"Unexpected bridge node object serialization: {object_metadata_result}")
+        bridge_node_entry_names = {entry.get("name") for entry in object_metadata_result.get("bridge_node_object_entries", [])}
+        if not {"@class_name", "@instance_id", "@node_path"}.issubset(bridge_node_entry_names):
+            raise AssertionError(f"Unexpected bridge node object entries: {object_metadata_result}")
         bridge_resource_object_serialized = object_metadata_result.get("bridge_resource_object_serialized", {})
         if bridge_resource_object_serialized.get("class_name") != "ShaderMaterial" or "resource_path" not in bridge_resource_object_serialized or "instance_id" not in bridge_resource_object_serialized or "script_path" not in bridge_resource_object_serialized:
             raise AssertionError(f"Unexpected bridge resource object serialization: {object_metadata_result}")
+        bridge_resource_entry_names = {entry.get("name") for entry in object_metadata_result.get("bridge_resource_object_entries", [])}
+        if not {"@class_name", "@instance_id", "@resource_path"}.issubset(bridge_resource_entry_names):
+            raise AssertionError(f"Unexpected bridge resource object entries: {object_metadata_result}")
 
         print("debug variable struct flow verified")
         return 0

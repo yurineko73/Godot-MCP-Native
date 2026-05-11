@@ -278,6 +278,7 @@ def main() -> int:
             {
                 "code": (
                     'var tools := DebugToolsNative.new()\n'
+                    'var bridge := MCPDebuggerBridge.new()\n'
                     'var result := {\n'
                     '\t"vector2i_named_count": tools._debug_named_variable_count(Vector2i(8, 9)),\n'
                     '\t"basis_named_count": tools._debug_named_variable_count(Basis(Vector3(1, 2, 3), Vector3(4, 5, 6), Vector3(7, 8, 9))),\n'
@@ -285,9 +286,15 @@ def main() -> int:
                     '\t"transform3d_has_children": tools._debug_value_has_children(Transform3D(Basis(Vector3(1, 2, 3), Vector3(4, 5, 6), Vector3(7, 8, 9)), Vector3(10, 11, 12))),\n'
                     '\t"transform2d_serialized": tools._serialize_runtime_value(Transform2D(0.25, Vector2(10, 20))),\n'
                     '\t"transform3d_serialized": tools._serialize_runtime_value(Transform3D(Basis(Vector3(1, 2, 3), Vector3(4, 5, 6), Vector3(7, 8, 9)), Vector3(10, 11, 12))),\n'
+                    '\t"node_path_serialized": tools._serialize_runtime_value(NodePath("/root/TestNode")),\n'
+                    '\t"string_name_serialized": tools._serialize_runtime_value(&"EnemyTag"),\n'
+                    '\t"rid_serialized": tools._serialize_runtime_value(RID()),\n'
                     '\t"rect2i_entries": tools._expand_debug_struct_fields(Rect2i(Vector2i(1, 2), Vector2i(5, 6)), ["rect2i_value"]),\n'
                     '\t"plane_entries": tools._expand_debug_struct_fields(Plane(Vector3(0, 1, 0), 2.5), ["plane_value"]),\n'
-                    '\t"object_script_source": "extends RefCounted\\nvar display_name := \\"Probe\\"\\nvar hit_points := 42\\nvar grid := Vector2i(2, 3)\\n"\n'
+                    '\t"object_script_source": "extends RefCounted\\nvar display_name := \\"Probe\\"\\nvar hit_points := 42\\nvar grid := Vector2i(2, 3)\\n",\n'
+                    '\t"bridge_node_path_serialized": bridge._serialize_debug_value(NodePath("/root/TestNode")),\n'
+                    '\t"bridge_string_name_serialized": bridge._serialize_debug_value(&"EnemyTag"),\n'
+                    '\t"bridge_rid_serialized": bridge._serialize_debug_value(RID())\n'
                     '}\n'
                     '_custom_print(JSON.stringify(result))\n'
                 ),
@@ -311,12 +318,24 @@ def main() -> int:
         serialized_transform3d = helper_result.get("transform3d_serialized", {})
         if sorted(serialized_transform3d) != ["basis", "origin"]:
             raise AssertionError(f"Unexpected Transform3D serialization: {helper_result}")
+        if helper_result.get("node_path_serialized") != "/root/TestNode":
+            raise AssertionError(f"Unexpected NodePath serialization: {helper_result}")
+        if helper_result.get("string_name_serialized") != "EnemyTag":
+            raise AssertionError(f"Unexpected StringName serialization: {helper_result}")
+        if helper_result.get("rid_serialized") != {"id": 0, "valid": False}:
+            raise AssertionError(f"Unexpected RID serialization: {helper_result}")
         rect2i_entries = helper_result.get("rect2i_entries", [])
         if [entry.get("name") for entry in rect2i_entries] != ["position", "size", "end"]:
             raise AssertionError(f"Unexpected Rect2i helper entries: {helper_result}")
         plane_entries = helper_result.get("plane_entries", [])
         if [entry.get("name") for entry in plane_entries] != ["normal", "d"]:
             raise AssertionError(f"Unexpected Plane helper entries: {helper_result}")
+        if helper_result.get("bridge_node_path_serialized") != "/root/TestNode":
+            raise AssertionError(f"Unexpected bridge NodePath serialization: {helper_result}")
+        if helper_result.get("bridge_string_name_serialized") != "EnemyTag":
+            raise AssertionError(f"Unexpected bridge StringName serialization: {helper_result}")
+        if helper_result.get("bridge_rid_serialized") != {"id": 0, "valid": False}:
+            raise AssertionError(f"Unexpected bridge RID serialization: {helper_result}")
 
         print("debug variable struct flow verified")
         return 0

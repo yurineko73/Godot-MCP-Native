@@ -581,6 +581,15 @@ func _serialize_debug_value(value: Variant) -> Variant:
 	match typeof(value):
 		TYPE_BOOL, TYPE_INT, TYPE_FLOAT, TYPE_STRING:
 			return value
+		TYPE_STRING_NAME:
+			return str(value)
+		TYPE_NODE_PATH:
+			return str(value)
+		TYPE_RID:
+			return {
+				"id": value.get_id(),
+				"valid": value.is_valid()
+			}
 		TYPE_VECTOR2:
 			return {"x": value.x, "y": value.y}
 		TYPE_VECTOR2I:

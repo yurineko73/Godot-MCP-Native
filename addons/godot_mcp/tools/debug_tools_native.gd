@@ -102,6 +102,10 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_debug_step_over(server_core)
 	_register_debug_step_out(server_core)
 	_register_debug_continue(server_core)
+	_register_debug_step_into_and_wait(server_core)
+	_register_debug_step_over_and_wait(server_core)
+	_register_debug_step_out_and_wait(server_core)
+	_register_debug_continue_and_wait(server_core)
 	_register_await_debugger_state(server_core)
 	_register_get_runtime_info(server_core)
 	_register_get_runtime_performance_snapshot(server_core)
@@ -1051,6 +1055,52 @@ func _tool_debug_execution_control(params: Dictionary, command: String, target_s
 	result["command"] = command
 	result["target_state"] = target_state
 	return result
+
+func _register_debug_step_into_and_wait(server_core: RefCounted) -> void:
+	_register_debug_execution_wait_tool(server_core, "debug_step_into_and_wait", "Send a step-into command and wait for the debugger to report a breaked state.", "step", "breaked")
+
+func _register_debug_step_over_and_wait(server_core: RefCounted) -> void:
+	_register_debug_execution_wait_tool(server_core, "debug_step_over_and_wait", "Send a step-over command and wait for the debugger to report a breaked state.", "next", "breaked")
+
+func _register_debug_step_out_and_wait(server_core: RefCounted) -> void:
+	_register_debug_execution_wait_tool(server_core, "debug_step_out_and_wait", "Send a step-out command and wait for the debugger to report a breaked state.", "out", "breaked")
+
+func _register_debug_continue_and_wait(server_core: RefCounted) -> void:
+	_register_debug_execution_wait_tool(server_core, "debug_continue_and_wait", "Send a continue command and wait for the debugger to report a running state.", "continue", "running")
+
+func _register_debug_execution_wait_tool(server_core: RefCounted, tool_name: String, description: String, command: String, target_state: String) -> void:
+	server_core.register_tool(
+		tool_name,
+		description,
+		{
+			"type": "object",
+			"properties": {
+				"session_id": {"type": "integer", "description": "Optional debugger session id. Omit or use -1 for all active sessions."},
+				"timeout_ms": {"type": "integer", "default": 3000},
+				"poll_interval_ms": {"type": "integer", "default": 100}
+			}
+		},
+		func(params: Dictionary) -> Dictionary:
+			return _tool_debug_execution_and_wait(params, command, target_state),
+		{"type": "object", "properties": {"status": {"type": "string"}, "command": {"type": "string"}, "target_state": {"type": "string"}, "matched_state": {"type": "object"}, "sessions": {"type": "array"}, "state_events": {"type": "array"}, "attempts": {"type": "integer"}, "elapsed_ms": {"type": "integer"}}},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
+	)
+
+func _tool_debug_execution_and_wait(params: Dictionary, command: String, target_state: String) -> Dictionary:
+	var command_result: Dictionary = _tool_debug_execution_control(params, command, target_state)
+	if command_result.has("error"):
+		return command_result
+	var wait_params: Dictionary = {
+		"target_state": target_state,
+		"session_id": params.get("session_id", -1),
+		"timeout_ms": params.get("timeout_ms", 3000),
+		"poll_interval_ms": params.get("poll_interval_ms", 100)
+	}
+	var wait_result: Dictionary = _tool_await_debugger_state(wait_params)
+	wait_result["command"] = command
+	wait_result["target_state"] = target_state
+	wait_result["command_result"] = command_result
+	return wait_result
 
 func _register_await_debugger_state(server_core: RefCounted) -> void:
 	server_core.register_tool(

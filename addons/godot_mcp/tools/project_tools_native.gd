@@ -28,6 +28,12 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_list_project_resources(server_core)
 	_register_create_resource(server_core)
 	_register_get_project_structure(server_core)
+	_register_reimport_resources(server_core)
+	_register_get_import_metadata(server_core)
+	_register_get_resource_uid_info(server_core)
+	_register_fix_resource_uid(server_core)
+	_register_get_resource_dependencies(server_core)
+	_register_scan_missing_resource_dependencies(server_core)
 
 # ============================================================================
 # get_project_info - 获取项目信息
@@ -471,3 +477,565 @@ func _scan_directory(path: String, directories: Array, file_counts: Dictionary, 
 				file_counts[ext] += 1
 		file_name = dir.get_next()
 	dir.list_dir_end()
+
+# ============================================================================
+# reimport_resources - 重新导入指定资源
+# ============================================================================
+
+func _register_reimport_resources(server_core: RefCounted) -> void:
+	var tool_name: String = "reimport_resources"
+	var description: String = "Reimport existing project resources using Godot's EditorFileSystem import pipeline."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"resource_paths": {
+				"type": "array",
+				"items": {"type": "string"},
+				"description": "Resource source file paths to reimport, e.g. ['res://icon.png']"
+			},
+			"refresh_metadata": {
+				"type": "boolean",
+				"description": "Whether to refresh EditorFileSystem metadata with update_file() before reimport. Default is true.",
+				"default": true
+			}
+		},
+		"required": ["resource_paths"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"status": {"type": "string"},
+			"requested_count": {"type": "integer"},
+			"reimported_count": {"type": "integer"},
+			"resource_paths": {"type": "array"},
+			"invalid_paths": {"type": "array"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": false,
+		"idempotentHint": false,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_reimport_resources"),
+						  output_schema, annotations)
+
+func _tool_reimport_resources(params: Dictionary) -> Dictionary:
+	var raw_paths: Array = params.get("resource_paths", [])
+	if raw_paths.is_empty():
+		return {"error": "Missing required parameter: resource_paths"}
+
+	var refresh_metadata: bool = params.get("refresh_metadata", true)
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var fs: EditorFileSystem = editor_interface.get_resource_filesystem()
+	if not fs:
+		return {"error": "Failed to get EditorFileSystem"}
+
+	if fs.is_scanning():
+		return {
+			"status": "busy",
+			"requested_count": raw_paths.size(),
+			"reimported_count": 0,
+			"resource_paths": [],
+			"invalid_paths": [],
+			"scan_progress": fs.get_scanning_progress()
+		}
+
+	var valid_paths: Array[String] = []
+	var invalid_paths: Array[Dictionary] = []
+	for raw_path in raw_paths:
+		var resource_path: String = str(raw_path).strip_edges()
+		var validation: Dictionary = PathValidator.validate_path(resource_path)
+		if not validation["valid"]:
+			invalid_paths.append({"path": resource_path, "error": validation["error"]})
+			continue
+		resource_path = validation["sanitized"]
+		if not FileAccess.file_exists(resource_path):
+			invalid_paths.append({"path": resource_path, "error": "File not found"})
+			continue
+		valid_paths.append(resource_path)
+
+	if valid_paths.is_empty():
+		return {
+			"status": "no_valid_paths",
+			"requested_count": raw_paths.size(),
+			"reimported_count": 0,
+			"resource_paths": [],
+			"invalid_paths": invalid_paths
+		}
+
+	if refresh_metadata:
+		for resource_path in valid_paths:
+			fs.update_file(resource_path)
+
+	var packed_paths: PackedStringArray = PackedStringArray()
+	for resource_path in valid_paths:
+		packed_paths.append(resource_path)
+	fs.reimport_files(packed_paths)
+
+	return {
+		"status": "success",
+		"requested_count": raw_paths.size(),
+		"reimported_count": valid_paths.size(),
+		"resource_paths": valid_paths,
+		"invalid_paths": invalid_paths
+	}
+
+# ============================================================================
+# get_import_metadata - 读取 .import 元数据
+# ============================================================================
+
+func _register_get_import_metadata(server_core: RefCounted) -> void:
+	var tool_name: String = "get_import_metadata"
+	var description: String = "Read Godot import metadata for a source asset, including importer settings and imported artifact paths."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"resource_path": {
+				"type": "string",
+				"description": "Source asset path such as 'res://icon.png'"
+			}
+		},
+		"required": ["resource_path"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"resource_path": {"type": "string"},
+			"import_config_path": {"type": "string"},
+			"exists": {"type": "boolean"},
+			"importer": {"type": "string"},
+			"resource_type": {"type": "string"},
+			"uid": {"type": "string"},
+			"imported_path": {"type": "string"},
+			"sections": {"type": "object"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_import_metadata"),
+						  output_schema, annotations)
+
+func _tool_get_import_metadata(params: Dictionary) -> Dictionary:
+	var resource_path: String = str(params.get("resource_path", "")).strip_edges()
+	if resource_path.is_empty():
+		return {"error": "Missing required parameter: resource_path"}
+
+	var validation: Dictionary = PathValidator.validate_path(resource_path)
+	if not validation["valid"]:
+		return {"error": "Invalid path: " + validation["error"]}
+	resource_path = validation["sanitized"]
+
+	var import_config_path: String = resource_path + ".import"
+	if not FileAccess.file_exists(import_config_path):
+		return {
+			"resource_path": resource_path,
+			"import_config_path": import_config_path,
+			"exists": false
+		}
+
+	var config: ConfigFile = ConfigFile.new()
+	var load_error: Error = config.load(import_config_path)
+	if load_error != OK:
+		return {"error": "Failed to load import metadata: " + error_string(load_error)}
+
+	var sections: Dictionary = {}
+	for raw_section in config.get_sections():
+		var section_name: String = str(raw_section)
+		var section_values: Dictionary = {}
+		for raw_key in config.get_section_keys(section_name):
+			var key_name: String = str(raw_key)
+			section_values[key_name] = config.get_value(section_name, key_name)
+		sections[section_name] = section_values
+
+	var remap: Dictionary = sections.get("remap", {})
+	var deps: Dictionary = sections.get("deps", {})
+	var params_section: Dictionary = sections.get("params", {})
+
+	return {
+		"resource_path": resource_path,
+		"import_config_path": import_config_path,
+		"exists": true,
+		"importer": str(remap.get("importer", "")),
+		"resource_type": str(remap.get("type", "")),
+		"uid": str(remap.get("uid", "")),
+		"imported_path": str(remap.get("path", "")),
+		"dependencies": deps,
+		"params": params_section,
+		"sections": sections
+	}
+
+# ============================================================================
+# get_resource_uid_info - 读取资源 UID 信息
+# ============================================================================
+
+func _register_get_resource_uid_info(server_core: RefCounted) -> void:
+	var tool_name: String = "get_resource_uid_info"
+	var description: String = "Inspect Godot ResourceUID mappings for a resource path or uid:// identifier."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"resource_path": {
+				"type": "string",
+				"description": "Resource path to inspect."
+			},
+			"uid": {
+				"type": "string",
+				"description": "Optional uid:// identifier to resolve."
+			}
+		}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"resource_path": {"type": "string"},
+			"uid": {"type": "string"},
+			"uid_id": {"type": "string"},
+			"editor_uid": {"type": "string"},
+			"resolved_path": {"type": "string"},
+			"exists": {"type": "boolean"},
+			"has_uid_mapping": {"type": "boolean"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_resource_uid_info"),
+						  output_schema, annotations)
+
+func _tool_get_resource_uid_info(params: Dictionary) -> Dictionary:
+	var resource_path: String = str(params.get("resource_path", "")).strip_edges()
+	var uid_text: String = str(params.get("uid", "")).strip_edges()
+	if resource_path.is_empty() and uid_text.is_empty():
+		return {"error": "Provide resource_path or uid"}
+
+	if not resource_path.is_empty():
+		var validation: Dictionary = PathValidator.validate_path(resource_path)
+		if not validation["valid"]:
+			return {"error": "Invalid path: " + validation["error"]}
+		resource_path = validation["sanitized"]
+		if uid_text.is_empty():
+			var mapped_uid: String = ResourceUID.path_to_uid(resource_path)
+			if mapped_uid.begins_with("uid://"):
+				uid_text = mapped_uid
+
+	if not uid_text.is_empty() and not uid_text.begins_with("uid://"):
+		return {"error": "uid must start with uid://"}
+
+	var resolved_path: String = ""
+	if not uid_text.is_empty():
+		resolved_path = ResourceUID.uid_to_path(uid_text)
+		if resource_path.is_empty():
+			resource_path = resolved_path
+
+	if not resource_path.is_empty() and uid_text.is_empty():
+		var remapped_uid: String = ResourceUID.path_to_uid(resource_path)
+		if remapped_uid.begins_with("uid://"):
+			uid_text = remapped_uid
+			resolved_path = ResourceUID.uid_to_path(uid_text)
+
+	var effective_path: String = resource_path if not resource_path.is_empty() else resolved_path
+	var exists: bool = not effective_path.is_empty() and FileAccess.file_exists(effective_path)
+	var has_uid_mapping: bool = uid_text.begins_with("uid://")
+
+	return {
+		"resource_path": resource_path,
+		"uid": uid_text,
+		"uid_id": "",
+		"resolved_path": resolved_path,
+		"exists": exists,
+		"has_uid_mapping": has_uid_mapping,
+		"editor_uid": ""
+	}
+
+# ============================================================================
+# fix_resource_uid - 生成或修复资源 UID
+# ============================================================================
+
+func _register_fix_resource_uid(server_core: RefCounted) -> void:
+	var tool_name: String = "fix_resource_uid"
+	var description: String = "Ensure a resource file has a persisted UID and refresh the editor filesystem mapping."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"resource_path": {
+				"type": "string",
+				"description": "Resource path to repair, e.g. 'res://resources/example.tres'"
+			}
+		},
+		"required": ["resource_path"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"status": {"type": "string"},
+			"resource_path": {"type": "string"},
+			"previous_uid": {"type": "string"},
+			"uid": {"type": "string"},
+			"uid_id": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": false,
+		"idempotentHint": false,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_fix_resource_uid"),
+						  output_schema, annotations)
+
+func _tool_fix_resource_uid(params: Dictionary) -> Dictionary:
+	var resource_path: String = str(params.get("resource_path", "")).strip_edges()
+	if resource_path.is_empty():
+		return {"error": "Missing required parameter: resource_path"}
+
+	var validation: Dictionary = PathValidator.validate_path(resource_path)
+	if not validation["valid"]:
+		return {"error": "Invalid path: " + validation["error"]}
+	resource_path = validation["sanitized"]
+
+	if not FileAccess.file_exists(resource_path):
+		return {"error": "File not found: " + resource_path}
+
+	var previous_uid: String = ResourceUID.path_to_uid(resource_path)
+	if not previous_uid.begins_with("uid://"):
+		previous_uid = ""
+
+	var uid_id: int = ResourceSaver.get_resource_id_for_path(resource_path, true)
+	if uid_id == ResourceUID.INVALID_ID:
+		return {"error": "Failed to generate resource UID for: " + resource_path}
+
+	var set_error: Error = ResourceSaver.set_uid(resource_path, uid_id)
+	if set_error != OK:
+		return {"error": "Failed to persist resource UID: " + error_string(set_error)}
+
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if editor_interface:
+		var fs: EditorFileSystem = editor_interface.get_resource_filesystem()
+		if fs:
+			fs.update_file(resource_path)
+
+	var uid_text: String = ResourceUID.path_to_uid(resource_path)
+	return {
+		"status": "success",
+		"resource_path": resource_path,
+		"previous_uid": previous_uid,
+		"uid": uid_text,
+		"uid_id": str(uid_id)
+	}
+
+# ============================================================================
+# get_resource_dependencies - 读取资源依赖
+# ============================================================================
+
+func _register_get_resource_dependencies(server_core: RefCounted) -> void:
+	var tool_name: String = "get_resource_dependencies"
+	var description: String = "List parsed resource dependencies using Godot's ResourceLoader dependency metadata."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"resource_path": {
+				"type": "string",
+				"description": "Resource path to inspect."
+			}
+		},
+		"required": ["resource_path"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"resource_path": {"type": "string"},
+			"dependency_count": {"type": "integer"},
+			"dependencies": {"type": "array"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_resource_dependencies"),
+						  output_schema, annotations)
+
+func _tool_get_resource_dependencies(params: Dictionary) -> Dictionary:
+	var resource_path: String = str(params.get("resource_path", "")).strip_edges()
+	if resource_path.is_empty():
+		return {"error": "Missing required parameter: resource_path"}
+
+	var validation: Dictionary = PathValidator.validate_path(resource_path)
+	if not validation["valid"]:
+		return {"error": "Invalid path: " + validation["error"]}
+	resource_path = validation["sanitized"]
+
+	if not FileAccess.file_exists(resource_path):
+		return {"error": "File not found: " + resource_path}
+
+	var dependencies: Array = _parse_resource_dependencies(resource_path)
+	return {
+		"resource_path": resource_path,
+		"dependency_count": dependencies.size(),
+		"dependencies": dependencies
+	}
+
+# ============================================================================
+# scan_missing_resource_dependencies - 扫描缺失依赖
+# ============================================================================
+
+func _register_scan_missing_resource_dependencies(server_core: RefCounted) -> void:
+	var tool_name: String = "scan_missing_resource_dependencies"
+	var description: String = "Scan project resources for broken or missing dependency references."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"search_path": {
+				"type": "string",
+				"description": "Directory to scan. Default is res://.",
+				"default": "res://"
+			},
+			"max_results": {
+				"type": "integer",
+				"description": "Maximum missing dependency issues to return. Default is 200.",
+				"default": 200
+			}
+		}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"search_path": {"type": "string"},
+			"scanned_resources": {"type": "integer"},
+			"issue_count": {"type": "integer"},
+			"issues": {"type": "array"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_scan_missing_resource_dependencies"),
+						  output_schema, annotations)
+
+func _tool_scan_missing_resource_dependencies(params: Dictionary) -> Dictionary:
+	var search_path: String = str(params.get("search_path", "res://")).strip_edges()
+	var max_results: int = max(1, int(params.get("max_results", 200)))
+
+	var validation: Dictionary = PathValidator.validate_directory_path(search_path)
+	if not validation["valid"]:
+		return {"error": "Invalid path: " + validation["error"]}
+	search_path = validation["sanitized"]
+
+	var dependency_extensions: Array[String] = [
+		".tscn", ".scn", ".tres", ".res", ".gd", ".cs", ".gdshader", ".material"
+	]
+	var resources: Array[String] = []
+	_collect_resources(search_path, dependency_extensions, resources)
+	resources.sort()
+
+	var issues: Array = []
+	for resource_path in resources:
+		var dependencies: Array = _parse_resource_dependencies(resource_path)
+		for dependency in dependencies:
+			if bool(dependency.get("missing", false)):
+				issues.append({
+					"owner_path": resource_path,
+					"dependency": dependency
+				})
+				if issues.size() >= max_results:
+					return {
+						"search_path": search_path,
+						"scanned_resources": resources.size(),
+						"issue_count": issues.size(),
+						"issues": issues,
+						"truncated": true
+					}
+
+	return {
+		"search_path": search_path,
+		"scanned_resources": resources.size(),
+		"issue_count": issues.size(),
+		"issues": issues,
+		"truncated": false
+	}
+
+func _parse_resource_dependencies(resource_path: String) -> Array:
+	var dependencies: Array = []
+	for raw_dependency in ResourceLoader.get_dependencies(resource_path):
+		var raw_text: String = str(raw_dependency)
+		var entry: Dictionary = {
+			"raw": raw_text,
+			"uid": "",
+			"fallback_path": "",
+			"resolved_path": "",
+			"exists": false,
+			"missing": false
+		}
+
+		if raw_text.contains("::"):
+			entry["uid"] = raw_text.get_slice("::", 0)
+			entry["fallback_path"] = raw_text.get_slice("::", 2)
+			var resolved_path: String = ""
+			if str(entry["uid"]).begins_with("uid://"):
+				resolved_path = ResourceUID.uid_to_path(str(entry["uid"]))
+			if resolved_path.is_empty():
+				resolved_path = str(entry["fallback_path"])
+			entry["resolved_path"] = resolved_path
+		else:
+			entry["fallback_path"] = raw_text
+			entry["resolved_path"] = raw_text
+
+		var resolved_exists: bool = false
+		var resolved_path_str: String = str(entry["resolved_path"])
+		var fallback_path_str: String = str(entry["fallback_path"])
+		if not resolved_path_str.is_empty():
+			resolved_exists = FileAccess.file_exists(resolved_path_str)
+		if not resolved_exists and not fallback_path_str.is_empty():
+			resolved_exists = FileAccess.file_exists(fallback_path_str)
+
+		entry["exists"] = resolved_exists
+		entry["missing"] = not resolved_exists
+		dependencies.append(entry)
+
+	return dependencies

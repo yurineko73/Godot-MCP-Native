@@ -41,6 +41,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_fix_resource_uid(server_core)
 	_register_get_resource_dependencies(server_core)
 	_register_scan_missing_resource_dependencies(server_core)
+	_register_scan_cyclic_resource_dependencies(server_core)
 	_register_detect_broken_scripts(server_core)
 	_register_audit_project_health(server_core)
 
@@ -1486,6 +1487,98 @@ func _tool_scan_missing_resource_dependencies(params: Dictionary) -> Dictionary:
 		"truncated": false
 	}
 
+func _register_scan_cyclic_resource_dependencies(server_core: RefCounted) -> void:
+	var tool_name: String = "scan_cyclic_resource_dependencies"
+	var description: String = "Scan project resources for cyclic dependency chains based on parsed ResourceLoader dependency metadata."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"search_path": {
+				"type": "string",
+				"description": "Directory to scan. Default is res://.",
+				"default": "res://"
+			},
+			"max_results": {
+				"type": "integer",
+				"description": "Maximum cyclic dependency issues to return. Default is 100.",
+				"default": 100
+			}
+		}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"search_path": {"type": "string"},
+			"scanned_resources": {"type": "integer"},
+			"issue_count": {"type": "integer"},
+			"issues": {"type": "array"},
+			"truncated": {"type": "boolean"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_scan_cyclic_resource_dependencies"),
+						  output_schema, annotations)
+
+func _tool_scan_cyclic_resource_dependencies(params: Dictionary) -> Dictionary:
+	var search_path: String = str(params.get("search_path", "res://")).strip_edges()
+	var max_results: int = max(1, int(params.get("max_results", 100)))
+
+	var validation: Dictionary = PathValidator.validate_directory_path(search_path)
+	if not validation["valid"]:
+		return {"error": "Invalid path: " + validation["error"]}
+	search_path = validation["sanitized"]
+
+	var dependency_extensions: Array[String] = [
+		".tscn", ".scn", ".tres", ".res", ".gd", ".cs", ".gdshader", ".material"
+	]
+	var resources: Array[String] = []
+	_collect_resources(search_path, dependency_extensions, resources)
+	resources.sort()
+
+	var graph: Dictionary = {}
+	for resource_path in resources:
+		graph[resource_path] = _collect_existing_dependency_paths(resource_path)
+
+	var issues: Array = []
+	var seen_cycles: Dictionary = {}
+	for resource_path in resources:
+		var stack: Array = []
+		var visiting: Dictionary = {}
+		var cycle_paths: Array = []
+		_find_cycles_from_resource(resource_path, graph, stack, visiting, seen_cycles, cycle_paths, max_results - issues.size())
+		for cycle_path in cycle_paths:
+			issues.append({
+				"owner_path": resource_path,
+				"cycle_path": cycle_path,
+				"cycle_length": cycle_path.size() - 1
+			})
+			if issues.size() >= max_results:
+				return {
+					"search_path": search_path,
+					"scanned_resources": resources.size(),
+					"issue_count": issues.size(),
+					"issues": issues,
+					"truncated": true
+				}
+
+	return {
+		"search_path": search_path,
+		"scanned_resources": resources.size(),
+		"issue_count": issues.size(),
+		"issues": issues,
+		"truncated": false
+	}
+
 func _parse_resource_dependencies(resource_path: String) -> Array:
 	var dependencies: Array = []
 	for raw_dependency in ResourceLoader.get_dependencies(resource_path):
@@ -1525,6 +1618,63 @@ func _parse_resource_dependencies(resource_path: String) -> Array:
 		dependencies.append(entry)
 
 	return dependencies
+
+func _collect_existing_dependency_paths(resource_path: String) -> Array:
+	var paths: Array = []
+	for dependency in _parse_resource_dependencies(resource_path):
+		if bool(dependency.get("missing", false)):
+			continue
+		var resolved_path: String = str(dependency.get("resolved_path", ""))
+		var fallback_path: String = str(dependency.get("fallback_path", ""))
+		var effective_path: String = resolved_path if not resolved_path.is_empty() else fallback_path
+		if effective_path.is_empty():
+			continue
+		if not paths.has(effective_path):
+			paths.append(effective_path)
+	return paths
+
+func _find_cycles_from_resource(current_path: String, graph: Dictionary, stack: Array, visiting: Dictionary, seen_cycles: Dictionary, issues: Array, remaining_budget: int) -> void:
+	if remaining_budget <= 0:
+		return
+	if bool(visiting.get(current_path, false)):
+		var cycle_start: int = stack.find(current_path)
+		if cycle_start >= 0:
+			var cycle_path: Array = stack.slice(cycle_start)
+			cycle_path.append(current_path)
+			var cycle_key: String = _canonicalize_cycle_path(cycle_path)
+			if not seen_cycles.has(cycle_key):
+				seen_cycles[cycle_key] = true
+				issues.append(cycle_path)
+		return
+	if stack.has(current_path):
+		return
+
+	visiting[current_path] = true
+	stack.append(current_path)
+	for dependency_path in graph.get(current_path, []):
+		if not graph.has(dependency_path):
+			continue
+		_find_cycles_from_resource(dependency_path, graph, stack, visiting, seen_cycles, issues, remaining_budget - issues.size())
+		if issues.size() >= remaining_budget:
+			break
+	stack.pop_back()
+	visiting.erase(current_path)
+
+func _canonicalize_cycle_path(cycle_path: Array) -> String:
+	if cycle_path.size() <= 1:
+		return JSON.stringify(cycle_path)
+	var nodes: Array = cycle_path.slice(0, cycle_path.size() - 1)
+	if nodes.is_empty():
+		return JSON.stringify(cycle_path)
+	var best_rotation: Array = []
+	for start_index in range(nodes.size()):
+		var rotated: Array = []
+		for offset in range(nodes.size()):
+			rotated.append(nodes[(start_index + offset) % nodes.size()])
+		if best_rotation.is_empty() or JSON.stringify(rotated) < JSON.stringify(best_rotation):
+			best_rotation = rotated
+	best_rotation.append(best_rotation[0])
+	return JSON.stringify(best_rotation)
 
 # ============================================================================
 # detect_broken_scripts - 批量检测脚本诊断
@@ -1668,7 +1818,8 @@ func _register_audit_project_health(server_core: RefCounted) -> void:
 			"search_path": {"type": "string"},
 			"summary": {"type": "object"},
 			"broken_scripts": {"type": "array"},
-			"missing_dependencies": {"type": "array"}
+			"missing_dependencies": {"type": "array"},
+			"cyclic_dependencies": {"type": "array"}
 		}
 	}
 
@@ -1703,14 +1854,22 @@ func _tool_audit_project_health(params: Dictionary) -> Dictionary:
 	if missing_dependencies_result.has("error"):
 		return missing_dependencies_result
 
+	var cyclic_dependencies_result: Dictionary = _tool_scan_cyclic_resource_dependencies({
+		"search_path": search_path,
+		"max_results": max_results
+	})
+	if cyclic_dependencies_result.has("error"):
+		return cyclic_dependencies_result
+
 	var summary: Dictionary = {
 		"scanned_scripts": int(broken_scripts_result.get("scanned_scripts", 0)),
 		"broken_scripts": int(broken_scripts_result.get("broken_count", 0)),
 		"script_warnings": int(broken_scripts_result.get("warning_count", 0)),
 		"scanned_resources": int(missing_dependencies_result.get("scanned_resources", 0)),
-		"missing_dependencies": int(missing_dependencies_result.get("issue_count", 0))
+		"missing_dependencies": int(missing_dependencies_result.get("issue_count", 0)),
+		"cyclic_dependencies": int(cyclic_dependencies_result.get("issue_count", 0))
 	}
-	var hard_failures: int = summary["broken_scripts"] + summary["missing_dependencies"]
+	var hard_failures: int = summary["broken_scripts"] + summary["missing_dependencies"] + summary["cyclic_dependencies"]
 	var status: String = "healthy"
 	if hard_failures > 0:
 		status = "failing"
@@ -1723,7 +1882,8 @@ func _tool_audit_project_health(params: Dictionary) -> Dictionary:
 		"summary": summary,
 		"broken_scripts": broken_scripts_result.get("issues", []),
 		"missing_dependencies": missing_dependencies_result.get("issues", []),
-		"truncated": bool(broken_scripts_result.get("truncated", false)) or bool(missing_dependencies_result.get("truncated", false))
+		"cyclic_dependencies": cyclic_dependencies_result.get("issues", []),
+		"truncated": bool(broken_scripts_result.get("truncated", false)) or bool(missing_dependencies_result.get("truncated", false)) or bool(cyclic_dependencies_result.get("truncated", false))
 	}
 
 func _analyze_script_diagnostics(script_path: String, include_warnings: bool) -> Dictionary:

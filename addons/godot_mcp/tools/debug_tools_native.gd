@@ -44,6 +44,25 @@ func _is_user_scene_root(node: Node) -> bool:
 		return false
 	return not String(node.scene_file_path).is_empty()
 
+func _to_runtime_friendly_path(node: Node, scene_root: Node = null) -> String:
+	if not node:
+		return ""
+	var resolved_scene_root: Node = scene_root
+	if not resolved_scene_root:
+		resolved_scene_root = _get_user_scene_root()
+	if not resolved_scene_root:
+		return str(node.get_path())
+	var root_name: String = String(resolved_scene_root.name)
+	if root_name.is_empty():
+		return str(node.get_path())
+	if node == resolved_scene_root:
+		return "/root/" + root_name
+	var node_path: String = str(node.get_path())
+	var scene_root_path: String = str(resolved_scene_root.get_path())
+	if node_path.begins_with(scene_root_path + "/"):
+		return "/root/" + root_name + node_path.substr(scene_root_path.length())
+	return node_path
+
 # ============================================================================
 # 工具注册
 # ============================================================================
@@ -837,7 +856,7 @@ func _tool_install_runtime_probe(params: Dictionary) -> Dictionary:
 		return {"error": "node_name cannot be empty"}
 	var existing: Node = scene_root.get_node_or_null(NodePath(node_name))
 	if existing:
-		return {"status": "already_installed", "node_path": str(existing.get_path()), "persistent": existing.owner != null}
+		return {"status": "already_installed", "node_path": _to_runtime_friendly_path(existing, scene_root), "persistent": existing.owner != null}
 	var script: Script = load("res://addons/godot_mcp/runtime/mcp_runtime_probe.gd")
 	if not script:
 		return {"error": "Failed to load runtime probe script"}
@@ -849,7 +868,7 @@ func _tool_install_runtime_probe(params: Dictionary) -> Dictionary:
 	if persistent:
 		probe.owner = scene_root
 	editor_interface.mark_scene_as_unsaved()
-	return {"status": "success", "node_path": str(probe.get_path()), "persistent": persistent}
+	return {"status": "success", "node_path": _to_runtime_friendly_path(probe, scene_root), "persistent": persistent}
 
 func _register_remove_runtime_probe(server_core: RefCounted) -> void:
 	server_core.register_tool(
@@ -877,7 +896,7 @@ func _tool_remove_runtime_probe(params: Dictionary) -> Dictionary:
 	var existing: Node = scene_root.get_node_or_null(NodePath(node_name))
 	if not existing:
 		return {"status": "not_installed", "removed_node": ""}
-	var removed_path: String = str(existing.get_path())
+	var removed_path: String = _to_runtime_friendly_path(existing, scene_root)
 	scene_root.remove_child(existing)
 	existing.queue_free()
 	editor_interface.mark_scene_as_unsaved()

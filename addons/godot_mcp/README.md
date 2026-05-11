@@ -1,6 +1,7 @@
 # Godot MCP Native (Model Context Protocol)
 
 [中文版本](README.zh.md)
+[Русская версия](README.zh.md)
 
 ![Godot Version](https://img.shields.io/badge/Godot-4.x-blue?logo=godot-engine)
 ![License](https://img.shields.io/badge/License-MIT-green)

@@ -1,4 +1,4 @@
-# node_tools_native.gd - Node Tools原生实现
+# node_tools_native.gd - нативная реализация инструментов узлов
 
 @tool
 class_name NodeToolsNative
@@ -625,7 +625,7 @@ static func _count_all_nodes(node: Node) -> int:
 	return count
 
 # ===========================================
-# 节点工具增强 - 新增工具
+# Расширение инструментов узлов - новые инструменты
 # ===========================================
 
 func _register_duplicate_node(server_core: RefCounted) -> void:

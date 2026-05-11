@@ -1,4 +1,4 @@
-# debug_tools_native.gd - Debug Tools原生实现
+# debug_tools_native.gd - нативная реализация Debug Tools
 
 @tool
 class_name DebugToolsNative
@@ -37,7 +37,7 @@ func _get_user_scene_root() -> Node:
 	return scene_root
 
 # ============================================================================
-# 工具注册
+# Регистрация инструментов
 # ============================================================================
 
 func register_tools(server_core: RefCounted) -> void:
@@ -81,7 +81,7 @@ func _on_log_message(level: String, message: String) -> void:
 	_log_mutex.unlock()
 
 # ============================================================================
-# get_editor_logs - 获取编辑器日志
+# get_editor_logs - получение логов редактора
 # ============================================================================
 
 func _register_get_editor_logs(server_core: RefCounted) -> void:
@@ -885,7 +885,7 @@ func _get_runtime_logs(types: Array, count: int, offset: int, order: String) -> 
 	}
 
 # ============================================================================
-# execute_script - 执行脚本代码
+# execute_script - выполнение кода скрипта
 # ============================================================================
 
 func _register_execute_script(server_core: RefCounted) -> void:
@@ -926,7 +926,7 @@ func _register_execute_script(server_core: RefCounted) -> void:
 		"openWorldHint": false
 	}
 	
-	# 注册工具
+	# Регистрация инструмента
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_execute_script"),
 						  output_schema, annotations)
@@ -989,7 +989,7 @@ func _tool_execute_script(params: Dictionary) -> Dictionary:
 	}
 
 # ============================================================================
-# get_performance_metrics - 获取性能指标
+# get_performance_metrics - получение метрик производительности
 # ============================================================================
 
 func _register_get_performance_metrics(server_core: RefCounted) -> void:
@@ -1021,19 +1021,19 @@ func _register_get_performance_metrics(server_core: RefCounted) -> void:
 		"openWorldHint": false
 	}
 	
-	# 注册工具
+	# Регистрация инструмента
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_get_performance_metrics"),
 						  output_schema, annotations)
 
 func _tool_get_performance_metrics(params: Dictionary) -> Dictionary:
-	# 使用Performance单例获取性能指标
+	# Получение метрик производительности через singleton Performance
 	var fps: float = Performance.get_monitor(Performance.TIME_FPS)
 	var object_count: int = Performance.get_monitor(Performance.OBJECT_COUNT)
 	var resource_count: int = Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT)
-	var memory_usage: int = Performance.get_monitor(Performance.MEMORY_STATIC)  # 静态内存
+	var memory_usage: int = Performance.get_monitor(Performance.MEMORY_STATIC)  # Статическая память
 	
-	# 转换为MB
+	# Конвертация в МБ
 	var memory_mb: float = memory_usage / 1024.0 / 1024.0
 	
 	return {
@@ -1044,7 +1044,7 @@ func _tool_get_performance_metrics(params: Dictionary) -> Dictionary:
 	}
 
 # ============================================================================
-# debug_print - 输出调试信息
+# debug_print - вывод отладочного сообщения
 # ============================================================================
 
 func _register_debug_print(server_core: RefCounted) -> void:
@@ -1084,28 +1084,28 @@ func _register_debug_print(server_core: RefCounted) -> void:
 		"openWorldHint": false
 	}
 	
-	# 注册工具
+	# Регистрация инструмента
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_debug_print"),
 						  output_schema, annotations)
 
 func _tool_debug_print(params: Dictionary) -> Dictionary:
-	# 参数提取
+	# Извлечение параметров
 	var message: String = params.get("message", "")
 	var category: String = params.get("category", "")
 	
-	# 参数验证
+	# Проверка параметров
 	if message.is_empty():
 		return {"error": "Missing required parameter: message"}
 	
-	# 构建打印消息
+	# Формирование сообщения для вывода
 	var full_message: String
 	if category.is_empty():
 		full_message = "[MCP Debug] " + message
 	else:
 		full_message = "[" + category + "] " + message
 	
-	# 输出到Godot控制台
+	# Вывод в консоль Godot
 	printerr(full_message)
 	
 	return {
@@ -1114,7 +1114,7 @@ func _tool_debug_print(params: Dictionary) -> Dictionary:
 	}
 
 # ============================================================================
-# execute_editor_script - 执行完整的编辑器脚本
+# execute_editor_script - выполнение полного скрипта редактора
 # ============================================================================
 
 func _register_execute_editor_script(server_core: RefCounted) -> void:
@@ -1247,7 +1247,7 @@ func _normalize_indentation(code: String) -> String:
 	return "\n".join(result_lines)
 
 # ============================================================================
-# clear_output - 清除输出面板和日志缓冲区
+# clear_output - очистка панели вывода и буфера логов
 # ============================================================================
 
 func _register_clear_output(server_core: RefCounted) -> void:

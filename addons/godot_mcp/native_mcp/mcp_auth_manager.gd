@@ -1,67 +1,67 @@
 class_name McpAuthManager
 extends RefCounted
 
-# HTTP 模式认证管理器 - token-based auth
-# 符合 MCP 安全最佳实践和 RFC 6750 (Bearer Token)
+# Менеджер аутентификации для режима HTTP - token-based auth
+# Соответствует best practices безопасности MCP и RFC 6750 (Bearer Token)
 
 # ==============================================================================
-# 配置变量
+# Параметры конфигурации
 # ==============================================================================
 
-## 认证 token（必须 ≥ 16 字符）
+## Токен аутентификации (должен быть >= 16 символов)
 var _token: String = ""
 
-## 是否启用认证
+## Включена ли аутентификация
 var _enabled: bool = true
 
 
 # ==============================================================================
-# 常量
+# Константы
 # ==============================================================================
 
-## HTTP 认证头名称
+## Имя HTTP-заголовка аутентификации
 const HEADER_NAME: String = "authorization"
 
-## Bearer 认证方案
+## Схема аутентификации Bearer
 const SCHEME: String = "Bearer"
 
 
 # ==============================================================================
-# 公共方法
+# Публичные методы
 # ==============================================================================
 
-## 设置认证 token
-## @param token: String - 认证令牌（必须 ≥ 16 字符）
+## Установить токен аутентификации
+## @param token: String - токен аутентификации (должен быть >= 16 символов)
 func set_token(token: String) -> void:
 	if token.length() < 16:
 		push_error("Auth token must be at least 16 characters long")
 		return
 	_token = token
 
-## 启用/禁用认证
-## @param enabled: bool - true 启用，false 禁用
+## Включить/выключить аутентификацию
+## @param enabled: bool - true включает, false выключает
 func set_enabled(enabled: bool) -> void:
 	_enabled = enabled
 
-## 验证 HTTP 请求的认证头
-## @param headers: Dictionary - HTTP 请求头字典
-## @returns: bool - 验证通过返回 true，否则返回 false
+## Проверить заголовок аутентификации HTTP-запроса
+## @param headers: Dictionary - словарь HTTP-заголовков запроса
+## @returns: bool - true, если проверка пройдена; иначе false
 func validate_request(headers: Dictionary) -> bool:
-	# 如果认证未启用，直接通过
+	# Если аутентификация выключена, проверка проходит сразу
 	if not _enabled:
 		return true
 	
-	# 检查是否存在 Authorization 头
+	# Проверка наличия заголовка Authorization
 	if not headers.has(HEADER_NAME):
-		return false  # 缺少认证头
+		return false  # Отсутствует заголовок аутентификации
 	
 	var auth_header: String = headers[HEADER_NAME]
 	
-	# 检查格式：Bearer <token>
+	# Проверка формата: Bearer <token>
 	if not auth_header.begins_with(SCHEME + " "):
-		return false  # 格式错误
+		return false  # Неверный формат
 	
-	# 提取 token
+	# Извлечение токена
 	var token: String = auth_header.substr(SCHEME.length() + 1)
 	
 	var result: bool = true
@@ -78,14 +78,14 @@ func validate_request(headers: Dictionary) -> bool:
 	
 	return result
 
-## 返回 WWW-Authenticate 头（用于 401 响应）
-## @returns: String - WWW-Authenticate 头值
+## Вернуть заголовок WWW-Authenticate (для ответа 401)
+## @returns: String - значение заголовка WWW-Authenticate
 func get_www_authenticate_header() -> String:
 	return SCHEME + ' realm="Godot MCP Native", error="invalid_token"'
 
-## 生成随机 token
-## @param length: int - token 长度（默认 32）
-## @returns: String - 随机生成的 token
+## Сгенерировать случайный токен
+## @param length: int - длина токена (по умолчанию 32)
+## @returns: String - случайно сгенерированный токен
 static func generate_token(length: int = 32) -> String:
 	var chars: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 	var token: String = ""

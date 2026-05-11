@@ -1,14 +1,14 @@
-# mcp_server_native.gd - 原生MCP服务器插件主类
-# 根据godot-dev-guide优化，添加完整的类型提示和@export变量
+# mcp_server_native.gd - основной класс плагина нативного MCP-сервера
+# Оптимизировано по godot-dev-guide, добавлены полные типы и @export-переменные
 
 @tool
 extends EditorPlugin
 
 # ============================================================================
-# 配置变量（根据godot-dev-guide使用@export）
+# Конфигурационные переменные (используется @export по godot-dev-guide)
 # ============================================================================
 
-@export var auto_start: bool = false:
+@export var auto_start: bool = true:
 	set(value):
 		auto_start = value
 		notify_property_list_changed()
@@ -47,7 +47,7 @@ extends EditorPlugin
 		auth_token = value
 		notify_property_list_changed()
 
-@export_range(0, 3, 1) var log_level: int = 2:  # 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG (默认2=INFO，便于测试)
+@export_range(0, 3, 1) var log_level: int = 2:  # 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG (по умолчанию 2=INFO, удобно для тестов)
 	set(value):
 		log_level = value
 		if _native_server:
@@ -84,7 +84,7 @@ extends EditorPlugin
 		notify_property_list_changed()
 
 # ============================================================================
-# 内部变量（使用完整类型提示 - 根据godot-dev-guide）
+# Внутренние переменные (полные типы по godot-dev-guide)
 # ============================================================================
 
 var _native_server: RefCounted = null
@@ -95,7 +95,7 @@ var _tool_instances: Dictionary = {}
 var _debugger_bridge: MCPDebuggerBridge = null
 
 # ============================================================================
-# 生命周期方法
+# Методы жизненного цикла
 # ============================================================================
 
 func _enter_tree() -> void:
@@ -117,17 +117,17 @@ func _enter_tree() -> void:
 	_debugger_bridge = MCPDebuggerBridge.new()
 	add_debugger_plugin(_debugger_bridge)
 	
-	# 设置传输方式
+	# Настройка способа транспорта
 	var type: int = MCPServerCore.TransportType.TRANSPORT_STDIO if transport_mode == "stdio" \
 			else MCPServerCore.TransportType.TRANSPORT_HTTP
 	_native_server.set_transport_type(type)
 	_log_info("Transport type set to: " + transport_mode)
 	
-	# 设置 HTTP 端口
+	# Настройка HTTP-порта
 	_native_server.set_http_port(http_port)
 	_log_info("HTTP port set to: " + str(http_port))
 	
-	# 如果启用了认证，创建认证管理器
+	# Если включена аутентификация, создаем менеджер аутентификации
 	if auth_enabled and transport_mode == "http":
 		var auth_manager: McpAuthManager = McpAuthManager.new()
 		auth_manager.set_token(auth_token)
@@ -135,7 +135,7 @@ func _enter_tree() -> void:
 		_native_server.set_auth_manager(auth_manager)
 		_log_info("Auth manager created and enabled")
 	
-	# 配置 SSE 和远程访问（仅 HTTP 模式）
+	# Настройка SSE и удаленного доступа (только HTTP-режим)
 	if transport_mode == "http":
 		if _native_server.has_method("set_sse_enabled"):
 			_native_server.set_sse_enabled(sse_enabled)
@@ -145,12 +145,12 @@ func _enter_tree() -> void:
 			_native_server.set_remote_config(allow_remote, cors_origin)
 			_log_info("Remote config: allow_remote=" + str(allow_remote) + ", cors=" + cors_origin)
 	
-	# 配置服务器
+	# Настройка сервера
 	_native_server.set_log_level(log_level)
 	_native_server.set_security_level(security_level)
 	_native_server.set_rate_limit(rate_limit)
 	
-	# 连接信号（根据godot-dev-guide信号模式）
+	# Подключение сигналов (по шаблону godot-dev-guide)
 	_native_server.server_started.connect(_on_server_started)
 	_native_server.server_stopped.connect(_on_server_stopped)
 	_native_server.message_received.connect(_on_message_received)
@@ -160,16 +160,16 @@ func _enter_tree() -> void:
 	_native_server.tool_execution_failed.connect(_on_tool_failed)
 	_native_server.log_message.connect(_on_log_message)
 	
-	# 注册所有工具
+	# Регистрация всех инструментов
 	_register_all_tools()
 	
-	# 注册所有资源
+	# Регистрация всех ресурсов
 	_register_all_resources()
 	
-	# 创建UI面板
+	# Создание UI-панели
 	_create_main_screen_panel()
 	
-	# 检测是否以MCP服务器模式启动
+	# Проверка запуска в режиме MCP-сервера
 	_mcp_server_mode = "--mcp-server" in OS.get_cmdline_user_args()
 	
 	if _mcp_server_mode:
@@ -203,7 +203,7 @@ func _exit_tree() -> void:
 	_log_info("Godot Native MCP Plugin shutdown complete")
 
 # ============================================================================
-# 插件配置（根据godot-dev-guide优化）
+# Конфигурация плагина (оптимизировано по godot-dev-guide)
 # ============================================================================
 
 func _has_main_screen() -> bool:
@@ -285,7 +285,7 @@ func _get_property_list() -> Array:
 		"usage": PROPERTY_USAGE_DEFAULT
 	})
 	
-	# 添加属性分组（根据godot-dev-guide）
+	# Добавление группы свойств (по godot-dev-guide)
 	properties.append({
 		"name": "MCP Settings",
 		"type": TYPE_NIL,
@@ -325,7 +325,7 @@ func _get_property_list() -> Array:
 	return properties
 
 # ============================================================================
-# 公共API
+# Публичный API
 # ============================================================================
 
 func start_server() -> bool:
@@ -353,7 +353,7 @@ func get_server_status() -> Dictionary:
 	}
 
 # ============================================================================
-# 私有方法 - 服务器管理
+# Приватные методы - управление сервером
 # ============================================================================
 
 func _start_native_server() -> bool:
@@ -390,17 +390,17 @@ func _stop_native_server() -> void:
 func _get_tools_count() -> int:
 	if not _native_server:
 		return 0
-	# 这里需要添加一个方法到MCPServerCore来获取工具数量
+	# Здесь нужно добавить метод в MCPServerCore для получения количества инструментов
 	return _native_server.get_tools_count() if _native_server.has_method("get_tools_count") else 0
 
 func _get_resources_count() -> int:
 	if not _native_server:
 		return 0
-	# 这里需要添加一个方法到MCPServerCore来获取资源数量
+	# Здесь нужно добавить метод в MCPServerCore для получения количества ресурсов
 	return _native_server.get_resources_count() if _native_server.has_method("get_resources_count") else 0
 
 # ============================================================================
-# 私有方法 - 工具注册（根据mcp-builder优化）
+# Приватные методы - регистрация инструментов (оптимизировано по mcp-builder)
 # ============================================================================
 
 func _register_all_tools() -> void:
@@ -433,7 +433,7 @@ func _register_tool_module(module_name: String, instance: RefCounted) -> void:
 		instance.register_tools(_native_server)
 
 # ============================================================================
-# 私有方法 - 资源注册（根据mcp-builder优化）
+# Приватные методы - регистрация ресурсов (оптимизировано по mcp-builder)
 # ============================================================================
 
 func _register_all_resources() -> void:
@@ -443,16 +443,16 @@ func _register_all_resources() -> void:
 		_log_error("MCP Server instance not available")
 		return
 	
-	# 注册场景资源
+	# Регистрация ресурсов сцен
 	_register_scene_resources()
 	
-	# 注册脚本资源
+	# Регистрация ресурсов скриптов
 	_register_script_resources()
 	
-	# 注册项目资源
+	# Регистрация ресурсов проекта
 	_register_project_resources()
 	
-	# 注册编辑器资源
+	# Регистрация ресурсов редактора
 	_register_editor_resources()
 	
 	_log_info("All MCP resources registered successfully")
@@ -525,7 +525,7 @@ func _register_editor_resources() -> void:
 	)
 
 # ============================================================================
-# 资源加载方法（实际实现）
+# Методы загрузки ресурсов (фактическая реализация)
 # ============================================================================
 
 func _resource_scene_list(params: Dictionary) -> Dictionary:
@@ -605,7 +605,7 @@ func _resource_script_current(params: Dictionary) -> Dictionary:
 
 func _resource_project_info(params: Dictionary) -> Dictionary:
 	var project_info: Dictionary = {
-		"name": ProjectSettings.get_setting("application/config/name", "未命名项目"),
+		"name": ProjectSettings.get_setting("application/config/name", "Проект без названия"),
 		"version": ProjectSettings.get_setting("application/config/version", "1.0"),
 		"description": ProjectSettings.get_setting("application/config/description", ""),
 		"author": ProjectSettings.get_setting("application/config/author", ""),
@@ -625,7 +625,7 @@ func _resource_project_settings(params: Dictionary) -> Dictionary:
 	var settings: Dictionary = {}
 	var property_list: Array = ProjectSettings.get_property_list()
 
-	# 只导出非内部的设置
+	# Экспортировать только не внутренние настройки
 	for property in property_list:
 		var property_name: String = property.get("name", "")
 		if property_name.begins_with("application/") or property_name.begins_with("display/") or property_name.begins_with("rendering/"):
@@ -672,7 +672,7 @@ func _resource_editor_state(params: Dictionary) -> Dictionary:
 	}
 
 # ============================================================================
-# 资源加载辅助函数
+# Вспомогательные функции загрузки ресурсов
 # ============================================================================
 
 static func _find_files_recursive(dir: DirAccess, extension: String, result: Array, base_path: String = "res://") -> void:
@@ -683,12 +683,12 @@ static func _find_files_recursive(dir: DirAccess, extension: String, result: Arr
 		var full_path: String = base_path + file_name
 
 		if dir.current_is_dir():
-			# 递归进入子目录
+			# Рекурсивный вход в подкаталог
 			var sub_dir: DirAccess = DirAccess.open(full_path + "/")
 			if sub_dir:
 				_find_files_recursive(sub_dir, extension, result, full_path + "/")
 		elif file_name.ends_with(extension):
-			# 找到匹配的文件
+			# Найден подходящий файл
 			result.append(full_path)
 
 		file_name = dir.get_next()
@@ -696,7 +696,7 @@ static func _find_files_recursive(dir: DirAccess, extension: String, result: Arr
 	dir.list_dir_end()
 
 static func _count_nodes(node: Node) -> int:
-	var count: int = 1  # 当前节点
+	var count: int = 1  # Текущий узел
 
 	for child in node.get_children():
 		count += _count_nodes(child)
@@ -728,7 +728,7 @@ static func _get_godot_version() -> Dictionary:
 	}
 
 # ============================================================================
-# UI面板创建
+# Создание UI-панели
 # ============================================================================
 
 func _create_main_screen_panel() -> void:
@@ -758,7 +758,7 @@ func _create_main_screen_panel() -> void:
 	_log_info("Main screen panel created successfully")
 
 # ============================================================================
-# 信号回调
+# Обработчики сигналов
 # ============================================================================
 
 func _on_server_started() -> void:
@@ -801,7 +801,7 @@ func _on_log_message(level: String, message: String) -> void:
 		_main_panel.update_log("[" + level + "] " + message)
 
 # ============================================================================
-# 日志方法（根据godot-dev-guide优化）
+# Методы логирования (оптимизировано по godot-dev-guide)
 # ============================================================================
 
 func _log_error(message: String) -> void:
@@ -821,7 +821,7 @@ func _log_debug(message: String) -> void:
 		_native_server._log_debug(message)
 
 # ============================================================================
-# 清理
+# Очистка
 # ============================================================================
 
 func _notification(what: int) -> void:

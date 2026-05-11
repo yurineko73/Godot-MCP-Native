@@ -1,4 +1,4 @@
-# project_tools_native.gd - Project Tools原生实现
+# project_tools_native.gd - нативная реализация инструментов проекта
 
 @tool
 class_name ProjectToolsNative
@@ -19,7 +19,7 @@ func _get_editor_interface() -> EditorInterface:
 	return null
 
 # ============================================================================
-# 工具注册
+# Регистрация инструментов
 # ============================================================================
 
 func register_tools(server_core: RefCounted) -> void:
@@ -30,7 +30,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_get_project_structure(server_core)
 
 # ============================================================================
-# get_project_info - 获取项目信息
+# get_project_info - получение информации о проекте
 # ============================================================================
 
 func _register_get_project_info(server_core: RefCounted) -> void:
@@ -64,7 +64,7 @@ func _register_get_project_info(server_core: RefCounted) -> void:
 		"openWorldHint": false
 	}
 	
-	# 注册工具
+	# Регистрация инструмента
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_get_project_info"),
 						  output_schema, annotations)
@@ -94,7 +94,7 @@ func _tool_get_project_info(params: Dictionary) -> Dictionary:
 	}
 
 # ============================================================================
-# get_project_settings - 获取项目设置
+# get_project_settings - получение настроек проекта
 # ============================================================================
 
 func _register_get_project_settings(server_core: RefCounted) -> void:
@@ -129,7 +129,7 @@ func _register_get_project_settings(server_core: RefCounted) -> void:
 		"openWorldHint": false
 	}
 	
-	# 注册工具
+	# Регистрация инструмента
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_get_project_settings"),
 						  output_schema, annotations)
@@ -158,7 +158,7 @@ func _tool_get_project_settings(params: Dictionary) -> Dictionary:
 	}
 
 # ============================================================================
-# list_project_resources - 列出项目资源
+# list_project_resources - список ресурсов проекта
 # ============================================================================
 
 func _register_list_project_resources(server_core: RefCounted) -> void:
@@ -202,25 +202,25 @@ func _register_list_project_resources(server_core: RefCounted) -> void:
 		"openWorldHint": false
 	}
 	
-	# 注册工具
+	# Регистрация инструмента
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_list_project_resources"),
 						  output_schema, annotations)
 
 func _tool_list_project_resources(params: Dictionary) -> Dictionary:
-	# 参数提取
+	# Извлечение параметров
 	var search_path: String = params.get("search_path", "res://")
 	var resource_types: Array = params.get("resource_types", [])
 	
-	# 使用PathValidator验证路径安全性
+	# Проверка безопасности пути через PathValidator
 	var validation: Dictionary = PathValidator.validate_directory_path(search_path)
 	if not validation["valid"]:
 		return {"error": "Invalid path: " + validation["error"]}
 	
-	# 使用清理后的路径
+	# Использование очищенного пути
 	search_path = validation["sanitized"]
 	
-	# 常见资源扩展名
+	# Стандартные расширения ресурсов
 	var default_extensions: Array[String] = [
 		".tres", ".res", ".otr", ".font", ".theme",
 		".png", ".jpg", ".jpeg", ".webp", ".svg", ".bmp", ".hdr",
@@ -231,7 +231,7 @@ func _tool_list_project_resources(params: Dictionary) -> Dictionary:
 		".ttf", ".otf", ".woff", ".woff2"
 	]
 	
-	# 如果提供了resource_types，使用它；否则使用默认扩展名
+	# Если передан resource_types, используем его, иначе - список по умолчанию
 	var extensions: Array[String] = []
 	if resource_types.size() > 0:
 		for ext in resource_types:
@@ -242,11 +242,11 @@ func _tool_list_project_resources(params: Dictionary) -> Dictionary:
 	else:
 		extensions = default_extensions
 	
-	# 使用DirAccess递归查找资源文件
+	# Рекурсивный поиск файлов ресурсов через DirAccess
 	var resources: Array[String] = []
 	_collect_resources(search_path, extensions, resources)
 	
-	# 排序
+	# Сортировка
 	resources.sort()
 	
 	return {
@@ -254,19 +254,19 @@ func _tool_list_project_resources(params: Dictionary) -> Dictionary:
 		"count": resources.size()
 	}
 
-# 辅助函数：递归收集资源文件
+# Вспомогательная функция: рекурсивный сбор файлов ресурсов
 func _collect_resources(directory_path: String, extensions: Array[String], result: Array[String]) -> void:
 	var dir: DirAccess = DirAccess.open(directory_path)
 	
 	if not dir:
 		return
 	
-	# 列出所有文件和目录
+	# Перебор всех файлов и каталогов
 	dir.list_dir_begin()
 	var file_name: String = dir.get_next()
 	
 	while not file_name.is_empty():
-		# 跳过特殊目录
+		# Пропуск специальных каталогов
 		if file_name != "." and file_name != "..":
 			var full_path: String = directory_path
 			if not full_path.ends_with("/"):
@@ -274,10 +274,10 @@ func _collect_resources(directory_path: String, extensions: Array[String], resul
 			full_path += file_name
 			
 			if dir.current_is_dir():
-				# 递归处理子目录
+				# Рекурсивная обработка подкаталогов
 				_collect_resources(full_path, extensions, result)
 			else:
-				# 检查文件扩展名
+				# Проверка расширения файла
 				for ext in extensions:
 					if file_name.ends_with(ext):
 						result.append(full_path)
@@ -288,7 +288,7 @@ func _collect_resources(directory_path: String, extensions: Array[String], resul
 	dir.list_dir_end()
 
 # ============================================================================
-# create_resource - 创建资源
+# create_resource - создание ресурса
 # ============================================================================
 
 func _register_create_resource(server_core: RefCounted) -> void:
@@ -333,50 +333,50 @@ func _register_create_resource(server_core: RefCounted) -> void:
 		"openWorldHint": false
 	}
 	
-	# 注册工具
+	# Регистрация инструмента
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_create_resource"),
 						  output_schema, annotations)
 
 func _tool_create_resource(params: Dictionary) -> Dictionary:
-	# 参数提取
+	# Извлечение параметров
 	var resource_path: String = params.get("resource_path", "")
 	var resource_type: String = params.get("resource_type", "")
 	var properties: Dictionary = params.get("properties", {})
 	
-	# 参数验证
+	# Проверка параметров
 	if resource_path.is_empty():
 		return {"error": "Missing required parameter: resource_path"}
 	if resource_type.is_empty():
 		return {"error": "Missing required parameter: resource_type"}
 	
-	# 使用PathValidator验证路径安全性
+	# Проверка безопасности пути через PathValidator
 	var validation: Dictionary = PathValidator.validate_file_path(resource_path, [".tres", ".res"])
 	if not validation["valid"]:
 		return {"error": "Invalid path: " + validation["error"]}
 	
-	# 使用清理后的路径
+	# Использование очищенного пути
 	resource_path = validation["sanitized"]
 	
-	# 验证资源类型
+	# Проверка типа ресурса
 	if not ClassDB.class_exists(resource_type):
 		return {"error": "Invalid resource type: " + resource_type}
 	
 	if not ClassDB.is_parent_class(resource_type, "Resource"):
 		return {"error": "Type '%s' is not a Resource type" % resource_type}
 	
-	# 创建资源实例
+	# Создание экземпляра ресурса
 	var resource: RefCounted = ClassDB.instantiate(resource_type)
 	
 	if not resource:
 		return {"error": "Failed to create resource of type: " + resource_type}
 	
-	# 设置属性（如果有）
+	# Установка свойств (если переданы)
 	for prop_name in properties:
 		if prop_name in resource:
 			resource.set(prop_name, properties[prop_name])
 	
-	# 保存资源
+	# Сохранение ресурса
 	var error: Error = ResourceSaver.save(resource, resource_path)
 	
 	if error != OK:
@@ -389,7 +389,7 @@ func _tool_create_resource(params: Dictionary) -> Dictionary:
 	}
 
 # ============================================================================
-# get_project_structure - 获取项目目录结构
+# get_project_structure - получение структуры каталогов проекта
 # ============================================================================
 
 func _register_get_project_structure(server_core: RefCounted) -> void:

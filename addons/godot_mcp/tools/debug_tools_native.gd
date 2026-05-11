@@ -85,6 +85,8 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_update_runtime_node_property(server_core)
 	_register_call_runtime_node_method(server_core)
 	_register_evaluate_runtime_expression(server_core)
+	_register_simulate_runtime_input_event(server_core)
+	_register_simulate_runtime_input_action(server_core)
 	_register_get_runtime_screenshot(server_core)
 	_register_await_runtime_condition(server_core)
 	_register_assert_runtime_condition(server_core)
@@ -1163,6 +1165,61 @@ func _tool_evaluate_runtime_expression(params: Dictionary) -> Dictionary:
 		return {"error": "Missing required parameter: expression"}
 	var payload: Array = [expression, params.get("node_path", "")]
 	return _request_runtime_probe("evaluate_expression", payload, ["mcp:expression_result"], params, {"expression": expression})
+
+func _register_simulate_runtime_input_event(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"simulate_runtime_input_event",
+		"Inject a structured InputEvent into the running game through Input.parse_input_event().",
+		{
+			"type": "object",
+			"properties": {
+				"event": {
+					"type": "object",
+					"description": "Structured input event payload. Supported types: action, key, mouse_button, mouse_motion."
+				},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["event"]
+		},
+		Callable(self, "_tool_simulate_runtime_input_event"),
+		{"type": "object", "properties": {"type": {"type": "string"}}},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
+	)
+
+func _tool_simulate_runtime_input_event(params: Dictionary) -> Dictionary:
+	var event_payload: Variant = params.get("event", null)
+	if not (event_payload is Dictionary):
+		return {"error": "Missing required parameter: event"}
+	return _request_runtime_probe("simulate_input_event", [event_payload], ["mcp:input_event_simulated"], params)
+
+func _register_simulate_runtime_input_action(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"simulate_runtime_input_action",
+		"Inject an InputEventAction into the running game through Input.parse_input_event(). runtime_pressed is only meaningful when the action exists in InputMap.",
+		{
+			"type": "object",
+			"properties": {
+				"action_name": {"type": "string"},
+				"pressed": {"type": "boolean", "default": true},
+				"strength": {"type": "number", "default": 1.0},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["action_name"]
+		},
+		Callable(self, "_tool_simulate_runtime_input_action"),
+		{"type": "object", "properties": {"action_name": {"type": "string"}, "action_exists": {"type": "boolean"}, "pressed": {"type": "boolean"}, "strength": {"type": "number"}, "runtime_pressed": {"type": "boolean"}}},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
+	)
+
+func _tool_simulate_runtime_input_action(params: Dictionary) -> Dictionary:
+	var action_name: String = params.get("action_name", "")
+	if action_name.is_empty():
+		return {"error": "Missing required parameter: action_name"}
+	var pressed: bool = bool(params.get("pressed", true))
+	var strength: float = float(params.get("strength", 1.0 if pressed else 0.0))
+	return _request_runtime_probe("simulate_input_action", [action_name, pressed, strength], ["mcp:input_action_simulated"], params, {"action_name": action_name})
 
 func _register_get_runtime_screenshot(server_core: RefCounted) -> void:
 	server_core.register_tool(

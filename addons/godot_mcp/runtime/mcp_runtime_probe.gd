@@ -47,6 +47,10 @@ func _capture_mcp_message(message: String, data: Array) -> bool:
 			return _handle_call_node_method(data)
 		"evaluate_expression":
 			return _handle_evaluate_expression(data)
+		"simulate_input_event":
+			return _handle_simulate_input_event(data)
+		"simulate_input_action":
+			return _handle_simulate_input_action(data)
 		"get_runtime_screenshot":
 			return _handle_get_runtime_screenshot(data)
 		"debug_break":
@@ -200,6 +204,143 @@ func _handle_get_runtime_screenshot(data: Array) -> bool:
 		return true
 	EngineDebugger.send_message("mcp:runtime_screenshot", [result])
 	return true
+
+func _handle_simulate_input_action(data: Array) -> bool:
+	if data.is_empty() or not data[0] is String or String(data[0]).is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": "simulate_input_action requires a non-empty action name"}])
+		return true
+	var action_name: String = String(data[0])
+	var pressed: bool = bool(data[1]) if data.size() >= 2 else true
+	var strength: float = float(data[2]) if data.size() >= 3 else (1.0 if pressed else 0.0)
+	var action: StringName = StringName(action_name)
+	var action_exists: bool = InputMap.has_action(action)
+
+	var event := InputEventAction.new()
+	event.action = action
+	event.pressed = pressed
+	event.strength = strength
+	Input.parse_input_event(event)
+
+	EngineDebugger.send_message("mcp:input_action_simulated", [{
+		"action_name": action_name,
+		"action_exists": action_exists,
+		"pressed": pressed,
+		"strength": strength,
+		"runtime_pressed": Input.is_action_pressed(action)
+	}])
+	return true
+
+func _handle_simulate_input_event(data: Array) -> bool:
+	if data.is_empty() or not data[0] is Dictionary:
+		EngineDebugger.send_message("mcp:error", [{"message": "simulate_input_event requires an event dictionary"}])
+		return true
+	var payload: Dictionary = data[0]
+	var event: InputEvent = _build_input_event(payload)
+	if not event:
+		EngineDebugger.send_message("mcp:error", [{"message": "Unsupported or invalid input event payload", "payload": payload}])
+		return true
+	Input.parse_input_event(event)
+	EngineDebugger.send_message("mcp:input_event_simulated", [_serialize_input_event(event)])
+	return true
+
+func _build_input_event(payload: Dictionary) -> InputEvent:
+	var event_type: String = str(payload.get("type", "")).to_lower()
+	match event_type:
+		"action":
+			var action_name: String = str(payload.get("action_name", ""))
+			if action_name.is_empty():
+				return null
+			var action_event := InputEventAction.new()
+			action_event.action = StringName(action_name)
+			action_event.pressed = bool(payload.get("pressed", true))
+			action_event.strength = float(payload.get("strength", 1.0 if action_event.pressed else 0.0))
+			return action_event
+		"key":
+			var keycode: int = int(payload.get("keycode", 0))
+			if keycode == 0:
+				return null
+			var key_event := InputEventKey.new()
+			key_event.keycode = keycode
+			key_event.physical_keycode = int(payload.get("physical_keycode", 0))
+			key_event.unicode = int(payload.get("unicode", 0))
+			key_event.pressed = bool(payload.get("pressed", true))
+			key_event.echo = bool(payload.get("echo", false))
+			_apply_input_modifiers(key_event, payload)
+			return key_event
+		"mouse_button":
+			var button_index: int = int(payload.get("button_index", 0))
+			if button_index == 0:
+				return null
+			var mouse_button_event := InputEventMouseButton.new()
+			mouse_button_event.button_index = button_index
+			mouse_button_event.pressed = bool(payload.get("pressed", true))
+			mouse_button_event.double_click = bool(payload.get("double_click", false))
+			mouse_button_event.factor = float(payload.get("factor", 1.0))
+			mouse_button_event.button_mask = int(payload.get("button_mask", 0))
+			mouse_button_event.position = _dict_to_vector2(payload.get("position", {}))
+			mouse_button_event.global_position = _dict_to_vector2(payload.get("global_position", payload.get("position", {})))
+			_apply_input_modifiers(mouse_button_event, payload)
+			return mouse_button_event
+		"mouse_motion":
+			var mouse_motion_event := InputEventMouseMotion.new()
+			mouse_motion_event.position = _dict_to_vector2(payload.get("position", {}))
+			mouse_motion_event.global_position = _dict_to_vector2(payload.get("global_position", payload.get("position", {})))
+			mouse_motion_event.relative = _dict_to_vector2(payload.get("relative", {}))
+			mouse_motion_event.velocity = _dict_to_vector2(payload.get("velocity", {}))
+			mouse_motion_event.button_mask = int(payload.get("button_mask", 0))
+			mouse_motion_event.pressure = float(payload.get("pressure", 0.0))
+			mouse_motion_event.pen_inverted = bool(payload.get("pen_inverted", false))
+			_apply_input_modifiers(mouse_motion_event, payload)
+			return mouse_motion_event
+		_:
+			return null
+
+func _apply_input_modifiers(event: InputEventWithModifiers, payload: Dictionary) -> void:
+	event.alt_pressed = bool(payload.get("alt_pressed", false))
+	event.shift_pressed = bool(payload.get("shift_pressed", false))
+	event.ctrl_pressed = bool(payload.get("ctrl_pressed", false))
+	event.meta_pressed = bool(payload.get("meta_pressed", false))
+	event.command_or_control_autoremap = bool(payload.get("command_or_control_autoremap", false))
+
+func _dict_to_vector2(value: Variant) -> Vector2:
+	if value is Dictionary:
+		return Vector2(float(value.get("x", 0.0)), float(value.get("y", 0.0)))
+	return Vector2.ZERO
+
+func _serialize_input_event(event: InputEvent) -> Dictionary:
+	if event is InputEventAction:
+		return {
+			"type": "action",
+			"action_name": String(event.action),
+			"pressed": event.pressed,
+			"strength": event.strength,
+			"runtime_pressed": Input.is_action_pressed(event.action)
+		}
+	if event is InputEventKey:
+		return {
+			"type": "key",
+			"keycode": event.keycode,
+			"physical_keycode": event.physical_keycode,
+			"unicode": event.unicode,
+			"pressed": event.pressed,
+			"echo": event.echo
+		}
+	if event is InputEventMouseButton:
+		return {
+			"type": "mouse_button",
+			"button_index": event.button_index,
+			"pressed": event.pressed,
+			"double_click": event.double_click,
+			"position": {"x": event.position.x, "y": event.position.y}
+		}
+	if event is InputEventMouseMotion:
+		return {
+			"type": "mouse_motion",
+			"position": {"x": event.position.x, "y": event.position.y},
+			"relative": {"x": event.relative.x, "y": event.relative.y},
+			"velocity": {"x": event.velocity.x, "y": event.velocity.y}
+		}
+	return {"type": "unknown", "class": event.get_class()}
 
 func capture_runtime_screenshot(save_path: String = "user://mcp_runtime_capture.png", format: String = "png") -> Dictionary:
 	if not ["png", "jpg"].has(format):

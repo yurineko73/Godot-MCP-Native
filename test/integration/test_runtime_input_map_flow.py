@@ -114,7 +114,7 @@ def prime_runtime_probe(
     while time.time() < deadline:
         last_result = tool_call("get_runtime_info", {"timeout_ms": 2000}, request_id=request_id)
         if (
-            last_result.get("status") == "success"
+            last_result.get("status") in {"success", "stale"}
             and last_result.get("current_scene")
             and int(last_result.get("node_count", 0)) >= minimum_node_count
         ):

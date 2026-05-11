@@ -116,6 +116,9 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_play_runtime_animation(server_core)
 	_register_stop_runtime_animation(server_core)
 	_register_get_runtime_animation_state(server_core)
+	_register_get_runtime_animation_tree_state(server_core)
+	_register_set_runtime_animation_tree_active(server_core)
+	_register_travel_runtime_animation_tree(server_core)
 	_register_list_runtime_tilemap_layers(server_core)
 	_register_get_runtime_tilemap_cell(server_core)
 	_register_set_runtime_tilemap_cell(server_core)
@@ -1488,6 +1491,83 @@ func _tool_get_runtime_animation_state(params: Dictionary) -> Dictionary:
 	if node_path.is_empty():
 		return {"error": "Missing required parameter: node_path"}
 	return _request_runtime_probe("get_animation_state", [node_path], ["mcp:animation_state"], params, {"node_path": node_path})
+
+func _register_get_runtime_animation_tree_state(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"get_runtime_animation_tree_state",
+		"Return the current state of a runtime AnimationTree node, including playback metadata when available.",
+		{
+			"type": "object",
+			"properties": {
+				"node_path": {"type": "string"},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["node_path"]
+		},
+		Callable(self, "_tool_get_runtime_animation_tree_state"),
+		{"type": "object", "properties": {"node_path": {"type": "string"}, "active": {"type": "boolean"}, "anim_player": {"type": "string"}, "tree_root_type": {"type": "string"}, "has_playback": {"type": "boolean"}, "current_node": {"type": "string"}}},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
+	)
+
+func _tool_get_runtime_animation_tree_state(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("node_path", "")
+	if node_path.is_empty():
+		return {"error": "Missing required parameter: node_path"}
+	return _request_runtime_probe("get_animation_tree_state", [node_path], ["mcp:animation_tree_state"], params, {"node_path": node_path})
+
+func _register_set_runtime_animation_tree_active(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"set_runtime_animation_tree_active",
+		"Enable or disable a runtime AnimationTree node.",
+		{
+			"type": "object",
+			"properties": {
+				"node_path": {"type": "string"},
+				"active": {"type": "boolean"},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["node_path", "active"]
+		},
+		Callable(self, "_tool_set_runtime_animation_tree_active"),
+		{"type": "object", "properties": {"node_path": {"type": "string"}, "active": {"type": "boolean"}, "tree_root_type": {"type": "string"}}},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
+	)
+
+func _tool_set_runtime_animation_tree_active(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("node_path", "")
+	if node_path.is_empty():
+		return {"error": "Missing required parameter: node_path"}
+	if not params.has("active"):
+		return {"error": "Missing required parameter: active"}
+	return _request_runtime_probe("set_animation_tree_active", [node_path, bool(params.get("active"))], ["mcp:animation_tree_active_updated"], params, {"node_path": node_path})
+
+func _register_travel_runtime_animation_tree(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"travel_runtime_animation_tree",
+		"Travel a runtime AnimationTree state machine playback to a target node.",
+		{
+			"type": "object",
+			"properties": {
+				"node_path": {"type": "string"},
+				"state_name": {"type": "string"},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["node_path", "state_name"]
+		},
+		Callable(self, "_tool_travel_runtime_animation_tree"),
+		{"type": "object", "properties": {"node_path": {"type": "string"}, "current_node": {"type": "string"}, "travel_path": {"type": "array"}}},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
+	)
+
+func _tool_travel_runtime_animation_tree(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("node_path", "")
+	var state_name: String = params.get("state_name", "")
+	if node_path.is_empty() or state_name.is_empty():
+		return {"error": "node_path and state_name are required"}
+	return _request_runtime_probe("travel_animation_tree", [node_path, state_name], ["mcp:animation_tree_travelled"], params, {"node_path": node_path, "current_node": state_name})
 
 func _register_list_runtime_tilemap_layers(server_core: RefCounted) -> void:
 	server_core.register_tool(

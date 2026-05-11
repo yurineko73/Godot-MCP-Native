@@ -93,6 +93,12 @@ func _capture_mcp_message(message: String, data: Array) -> bool:
 			return _handle_stop_animation(data)
 		"get_animation_state":
 			return _handle_get_animation_state(data)
+		"get_animation_tree_state":
+			return _handle_get_animation_tree_state(data)
+		"set_animation_tree_active":
+			return _handle_set_animation_tree_active(data)
+		"travel_animation_tree":
+			return _handle_travel_animation_tree(data)
 		"list_tilemap_layers":
 			return _handle_list_tilemap_layers(data)
 		"get_tilemap_cell":
@@ -521,6 +527,50 @@ func _handle_get_animation_state(data: Array) -> bool:
 	EngineDebugger.send_message("mcp:animation_state", [_serialize_animation_state(player)])
 	return true
 
+func _handle_get_animation_tree_state(data: Array) -> bool:
+	if data.is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": "get_animation_tree_state requires node_path"}])
+		return true
+	var animation_tree: AnimationTree = _resolve_animation_tree(str(data[0]))
+	if not animation_tree:
+		return true
+	EngineDebugger.send_message("mcp:animation_tree_state", [_serialize_animation_tree_state(animation_tree)])
+	return true
+
+func _handle_set_animation_tree_active(data: Array) -> bool:
+	if data.size() < 2:
+		EngineDebugger.send_message("mcp:error", [{"message": "set_animation_tree_active requires node_path and active"}])
+		return true
+	var animation_tree: AnimationTree = _resolve_animation_tree(str(data[0]))
+	if not animation_tree:
+		return true
+	animation_tree.active = bool(data[1])
+	EngineDebugger.send_message("mcp:animation_tree_active_updated", [_serialize_animation_tree_state(animation_tree)])
+	return true
+
+func _handle_travel_animation_tree(data: Array) -> bool:
+	if data.size() < 2:
+		EngineDebugger.send_message("mcp:error", [{"message": "travel_animation_tree requires node_path and state_name"}])
+		return true
+	var animation_tree: AnimationTree = _resolve_animation_tree(str(data[0]))
+	if not animation_tree:
+		return true
+	var state_name: String = str(data[1])
+	if state_name.is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": "state_name cannot be empty"}])
+		return true
+	var playback: Variant = animation_tree.get("parameters/playback")
+	if playback == null or not playback.has_method("travel"):
+		EngineDebugger.send_message("mcp:error", [{
+			"message": "AnimationTree does not expose a state machine playback object",
+			"node_path": str(animation_tree.get_path()),
+			"tree_root_type": animation_tree.tree_root.get_class() if animation_tree.tree_root else ""
+		}])
+		return true
+	playback.travel(state_name)
+	EngineDebugger.send_message("mcp:animation_tree_travelled", [_serialize_animation_tree_state(animation_tree)])
+	return true
+
 func _handle_list_tilemap_layers(data: Array) -> bool:
 	if data.is_empty():
 		EngineDebugger.send_message("mcp:error", [{"message": "list_tilemap_layers requires node_path"}])
@@ -648,6 +698,16 @@ func _resolve_animation_player(node_path: String) -> AnimationPlayer:
 		return null
 	return node
 
+func _resolve_animation_tree(node_path: String) -> AnimationTree:
+	var node: Node = _resolve_target_node(node_path)
+	if not node:
+		EngineDebugger.send_message("mcp:error", [{"message": "Node not found: " + node_path}])
+		return null
+	if not (node is AnimationTree):
+		EngineDebugger.send_message("mcp:error", [{"message": "Node is not an AnimationTree: " + node_path, "node_type": node.get_class()}])
+		return null
+	return node
+
 func _resolve_tilemap(node_path: String) -> TileMap:
 	var node: Node = _resolve_target_node(node_path)
 	if not node:
@@ -704,6 +764,33 @@ func _serialize_animation_state(player: AnimationPlayer) -> Dictionary:
 		"speed_scale": player.speed_scale,
 		"playing_speed": player.get_playing_speed()
 	}
+
+func _serialize_animation_tree_state(animation_tree: AnimationTree) -> Dictionary:
+	var playback: Variant = animation_tree.get("parameters/playback")
+	var tree_root: AnimationRootNode = animation_tree.tree_root
+	var result: Dictionary = {
+		"node_path": str(animation_tree.get_path()),
+		"active": animation_tree.active,
+		"anim_player": str(animation_tree.get("anim_player")),
+		"tree_root_type": tree_root.get_class() if tree_root else "",
+		"has_playback": playback != null,
+		"current_length": float(animation_tree.get("parameters/current_length")),
+		"current_position": float(animation_tree.get("parameters/current_position")),
+		"current_delta": float(animation_tree.get("parameters/current_delta"))
+	}
+	if playback != null:
+		result["playback_class"] = playback.get_class() if playback.has_method("get_class") else ""
+		if playback.has_method("is_playing"):
+			result["playback_is_playing"] = playback.is_playing()
+		if playback.has_method("get_current_node"):
+			result["current_node"] = str(playback.get_current_node())
+		if playback.has_method("get_current_length"):
+			result["playback_current_length"] = float(playback.get_current_length())
+		if playback.has_method("get_current_play_position"):
+			result["playback_current_position"] = float(playback.get_current_play_position())
+		if playback.has_method("get_travel_path"):
+			result["travel_path"] = PackedStringArray(playback.get_travel_path())
+	return result
 
 func _build_input_event(payload: Dictionary) -> InputEvent:
 	var event_type: String = str(payload.get("type", "")).to_lower()

@@ -27,6 +27,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_get_node_groups(server_core)
 	_register_set_node_groups(server_core)
 	_register_find_nodes_in_group(server_core)
+	_register_audit_scene_node_persistence(server_core)
 
 func _register_create_node(server_core: RefCounted) -> void:
 	server_core.register_tool(
@@ -374,6 +375,58 @@ func _tool_batch_update_node_properties(params: Dictionary) -> Dictionary:
 		"changes": results
 	}
 
+func _register_audit_scene_node_persistence(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"audit_scene_node_persistence",
+		"Audit node owner and persistence state for the currently edited scene. Reports missing or invalid owner relationships that affect scene saving and inheritance.",
+		{
+			"type": "object",
+			"properties": {}
+		},
+		Callable(self, "_tool_audit_scene_node_persistence"),
+		{
+			"type": "object",
+			"properties": {
+				"scene_path": {"type": "string"},
+				"scene_root_path": {"type": "string"},
+				"total_nodes": {"type": "integer"},
+				"persistent_node_count": {"type": "integer"},
+				"issue_count": {"type": "integer"},
+				"nodes": {"type": "array"},
+				"issues": {"type": "array"}
+			}
+		},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+	)
+
+func _tool_audit_scene_node_persistence(params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var scene_root: Node = _get_user_scene_root()
+	if not scene_root:
+		return {"error": "No scene is currently open"}
+
+	var nodes: Array = []
+	var issues: Array = []
+	_collect_scene_persistence_entries(scene_root, scene_root, nodes, issues)
+
+	var persistent_node_count: int = 0
+	for entry in nodes:
+		if bool(entry.get("is_persistent", false)):
+			persistent_node_count += 1
+
+	return {
+		"scene_path": String(scene_root.scene_file_path),
+		"scene_root_path": _make_friendly_path(scene_root, scene_root),
+		"total_nodes": nodes.size(),
+		"persistent_node_count": persistent_node_count,
+		"issue_count": issues.size(),
+		"nodes": nodes,
+		"issues": issues
+	}
+
 func _register_get_node_properties(server_core: RefCounted) -> void:
 	server_core.register_tool(
 		"get_node_properties",
@@ -696,6 +749,48 @@ static func _serialize_value(value: Variant) -> Variant:
 			return result
 		_:
 			return str(value)
+
+func _collect_scene_persistence_entries(node: Node, scene_root: Node, nodes: Array, issues: Array) -> void:
+	var owner: Node = node.owner
+	var owner_path: String = _make_friendly_path(owner, scene_root) if owner else ""
+	var node_path: String = _make_friendly_path(node, scene_root)
+	var is_scene_root: bool = node == scene_root
+	var node_entry: Dictionary = {
+		"node_path": node_path,
+		"node_name": String(node.name),
+		"node_type": node.get_class(),
+		"owner_path": owner_path,
+		"is_persistent": owner != null or is_scene_root,
+		"is_scene_root": is_scene_root,
+		"scene_file_path": String(node.scene_file_path)
+	}
+	nodes.append(node_entry)
+
+	if not is_scene_root:
+		if owner == null:
+			issues.append({
+				"node_path": node_path,
+				"issue_code": "missing_owner",
+				"message": "Node has no owner and will not be saved with the scene."
+			})
+		elif not _is_owner_chain_valid(node, owner):
+			issues.append({
+				"node_path": node_path,
+				"issue_code": "owner_not_ancestor",
+				"message": "Node owner is not an ancestor in the scene tree.",
+				"owner_path": owner_path
+			})
+
+	for child in node.get_children():
+		_collect_scene_persistence_entries(child, scene_root, nodes, issues)
+
+func _is_owner_chain_valid(node: Node, owner: Node) -> bool:
+	var current: Node = node.get_parent()
+	while current:
+		if current == owner:
+			return true
+		current = current.get_parent()
+	return false
 
 static func _build_scene_tree_node(node: Node, current_depth: int, max_depth: int, scene_root: Node = null) -> Dictionary:
 	var node_info: Dictionary = {

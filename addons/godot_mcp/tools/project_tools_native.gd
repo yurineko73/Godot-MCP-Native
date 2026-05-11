@@ -25,6 +25,9 @@ func _get_editor_interface() -> EditorInterface:
 func register_tools(server_core: RefCounted) -> void:
 	_register_get_project_info(server_core)
 	_register_get_project_settings(server_core)
+	_register_list_project_input_actions(server_core)
+	_register_upsert_project_input_action(server_core)
+	_register_remove_project_input_action(server_core)
 	_register_list_project_autoloads(server_core)
 	_register_list_project_global_classes(server_core)
 	_register_get_class_api_metadata(server_core)
@@ -167,6 +170,194 @@ func _tool_get_project_settings(params: Dictionary) -> Dictionary:
 	return {
 		"settings": settings,
 		"count": setting_count
+	}
+
+# ============================================================================
+# project input actions - 项目级 InputMap
+# ============================================================================
+
+func _register_list_project_input_actions(server_core: RefCounted) -> void:
+	var tool_name: String = "list_project_input_actions"
+	var description: String = "List project InputMap actions stored in ProjectSettings, including serialized input events."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"action_name": {
+				"type": "string",
+				"description": "Optional exact action name filter."
+			}
+		}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"actions": {"type": "array"},
+			"count": {"type": "integer"},
+			"filter": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_list_project_input_actions"),
+						  output_schema, annotations)
+
+func _tool_list_project_input_actions(params: Dictionary) -> Dictionary:
+	var action_name: String = str(params.get("action_name", "")).strip_edges()
+	var actions: Array = _collect_project_input_actions(action_name)
+	return {
+		"actions": actions,
+		"count": actions.size(),
+		"filter": action_name
+	}
+
+func _register_upsert_project_input_action(server_core: RefCounted) -> void:
+	var tool_name: String = "upsert_project_input_action"
+	var description: String = "Create or update a project InputMap action in ProjectSettings and save project.godot."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"action_name": {"type": "string"},
+			"deadzone": {"type": "number", "default": 0.5},
+			"erase_existing": {"type": "boolean", "default": false},
+			"events": {"type": "array", "description": "Optional structured input event payloads to store on the action."}
+		},
+		"required": ["action_name"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"action_name": {"type": "string"},
+			"existed_before": {"type": "boolean"},
+			"deadzone": {"type": "number"},
+			"event_count": {"type": "integer"},
+			"events": {"type": "array"},
+			"added_events": {"type": "array"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": false,
+		"idempotentHint": false,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_upsert_project_input_action"),
+						  output_schema, annotations)
+
+func _tool_upsert_project_input_action(params: Dictionary) -> Dictionary:
+	var action_name: String = str(params.get("action_name", "")).strip_edges()
+	if action_name.is_empty():
+		return {"error": "Missing required parameter: action_name"}
+
+	var deadzone: float = float(params.get("deadzone", 0.5))
+	var erase_existing: bool = bool(params.get("erase_existing", false))
+	var raw_events: Array = params.get("events", [])
+	var setting_name: String = "input/" + action_name
+	var existed_before: bool = ProjectSettings.has_setting(setting_name)
+
+	var stored_events: Array = []
+	var added_events: Array = []
+	if existed_before and not erase_existing:
+		var existing_value: Variant = ProjectSettings.get_setting(setting_name, {})
+		if existing_value is Dictionary:
+			stored_events = (existing_value.get("events", []) as Array).duplicate()
+	for raw_event in raw_events:
+		if not (raw_event is Dictionary):
+			return {"error": "Each event entry must be an object"}
+		var built_event: InputEvent = _build_project_input_event(raw_event)
+		if built_event == null:
+			return {"error": "Unsupported input event payload: " + JSON.stringify(raw_event)}
+		stored_events.append(built_event)
+		added_events.append(_serialize_project_input_event(built_event))
+
+	ProjectSettings.set_setting(setting_name, {
+		"deadzone": deadzone,
+		"events": stored_events
+	})
+	var save_error: Error = ProjectSettings.save()
+	if save_error != OK:
+		return {"error": "Failed to save project settings: " + str(save_error)}
+	InputMap.load_from_project_settings()
+
+	var listed_actions: Array = _collect_project_input_actions(action_name)
+	var action_entry: Dictionary = listed_actions[0] if not listed_actions.is_empty() else {}
+	action_entry["added_events"] = added_events
+	action_entry["existed_before"] = existed_before
+	return action_entry
+
+func _register_remove_project_input_action(server_core: RefCounted) -> void:
+	var tool_name: String = "remove_project_input_action"
+	var description: String = "Remove a project InputMap action from ProjectSettings and save project.godot."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"action_name": {"type": "string"}
+		},
+		"required": ["action_name"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"action_name": {"type": "string"},
+			"removed": {"type": "boolean"},
+			"event_count": {"type": "integer"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": true,
+		"idempotentHint": false,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_remove_project_input_action"),
+						  output_schema, annotations)
+
+func _tool_remove_project_input_action(params: Dictionary) -> Dictionary:
+	var action_name: String = str(params.get("action_name", "")).strip_edges()
+	if action_name.is_empty():
+		return {"error": "Missing required parameter: action_name"}
+
+	var setting_name: String = "input/" + action_name
+	if not ProjectSettings.has_setting(setting_name):
+		return {
+			"action_name": action_name,
+			"removed": false,
+			"event_count": 0
+		}
+
+	var existing_value: Variant = ProjectSettings.get_setting(setting_name, {})
+	var event_count: int = 0
+	if existing_value is Dictionary:
+		event_count = (existing_value.get("events", []) as Array).size()
+
+	ProjectSettings.clear(setting_name)
+	var save_error: Error = ProjectSettings.save()
+	if save_error != OK:
+		return {"error": "Failed to save project settings: " + str(save_error)}
+	InputMap.load_from_project_settings()
+
+	return {
+		"action_name": action_name,
+		"removed": true,
+		"event_count": event_count
 	}
 
 # ============================================================================
@@ -1762,6 +1953,131 @@ func _normalize_typed_value_info(entry: Variant) -> Dictionary:
 		"usage": int(entry.get("usage", 0))
 	}
 
+func _collect_project_input_actions(action_name_filter: String = "") -> Array:
+	var actions: Array = []
+	for property_info in ProjectSettings.get_property_list():
+		var property_name: String = str(property_info.get("name", ""))
+		if not property_name.begins_with("input/"):
+			continue
+		var action_name: String = property_name.get_slice("/", 1)
+		if not action_name_filter.is_empty() and action_name != action_name_filter:
+			continue
+		var raw_value: Variant = ProjectSettings.get_setting(property_name, {})
+		if not (raw_value is Dictionary):
+			continue
+		var stored_events: Array = raw_value.get("events", [])
+		var events: Array = []
+		for stored_event in stored_events:
+			if stored_event is InputEvent:
+				events.append(_serialize_project_input_event(stored_event))
+		actions.append({
+			"action_name": action_name,
+			"deadzone": float(raw_value.get("deadzone", 0.5)),
+			"events": events,
+			"event_count": events.size(),
+			"setting_name": property_name
+		})
+	actions.sort_custom(Callable(self, "_sort_project_input_actions"))
+	return actions
+
+func _build_project_input_event(payload: Dictionary) -> InputEvent:
+	var event_type: String = str(payload.get("type", "")).to_lower()
+	match event_type:
+		"action":
+			var action_name: String = str(payload.get("action_name", ""))
+			if action_name.is_empty():
+				return null
+			var action_event := InputEventAction.new()
+			action_event.action = StringName(action_name)
+			action_event.pressed = bool(payload.get("pressed", true))
+			action_event.strength = float(payload.get("strength", 1.0 if action_event.pressed else 0.0))
+			return action_event
+		"key":
+			var keycode: int = int(payload.get("keycode", 0))
+			if keycode == 0:
+				return null
+			var key_event := InputEventKey.new()
+			key_event.keycode = keycode
+			key_event.physical_keycode = int(payload.get("physical_keycode", 0))
+			key_event.unicode = int(payload.get("unicode", 0))
+			key_event.pressed = bool(payload.get("pressed", true))
+			key_event.echo = bool(payload.get("echo", false))
+			_apply_project_input_modifiers(key_event, payload)
+			return key_event
+		"mouse_button":
+			var button_index: int = int(payload.get("button_index", 0))
+			if button_index == 0:
+				return null
+			var mouse_button_event := InputEventMouseButton.new()
+			mouse_button_event.button_index = button_index
+			mouse_button_event.pressed = bool(payload.get("pressed", true))
+			mouse_button_event.double_click = bool(payload.get("double_click", false))
+			mouse_button_event.factor = float(payload.get("factor", 1.0))
+			mouse_button_event.button_mask = int(payload.get("button_mask", 0))
+			mouse_button_event.position = _dict_to_project_vector2(payload.get("position", {}))
+			mouse_button_event.global_position = _dict_to_project_vector2(payload.get("global_position", payload.get("position", {})))
+			_apply_project_input_modifiers(mouse_button_event, payload)
+			return mouse_button_event
+		"mouse_motion":
+			var mouse_motion_event := InputEventMouseMotion.new()
+			mouse_motion_event.position = _dict_to_project_vector2(payload.get("position", {}))
+			mouse_motion_event.global_position = _dict_to_project_vector2(payload.get("global_position", payload.get("position", {})))
+			mouse_motion_event.relative = _dict_to_project_vector2(payload.get("relative", {}))
+			mouse_motion_event.velocity = _dict_to_project_vector2(payload.get("velocity", {}))
+			mouse_motion_event.button_mask = int(payload.get("button_mask", 0))
+			mouse_motion_event.pressure = float(payload.get("pressure", 0.0))
+			mouse_motion_event.pen_inverted = bool(payload.get("pen_inverted", false))
+			_apply_project_input_modifiers(mouse_motion_event, payload)
+			return mouse_motion_event
+		_:
+			return null
+
+func _apply_project_input_modifiers(event: InputEventWithModifiers, payload: Dictionary) -> void:
+	event.alt_pressed = bool(payload.get("alt_pressed", false))
+	event.shift_pressed = bool(payload.get("shift_pressed", false))
+	event.ctrl_pressed = bool(payload.get("ctrl_pressed", false))
+	event.meta_pressed = bool(payload.get("meta_pressed", false))
+	event.command_or_control_autoremap = bool(payload.get("command_or_control_autoremap", false))
+
+func _dict_to_project_vector2(value: Variant) -> Vector2:
+	if value is Dictionary:
+		return Vector2(float(value.get("x", 0.0)), float(value.get("y", 0.0)))
+	return Vector2.ZERO
+
+func _serialize_project_input_event(event: InputEvent) -> Dictionary:
+	if event is InputEventAction:
+		return {
+			"type": "action",
+			"action_name": String(event.action),
+			"pressed": event.pressed,
+			"strength": event.strength
+		}
+	if event is InputEventKey:
+		return {
+			"type": "key",
+			"keycode": event.keycode,
+			"physical_keycode": event.physical_keycode,
+			"unicode": event.unicode,
+			"pressed": event.pressed,
+			"echo": event.echo
+		}
+	if event is InputEventMouseButton:
+		return {
+			"type": "mouse_button",
+			"button_index": event.button_index,
+			"pressed": event.pressed,
+			"double_click": event.double_click,
+			"position": {"x": event.position.x, "y": event.position.y}
+		}
+	if event is InputEventMouseMotion:
+		return {
+			"type": "mouse_motion",
+			"position": {"x": event.position.x, "y": event.position.y},
+			"relative": {"x": event.relative.x, "y": event.relative.y},
+			"velocity": {"x": event.velocity.x, "y": event.velocity.y}
+		}
+	return {"type": "unknown", "class": event.get_class()}
+
 func _serialize_tileset_source(source_id: int, source: TileSetSource, include_tiles: bool) -> Dictionary:
 	var source_entry: Dictionary = {
 		"source_id": source_id,
@@ -1838,3 +2154,6 @@ func _compare_global_class_entries(left: Dictionary, right: Dictionary) -> bool:
 
 func _compare_named_entries(left: Dictionary, right: Dictionary) -> bool:
 	return str(left.get("name", "")) < str(right.get("name", ""))
+
+func _sort_project_input_actions(left: Dictionary, right: Dictionary) -> bool:
+	return str(left.get("action_name", "")) < str(right.get("action_name", ""))

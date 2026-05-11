@@ -98,6 +98,10 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_remove_runtime_probe(server_core)
 	_register_request_debug_break(server_core)
 	_register_send_debug_command(server_core)
+	_register_debug_step_into(server_core)
+	_register_debug_step_over(server_core)
+	_register_debug_step_out(server_core)
+	_register_debug_continue(server_core)
 	_register_await_debugger_state(server_core)
 	_register_get_runtime_info(server_core)
 	_register_get_runtime_performance_snapshot(server_core)
@@ -977,6 +981,75 @@ func _tool_send_debug_command(params: Dictionary) -> Dictionary:
 	var result: Dictionary = bridge.send_debugger_message(command, params.get("data", []), params.get("session_id", -1))
 	if command.begins_with("get_stack"):
 		result["note"] = "Godot may route stack responses to the built-in ScriptEditorDebugger UI instead of EditorDebuggerPlugin captures."
+	return result
+
+func _register_debug_step_into(server_core: RefCounted) -> void:
+	_register_debug_execution_control_tool(
+		server_core,
+		"debug_step_into",
+		"Step into the next statement in the active Godot script debugger session.",
+		"step",
+		"breaked"
+	)
+
+func _register_debug_step_over(server_core: RefCounted) -> void:
+	_register_debug_execution_control_tool(
+		server_core,
+		"debug_step_over",
+		"Step over the next statement in the active Godot script debugger session.",
+		"next",
+		"breaked"
+	)
+
+func _register_debug_step_out(server_core: RefCounted) -> void:
+	_register_debug_execution_control_tool(
+		server_core,
+		"debug_step_out",
+		"Step out of the current frame in the active Godot script debugger session.",
+		"out",
+		"breaked"
+	)
+
+func _register_debug_continue(server_core: RefCounted) -> void:
+	_register_debug_execution_control_tool(
+		server_core,
+		"debug_continue",
+		"Resume execution in the active Godot script debugger session.",
+		"continue",
+		"running"
+	)
+
+func _register_debug_execution_control_tool(server_core: RefCounted, tool_name: String, description: String, command: String, target_state: String) -> void:
+	server_core.register_tool(
+		tool_name,
+		description,
+		{
+			"type": "object",
+			"properties": {
+				"session_id": {"type": "integer", "description": "Optional debugger session id. Omit or use -1 for all active sessions."}
+			}
+		},
+		func(params: Dictionary) -> Dictionary:
+			return _tool_debug_execution_control(params, command, target_state),
+		{
+			"type": "object",
+			"properties": {
+				"status": {"type": "string"},
+				"sessions_updated": {"type": "integer"},
+				"command": {"type": "string"},
+				"target_state": {"type": "string"}
+			}
+		},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
+	)
+
+func _tool_debug_execution_control(params: Dictionary, command: String, target_state: String) -> Dictionary:
+	var bridge: RefCounted = _get_debugger_bridge()
+	if not bridge:
+		return {"error": "Debugger bridge is not available"}
+	var result: Dictionary = bridge.send_debugger_message(command, [], params.get("session_id", -1))
+	result["command"] = command
+	result["target_state"] = target_state
 	return result
 
 func _register_await_debugger_state(server_core: RefCounted) -> void:

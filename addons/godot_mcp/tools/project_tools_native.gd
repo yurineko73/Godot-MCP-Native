@@ -25,6 +25,8 @@ func _get_editor_interface() -> EditorInterface:
 func register_tools(server_core: RefCounted) -> void:
 	_register_get_project_info(server_core)
 	_register_get_project_settings(server_core)
+	_register_list_project_tests(server_core)
+	_register_run_project_test(server_core)
 	_register_list_project_input_actions(server_core)
 	_register_upsert_project_input_action(server_core)
 	_register_remove_project_input_action(server_core)
@@ -573,6 +575,221 @@ func _tool_get_class_api_metadata(params: Dictionary) -> Dictionary:
 			result["base_api"] = _build_classdb_api_metadata(base_class, filter)
 
 	return result
+
+# ============================================================================
+# list_project_tests - 发现项目测试
+# ============================================================================
+
+func _register_list_project_tests(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"list_project_tests",
+		"Discover runnable project tests under the Godot project's test directories. Reports Python integration tests and GUT unit tests, including whether each test is currently runnable.",
+		{
+			"type": "object",
+			"properties": {
+				"search_path": {"type": "string", "description": "Optional res:// path to limit discovery."},
+				"framework": {"type": "string", "description": "Optional framework filter: python or gut."}
+			}
+		},
+		Callable(self, "_tool_list_project_tests"),
+		{
+			"type": "object",
+			"properties": {
+				"count": {"type": "integer"},
+				"search_path": {"type": "string"},
+				"tests": {"type": "array"}
+			}
+		},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+	)
+
+func _tool_list_project_tests(params: Dictionary) -> Dictionary:
+	var search_path: String = str(params.get("search_path", "res://test")).strip_edges()
+	if search_path.is_empty():
+		search_path = "res://test"
+	var framework_filter: String = str(params.get("framework", "")).strip_edges().to_lower()
+
+	var validation: Dictionary = _validate_test_path(search_path, true)
+	if validation.has("error"):
+		return validation
+	search_path = String(validation["sanitized"])
+
+	var absolute_root: String = ProjectSettings.globalize_path(search_path)
+	var dir: DirAccess = DirAccess.open(absolute_root)
+	if dir == null:
+		return {"error": "Test directory not found: " + search_path}
+
+	var gut_available: bool = FileAccess.file_exists("res://addons/gut/gut_cmdln.gd")
+	var tests: Array = []
+	_collect_project_tests_recursive(search_path, absolute_root, framework_filter, gut_available, tests)
+	tests.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return String(a.get("test_path", "")) < String(b.get("test_path", ""))
+	)
+
+	return {
+		"count": tests.size(),
+		"search_path": search_path,
+		"tests": tests
+	}
+
+# ============================================================================
+# run_project_test - 运行项目测试
+# ============================================================================
+
+func _register_run_project_test(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"run_project_test",
+		"Run a single project test script. Python integration tests are executed with python. GUT unit tests are executed through Godot headless when addons/gut is available.",
+		{
+			"type": "object",
+			"properties": {
+				"test_path": {"type": "string", "description": "res:// path to a project test file under test/."},
+				"timeout_ms": {"type": "integer", "description": "Reserved timeout hint for the caller. The process itself runs synchronously."}
+			},
+			"required": ["test_path"]
+		},
+		Callable(self, "_tool_run_project_test"),
+		{
+			"type": "object",
+			"properties": {
+				"status": {"type": "string"},
+				"framework": {"type": "string"},
+				"test_path": {"type": "string"},
+				"exit_code": {"type": "integer"},
+				"command": {"type": "array"},
+				"output": {"type": "array"}
+			}
+		},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}
+	)
+
+func _tool_run_project_test(params: Dictionary) -> Dictionary:
+	var test_path: String = str(params.get("test_path", "")).strip_edges()
+	if test_path.is_empty():
+		return {"error": "Missing required parameter: test_path"}
+
+	var validation: Dictionary = _validate_test_path(test_path, false)
+	if validation.has("error"):
+		return validation
+	test_path = String(validation["sanitized"])
+
+	var extension: String = test_path.get_extension().to_lower()
+	var absolute_test_path: String = ProjectSettings.globalize_path(test_path)
+	if not FileAccess.file_exists(test_path):
+		return {"error": "Test file not found: " + test_path}
+
+	match extension:
+		"py":
+			return _run_python_project_test(test_path, absolute_test_path)
+		"gd":
+			return _run_gut_project_test(test_path)
+		_:
+			return {"error": "Unsupported project test type: " + extension}
+
+func _validate_test_path(path: String, expect_directory: bool) -> Dictionary:
+	if path.is_empty():
+		return {"error": "Test path cannot be empty"}
+	if not path.begins_with("res://"):
+		return {"error": "Test path must start with res://"}
+	if not (path.begins_with("res://test/") or path.begins_with("res://.tmp_") or path.contains("/.tmp_")):
+		return {"error": "Test path must stay under res://test/ or a temporary test directory"}
+	var validation: Dictionary = PathValidator.validate_directory_path(path) if expect_directory else PathValidator.validate_path(path)
+	if not validation.get("valid", false):
+		return {"error": "Invalid path: " + str(validation.get("error", "unknown"))}
+	return {"sanitized": String(validation.get("sanitized", path))}
+
+func _collect_project_tests_recursive(search_path: String, absolute_root: String, framework_filter: String, gut_available: bool, tests: Array) -> void:
+	var dir: DirAccess = DirAccess.open(absolute_root)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	while true:
+		var entry_name: String = dir.get_next()
+		if entry_name.is_empty():
+			break
+		if entry_name == "." or entry_name == "..":
+			continue
+		var child_res_path: String = search_path.path_join(entry_name)
+		var child_abs_path: String = absolute_root.path_join(entry_name)
+		if dir.current_is_dir():
+			_collect_project_tests_recursive(child_res_path, child_abs_path, framework_filter, gut_available, tests)
+			continue
+		var extension: String = entry_name.get_extension().to_lower()
+		var framework: String = ""
+		var kind: String = ""
+		var runnable: bool = false
+		match extension:
+			"py":
+				framework = "python"
+				kind = "integration"
+				runnable = true
+			"gd":
+				framework = "gut"
+				kind = "unit"
+				runnable = gut_available
+			_:
+				continue
+		if not framework_filter.is_empty() and framework != framework_filter:
+			continue
+		tests.append({
+			"test_path": child_res_path,
+			"framework": framework,
+			"kind": kind,
+			"runnable": runnable,
+			"available_runner": runnable,
+			"name": entry_name
+		})
+	dir.list_dir_end()
+
+func _run_python_project_test(test_path: String, absolute_test_path: String) -> Dictionary:
+	var logs: Array = []
+	var started_at_ms: int = Time.get_ticks_msec()
+	var exit_code: int = OS.execute("python", [absolute_test_path], logs, true)
+	var duration_ms: int = Time.get_ticks_msec() - started_at_ms
+	var output: Array = []
+	for line in logs:
+		output.append(str(line))
+	return {
+		"status": "passed" if exit_code == OK else "failed",
+		"framework": "python",
+		"kind": "integration",
+		"test_path": test_path,
+		"exit_code": exit_code,
+		"duration_ms": duration_ms,
+		"command": ["python", absolute_test_path],
+		"output": output
+	}
+
+func _run_gut_project_test(test_path: String) -> Dictionary:
+	var gut_cmdln_path: String = "res://addons/gut/gut_cmdln.gd"
+	if not FileAccess.file_exists(gut_cmdln_path):
+		return {"error": "GUT is not installed at res://addons/gut/gut_cmdln.gd"}
+	var executable_path: String = OS.get_executable_path()
+	var project_path: String = ProjectSettings.globalize_path("res://")
+	var args: Array[String] = [
+		"--headless",
+		"--path", project_path,
+		"-s", gut_cmdln_path,
+		"-gtest=" + test_path,
+		"-gexit"
+	]
+	var logs: Array = []
+	var started_at_ms: int = Time.get_ticks_msec()
+	var exit_code: int = OS.execute(executable_path, args, logs, true)
+	var duration_ms: int = Time.get_ticks_msec() - started_at_ms
+	var output: Array = []
+	for line in logs:
+		output.append(str(line))
+	return {
+		"status": "passed" if exit_code == OK else "failed",
+		"framework": "gut",
+		"kind": "unit",
+		"test_path": test_path,
+		"exit_code": exit_code,
+		"duration_ms": duration_ms,
+		"command": [executable_path] + args,
+		"output": output
+	}
 
 # ============================================================================
 # inspect_csharp_project_support - 检查 C# / Mono 项目支持元数据

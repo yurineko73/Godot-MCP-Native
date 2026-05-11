@@ -34,6 +34,8 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_fix_resource_uid(server_core)
 	_register_get_resource_dependencies(server_core)
 	_register_scan_missing_resource_dependencies(server_core)
+	_register_detect_broken_scripts(server_core)
+	_register_audit_project_health(server_core)
 
 # ============================================================================
 # get_project_info - 获取项目信息
@@ -1039,3 +1041,276 @@ func _parse_resource_dependencies(resource_path: String) -> Array:
 		dependencies.append(entry)
 
 	return dependencies
+
+# ============================================================================
+# detect_broken_scripts - 批量检测脚本诊断
+# ============================================================================
+
+func _register_detect_broken_scripts(server_core: RefCounted) -> void:
+	var tool_name: String = "detect_broken_scripts"
+	var description: String = "Scan GDScript files for syntax errors and lightweight warnings."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"search_path": {
+				"type": "string",
+				"description": "Directory to scan. Default is res://.",
+				"default": "res://"
+			},
+			"include_warnings": {
+				"type": "boolean",
+				"description": "Whether to include lightweight warnings such as untyped var declarations. Default is true.",
+				"default": true
+			},
+			"max_results": {
+				"type": "integer",
+				"description": "Maximum number of script issue entries to return. Default is 200.",
+				"default": 200
+			}
+		}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"search_path": {"type": "string"},
+			"scanned_scripts": {"type": "integer"},
+			"broken_count": {"type": "integer"},
+			"warning_count": {"type": "integer"},
+			"issues": {"type": "array"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_detect_broken_scripts"),
+						  output_schema, annotations)
+
+func _tool_detect_broken_scripts(params: Dictionary) -> Dictionary:
+	var search_path: String = str(params.get("search_path", "res://")).strip_edges()
+	var include_warnings: bool = params.get("include_warnings", true)
+	var max_results: int = max(1, int(params.get("max_results", 200)))
+
+	var validation: Dictionary = PathValidator.validate_directory_path(search_path)
+	if not validation["valid"]:
+		return {"error": "Invalid path: " + validation["error"]}
+	search_path = validation["sanitized"]
+
+	var scripts: Array[String] = []
+	_collect_resources(search_path, [".gd"], scripts)
+	scripts.sort()
+
+	var issues: Array = []
+	var broken_count: int = 0
+	var warning_count: int = 0
+
+	for script_path in scripts:
+		var diagnostics: Dictionary = _analyze_script_diagnostics(script_path, include_warnings)
+		if diagnostics.has("error"):
+			issues.append({
+				"script_path": script_path,
+				"severity": "error",
+				"errors": [{"line": 0, "column": 0, "message": str(diagnostics["error"])}],
+				"warnings": []
+			})
+			broken_count += 1
+		else:
+			var has_errors: bool = int(diagnostics.get("error_count", 0)) > 0
+			var has_warnings: bool = int(diagnostics.get("warning_count", 0)) > 0
+			if has_errors or has_warnings:
+				issues.append({
+					"script_path": script_path,
+					"severity": "error" if has_errors else "warning",
+					"errors": diagnostics.get("errors", []),
+					"warnings": diagnostics.get("warnings", [])
+				})
+				if has_errors:
+					broken_count += 1
+				if has_warnings:
+					warning_count += 1
+
+		if issues.size() >= max_results:
+			break
+
+	return {
+		"search_path": search_path,
+		"scanned_scripts": scripts.size(),
+		"broken_count": broken_count,
+		"warning_count": warning_count,
+		"issues": issues,
+		"truncated": issues.size() >= max_results and scripts.size() > issues.size()
+	}
+
+# ============================================================================
+# audit_project_health - 汇总项目健康诊断
+# ============================================================================
+
+func _register_audit_project_health(server_core: RefCounted) -> void:
+	var tool_name: String = "audit_project_health"
+	var description: String = "Run a lightweight project health audit covering broken scripts and missing resource dependencies."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"search_path": {
+				"type": "string",
+				"description": "Directory to scan. Default is res://.",
+				"default": "res://"
+			},
+			"include_warnings": {
+				"type": "boolean",
+				"description": "Whether to include lightweight script warnings. Default is true.",
+				"default": true
+			},
+			"max_results": {
+				"type": "integer",
+				"description": "Maximum issue entries per category. Default is 200.",
+				"default": 200
+			}
+		}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"status": {"type": "string"},
+			"search_path": {"type": "string"},
+			"summary": {"type": "object"},
+			"broken_scripts": {"type": "array"},
+			"missing_dependencies": {"type": "array"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_audit_project_health"),
+						  output_schema, annotations)
+
+func _tool_audit_project_health(params: Dictionary) -> Dictionary:
+	var search_path: String = str(params.get("search_path", "res://")).strip_edges()
+	var include_warnings: bool = params.get("include_warnings", true)
+	var max_results: int = max(1, int(params.get("max_results", 200)))
+
+	var broken_scripts_result: Dictionary = _tool_detect_broken_scripts({
+		"search_path": search_path,
+		"include_warnings": include_warnings,
+		"max_results": max_results
+	})
+	if broken_scripts_result.has("error"):
+		return broken_scripts_result
+
+	var missing_dependencies_result: Dictionary = _tool_scan_missing_resource_dependencies({
+		"search_path": search_path,
+		"max_results": max_results
+	})
+	if missing_dependencies_result.has("error"):
+		return missing_dependencies_result
+
+	var summary: Dictionary = {
+		"scanned_scripts": int(broken_scripts_result.get("scanned_scripts", 0)),
+		"broken_scripts": int(broken_scripts_result.get("broken_count", 0)),
+		"script_warnings": int(broken_scripts_result.get("warning_count", 0)),
+		"scanned_resources": int(missing_dependencies_result.get("scanned_resources", 0)),
+		"missing_dependencies": int(missing_dependencies_result.get("issue_count", 0))
+	}
+	var hard_failures: int = summary["broken_scripts"] + summary["missing_dependencies"]
+	var status: String = "healthy"
+	if hard_failures > 0:
+		status = "failing"
+	elif summary["script_warnings"] > 0:
+		status = "warning"
+
+	return {
+		"status": status,
+		"search_path": broken_scripts_result.get("search_path", search_path),
+		"summary": summary,
+		"broken_scripts": broken_scripts_result.get("issues", []),
+		"missing_dependencies": missing_dependencies_result.get("issues", []),
+		"truncated": bool(broken_scripts_result.get("truncated", false)) or bool(missing_dependencies_result.get("truncated", false))
+	}
+
+func _analyze_script_diagnostics(script_path: String, include_warnings: bool) -> Dictionary:
+	var file: FileAccess = FileAccess.open(script_path, FileAccess.READ)
+	if not file:
+		return {"error": "Failed to open file"}
+	var content: String = file.get_as_text()
+	file.close()
+
+	var validation_content: String = _strip_class_names(content)
+	var test_script: GDScript = GDScript.new()
+	test_script.source_code = validation_content
+	var reload_error: Error = test_script.reload()
+
+	var errors: Array = []
+	var warnings: Array = []
+
+	if reload_error != OK:
+		var source_lines: PackedStringArray = content.split("\n")
+		for i in range(source_lines.size()):
+			var line: String = source_lines[i].strip_edges()
+			if line.is_empty():
+				continue
+			if _is_likely_script_error_line(line):
+				errors.append({
+					"line": i + 1,
+					"column": 0,
+					"message": "Syntax error near: " + line
+				})
+				break
+		if errors.is_empty():
+			errors.append({
+				"line": 0,
+				"column": 0,
+				"message": "Script has syntax errors"
+			})
+
+	if include_warnings and reload_error == OK:
+		var source_lines_for_warning: PackedStringArray = content.split("\n")
+		for i in range(source_lines_for_warning.size()):
+			var warning_line: String = source_lines_for_warning[i].strip_edges()
+			if warning_line.begins_with("var ") and not ":" in warning_line and not "=" in warning_line:
+				warnings.append({
+					"line": i + 1,
+					"column": 0,
+					"message": "Variable lacks type hint"
+				})
+
+	return {
+		"valid": errors.is_empty(),
+		"errors": errors,
+		"warnings": warnings,
+		"error_count": errors.size(),
+		"warning_count": warnings.size()
+	}
+
+func _strip_class_names(source: String) -> String:
+	var lines: PackedStringArray = source.split("\n")
+	var result: PackedStringArray = []
+	for line in lines:
+		var stripped: String = line.strip_edges()
+		if stripped.begins_with("class_name "):
+			result.append("")
+		else:
+			result.append(line)
+	return "\n".join(result)
+
+func _is_likely_script_error_line(line: String) -> bool:
+	var line_lower: String = line.to_lower()
+	if line_lower.contains("unexpected") or line_lower.contains("expected") or line_lower.contains("indent"):
+		return true
+	if line.ends_with("(") or line.ends_with(",") or line.count("\"") % 2 == 1:
+		return true
+	return false

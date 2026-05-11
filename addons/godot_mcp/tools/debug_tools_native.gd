@@ -115,6 +115,9 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_play_runtime_animation(server_core)
 	_register_stop_runtime_animation(server_core)
 	_register_get_runtime_animation_state(server_core)
+	_register_list_runtime_audio_buses(server_core)
+	_register_get_runtime_audio_bus(server_core)
+	_register_update_runtime_audio_bus(server_core)
 	_register_get_runtime_screenshot(server_core)
 	_register_await_runtime_condition(server_core)
 	_register_assert_runtime_condition(server_core)
@@ -1481,6 +1484,80 @@ func _tool_get_runtime_animation_state(params: Dictionary) -> Dictionary:
 	if node_path.is_empty():
 		return {"error": "Missing required parameter: node_path"}
 	return _request_runtime_probe("get_animation_state", [node_path], ["mcp:animation_state"], params, {"node_path": node_path})
+
+func _register_list_runtime_audio_buses(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"list_runtime_audio_buses",
+		"List AudioServer buses available in the running game.",
+		{
+			"type": "object",
+			"properties": {
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			}
+		},
+		Callable(self, "_tool_list_runtime_audio_buses"),
+		{"type": "object", "properties": {"buses": {"type": "array"}, "count": {"type": "integer"}}},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
+	)
+
+func _tool_list_runtime_audio_buses(params: Dictionary) -> Dictionary:
+	return _request_runtime_probe("list_audio_buses", [], ["mcp:audio_buses"], params)
+
+func _register_get_runtime_audio_bus(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"get_runtime_audio_bus",
+		"Return the current state of one AudioServer bus in the running game.",
+		{
+			"type": "object",
+			"properties": {
+				"bus_name": {"type": "string"},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["bus_name"]
+		},
+		Callable(self, "_tool_get_runtime_audio_bus"),
+		{"type": "object", "properties": {"index": {"type": "integer"}, "name": {"type": "string"}, "volume_db": {"type": "number"}, "mute": {"type": "boolean"}, "solo": {"type": "boolean"}, "bypass_effects": {"type": "boolean"}, "send": {"type": "string"}, "effect_count": {"type": "integer"}}},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
+	)
+
+func _tool_get_runtime_audio_bus(params: Dictionary) -> Dictionary:
+	var bus_name: String = params.get("bus_name", "")
+	if bus_name.is_empty():
+		return {"error": "Missing required parameter: bus_name"}
+	return _request_runtime_probe("get_audio_bus", [bus_name], ["mcp:audio_bus"], params, {"name": bus_name})
+
+func _register_update_runtime_audio_bus(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"update_runtime_audio_bus",
+		"Update mute and/or volume_db on an AudioServer bus in the running game.",
+		{
+			"type": "object",
+			"properties": {
+				"bus_name": {"type": "string"},
+				"volume_db": {"type": "number"},
+				"mute": {"type": "boolean"},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["bus_name"]
+		},
+		Callable(self, "_tool_update_runtime_audio_bus"),
+		{"type": "object", "properties": {"index": {"type": "integer"}, "name": {"type": "string"}, "volume_db": {"type": "number"}, "mute": {"type": "boolean"}, "solo": {"type": "boolean"}, "bypass_effects": {"type": "boolean"}, "send": {"type": "string"}, "effect_count": {"type": "integer"}}},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
+	)
+
+func _tool_update_runtime_audio_bus(params: Dictionary) -> Dictionary:
+	var bus_name: String = params.get("bus_name", "")
+	if bus_name.is_empty():
+		return {"error": "Missing required parameter: bus_name"}
+	var updates: Dictionary = {}
+	if params.has("volume_db"):
+		updates["volume_db"] = float(params.get("volume_db"))
+	if params.has("mute"):
+		updates["mute"] = bool(params.get("mute"))
+	return _request_runtime_probe("update_audio_bus", [bus_name, updates], ["mcp:audio_bus_updated"], params, {"name": bus_name})
 
 func _register_get_runtime_screenshot(server_core: RefCounted) -> void:
 	server_core.register_tool(

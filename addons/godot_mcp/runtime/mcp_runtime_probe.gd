@@ -69,6 +69,12 @@ func _capture_mcp_message(message: String, data: Array) -> bool:
 			return _handle_stop_animation(data)
 		"get_animation_state":
 			return _handle_get_animation_state(data)
+		"list_audio_buses":
+			return _handle_list_audio_buses(data)
+		"get_audio_bus":
+			return _handle_get_audio_bus(data)
+		"update_audio_bus":
+			return _handle_update_audio_bus(data)
 		"get_runtime_screenshot":
 			return _handle_get_runtime_screenshot(data)
 		"debug_break":
@@ -484,6 +490,64 @@ func _handle_get_animation_state(data: Array) -> bool:
 		return true
 	EngineDebugger.send_message("mcp:animation_state", [_serialize_animation_state(player)])
 	return true
+
+func _handle_list_audio_buses(data: Array) -> bool:
+	var buses: Array = []
+	for index in range(AudioServer.get_bus_count()):
+		buses.append(_serialize_audio_bus(index))
+	EngineDebugger.send_message("mcp:audio_buses", [{
+		"buses": buses,
+		"count": buses.size()
+	}])
+	return true
+
+func _handle_get_audio_bus(data: Array) -> bool:
+	if data.is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": "get_audio_bus requires bus_name"}])
+		return true
+	var bus_index: int = _resolve_audio_bus_index(str(data[0]))
+	if bus_index < 0:
+		return true
+	EngineDebugger.send_message("mcp:audio_bus", [_serialize_audio_bus(bus_index)])
+	return true
+
+func _handle_update_audio_bus(data: Array) -> bool:
+	if data.is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": "update_audio_bus requires bus_name"}])
+		return true
+	var bus_index: int = _resolve_audio_bus_index(str(data[0]))
+	if bus_index < 0:
+		return true
+	if data.size() >= 2 and data[1] is Dictionary:
+		var updates: Dictionary = data[1]
+		if updates.has("volume_db"):
+			AudioServer.set_bus_volume_db(bus_index, float(updates.get("volume_db")))
+		if updates.has("mute"):
+			AudioServer.set_bus_mute(bus_index, bool(updates.get("mute")))
+	EngineDebugger.send_message("mcp:audio_bus_updated", [_serialize_audio_bus(bus_index)])
+	return true
+
+func _resolve_audio_bus_index(bus_name: String) -> int:
+	if bus_name.is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": "bus_name cannot be empty"}])
+		return -1
+	var bus_index: int = AudioServer.get_bus_index(bus_name)
+	if bus_index < 0:
+		EngineDebugger.send_message("mcp:error", [{"message": "Audio bus not found: " + bus_name, "bus_name": bus_name}])
+		return -1
+	return bus_index
+
+func _serialize_audio_bus(bus_index: int) -> Dictionary:
+	return {
+		"index": bus_index,
+		"name": str(AudioServer.get_bus_name(bus_index)),
+		"volume_db": AudioServer.get_bus_volume_db(bus_index),
+		"mute": AudioServer.is_bus_mute(bus_index),
+		"solo": AudioServer.is_bus_solo(bus_index),
+		"bypass_effects": AudioServer.is_bus_bypassing_effects(bus_index),
+		"send": str(AudioServer.get_bus_send(bus_index)),
+		"effect_count": AudioServer.get_bus_effect_count(bus_index)
+	}
 
 func _resolve_animation_player(node_path: String) -> AnimationPlayer:
 	var node: Node = _resolve_target_node(node_path)

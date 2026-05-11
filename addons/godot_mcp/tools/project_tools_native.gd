@@ -28,6 +28,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_list_project_autoloads(server_core)
 	_register_list_project_global_classes(server_core)
 	_register_get_class_api_metadata(server_core)
+	_register_inspect_tileset_resource(server_core)
 	_register_list_project_resources(server_core)
 	_register_create_resource(server_core)
 	_register_get_project_structure(server_core)
@@ -378,6 +379,84 @@ func _tool_get_class_api_metadata(params: Dictionary) -> Dictionary:
 			result["base_api"] = _build_classdb_api_metadata(base_class, filter)
 
 	return result
+
+# ============================================================================
+# inspect_tileset_resource - 检查 TileSet 资源
+# ============================================================================
+
+func _register_inspect_tileset_resource(server_core: RefCounted) -> void:
+	var tool_name: String = "inspect_tileset_resource"
+	var description: String = "Inspect a TileSet resource and summarize its sources, atlas tiles, and scene tiles."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"resource_path": {
+				"type": "string",
+				"description": "Path to a TileSet resource, such as 'res://tiles/terrain.tres'."
+			},
+			"include_tiles": {
+				"type": "boolean",
+				"description": "Whether to include per-tile entries for atlas and scene sources. Default is true."
+			}
+		},
+		"required": ["resource_path"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"resource_path": {"type": "string"},
+			"source_count": {"type": "integer"},
+			"tile_size": {"type": "object"},
+			"sources": {"type": "array"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_inspect_tileset_resource"),
+						  output_schema, annotations)
+
+func _tool_inspect_tileset_resource(params: Dictionary) -> Dictionary:
+	var resource_path: String = str(params.get("resource_path", "")).strip_edges()
+	if resource_path.is_empty():
+		return {"error": "Missing required parameter: resource_path"}
+
+	var validation: Dictionary = PathValidator.validate_file_path(resource_path, [".tres", ".res"])
+	if not validation.get("valid", false):
+		return {"error": validation.get("error", "Invalid resource path")}
+	resource_path = str(validation.get("sanitized", resource_path))
+
+	if not FileAccess.file_exists(resource_path):
+		return {"error": "File not found: " + resource_path}
+
+	var resource: Resource = ResourceLoader.load(resource_path)
+	if resource == null:
+		return {"error": "Failed to load resource: " + resource_path}
+	if not (resource is TileSet):
+		return {"error": "Resource is not a TileSet: " + resource_path}
+
+	var tile_set: TileSet = resource as TileSet
+	var include_tiles: bool = bool(params.get("include_tiles", true))
+	var sources: Array = []
+	for index in range(tile_set.get_source_count()):
+		var source_id: int = tile_set.get_source_id(index)
+		var source: TileSetSource = tile_set.get_source(source_id)
+		sources.append(_serialize_tileset_source(source_id, source, include_tiles))
+
+	return {
+		"resource_path": resource_path,
+		"source_count": tile_set.get_source_count(),
+		"tile_size": _serialize_vector2i(tile_set.tile_size),
+		"sources": sources
+	}
 
 # ============================================================================
 # list_project_resources - 列出项目资源
@@ -1681,6 +1760,70 @@ func _normalize_typed_value_info(entry: Variant) -> Dictionary:
 		"hint": int(entry.get("hint", PROPERTY_HINT_NONE)),
 		"hint_string": str(entry.get("hint_string", "")),
 		"usage": int(entry.get("usage", 0))
+	}
+
+func _serialize_tileset_source(source_id: int, source: TileSetSource, include_tiles: bool) -> Dictionary:
+	var source_entry: Dictionary = {
+		"source_id": source_id,
+		"class_name": source.get_class(),
+		"tile_count": source.get_tiles_count()
+	}
+
+	if source is TileSetAtlasSource:
+		var atlas_source: TileSetAtlasSource = source as TileSetAtlasSource
+		var texture: Texture2D = atlas_source.texture
+		source_entry["source_type"] = "atlas"
+		source_entry["texture_path"] = texture.resource_path if texture else ""
+		source_entry["texture_size"] = _serialize_vector2(texture.get_size()) if texture else {}
+		source_entry["margins"] = _serialize_vector2i(atlas_source.margins)
+		source_entry["separation"] = _serialize_vector2i(atlas_source.separation)
+		source_entry["texture_region_size"] = _serialize_vector2i(atlas_source.texture_region_size)
+		source_entry["atlas_grid_size"] = _serialize_vector2i(atlas_source.get_atlas_grid_size())
+		source_entry["uses_texture_padding"] = atlas_source.use_texture_padding
+		if include_tiles:
+			var atlas_tiles: Array = []
+			for tile_index in range(atlas_source.get_tiles_count()):
+				var atlas_coords: Vector2i = atlas_source.get_tile_id(tile_index)
+				var alternatives: Array = []
+				for alt_index in range(atlas_source.get_alternative_tiles_count(atlas_coords)):
+					alternatives.append(atlas_source.get_alternative_tile_id(atlas_coords, alt_index))
+				atlas_tiles.append({
+					"atlas_coords": _serialize_vector2i(atlas_coords),
+					"size_in_atlas": _serialize_vector2i(atlas_source.get_tile_size_in_atlas(atlas_coords)),
+					"texture_region": _serialize_rect2i(atlas_source.get_tile_texture_region(atlas_coords)),
+					"alternative_ids": alternatives,
+					"alternative_count": alternatives.size()
+				})
+			source_entry["tiles"] = atlas_tiles
+	elif source is TileSetScenesCollectionSource:
+		var scenes_source: TileSetScenesCollectionSource = source as TileSetScenesCollectionSource
+		source_entry["source_type"] = "scenes_collection"
+		source_entry["scene_tile_count"] = scenes_source.get_scene_tiles_count()
+		if include_tiles:
+			var scene_tiles: Array = []
+			for tile_index in range(scenes_source.get_scene_tiles_count()):
+				var scene_tile_id: int = scenes_source.get_scene_tile_id(tile_index)
+				var packed_scene: PackedScene = scenes_source.get_scene_tile_scene(scene_tile_id)
+				scene_tiles.append({
+					"scene_tile_id": scene_tile_id,
+					"scene_path": packed_scene.resource_path if packed_scene else ""
+				})
+			source_entry["scene_tiles"] = scene_tiles
+	else:
+		source_entry["source_type"] = "unknown"
+
+	return source_entry
+
+func _serialize_vector2i(value: Vector2i) -> Dictionary:
+	return {"x": value.x, "y": value.y}
+
+func _serialize_vector2(value: Vector2) -> Dictionary:
+	return {"x": value.x, "y": value.y}
+
+func _serialize_rect2i(value: Rect2i) -> Dictionary:
+	return {
+		"position": _serialize_vector2i(value.position),
+		"size": _serialize_vector2i(value.size)
 	}
 
 func _compare_autoload_entries(left: Dictionary, right: Dictionary) -> bool:

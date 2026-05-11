@@ -28,14 +28,21 @@ func _get_user_scene_root() -> Node:
 	if not editor_interface:
 		return null
 	var scene_root: Node = editor_interface.get_edited_scene_root()
-	if scene_root and not scene_root.name.begins_with("@") and scene_root.get_class() != "PanelContainer":
+	if _is_user_scene_root(scene_root):
 		return scene_root
 	var open_scene_roots: Array = editor_interface.get_open_scene_roots()
 	for root in open_scene_roots:
 		var node_root: Node = root
-		if node_root and not node_root.name.begins_with("@") and node_root.get_class() != "PanelContainer":
+		if _is_user_scene_root(node_root):
 			return node_root
-	return scene_root
+	return null
+
+func _is_user_scene_root(node: Node) -> bool:
+	if not node:
+		return false
+	if node.name.begins_with("@") or node.get_class() == "PanelContainer":
+		return false
+	return not String(node.scene_file_path).is_empty()
 
 # ============================================================================
 # 工具注册
@@ -78,6 +85,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_update_runtime_node_property(server_core)
 	_register_call_runtime_node_method(server_core)
 	_register_evaluate_runtime_expression(server_core)
+	_register_get_runtime_screenshot(server_core)
 	_register_await_runtime_condition(server_core)
 	_register_assert_runtime_condition(server_core)
 
@@ -1156,6 +1164,41 @@ func _tool_evaluate_runtime_expression(params: Dictionary) -> Dictionary:
 	var payload: Array = [expression, params.get("node_path", "")]
 	return _request_runtime_probe("evaluate_expression", payload, ["mcp:expression_result"], params, {"expression": expression})
 
+func _register_get_runtime_screenshot(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"get_runtime_screenshot",
+		"Capture the current runtime viewport from the running game and save it to a file.",
+		{
+			"type": "object",
+			"properties": {
+				"save_path": {"type": "string", "description": "Output path for the screenshot. Must use res:// or user://."},
+				"format": {"type": "string", "enum": ["png", "jpg"], "default": "png"},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			}
+		},
+		Callable(self, "_tool_get_runtime_screenshot"),
+		{"type": "object", "properties": {"save_path": {"type": "string"}, "format": {"type": "string"}, "width": {"type": "integer"}, "height": {"type": "integer"}, "size": {"type": "string"}, "current_scene": {"type": "string"}}},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
+	)
+
+func _tool_get_runtime_screenshot(params: Dictionary) -> Dictionary:
+	var save_path: String = params.get("save_path", "user://mcp_runtime_capture.png")
+	var path_validation: Dictionary = PathValidator.validate_file_path(save_path, [".png", ".jpg", ".jpeg"])
+	if not path_validation.get("valid", false):
+		return {"error": "Invalid save path: " + str(path_validation.get("error", "unknown error"))}
+	save_path = path_validation["sanitized"]
+
+	var format: String = String(params.get("format", "png")).to_lower()
+	if not ["png", "jpg"].has(format):
+		return {"error": "Unsupported format: " + format}
+	if format == "png" and not save_path.to_lower().ends_with(".png"):
+		return {"error": "save_path must end with .png when format is png"}
+	if format == "jpg" and not (save_path.to_lower().ends_with(".jpg") or save_path.to_lower().ends_with(".jpeg")):
+		return {"error": "save_path must end with .jpg or .jpeg when format is jpg"}
+
+	return _request_runtime_probe("get_runtime_screenshot", [save_path, format], ["mcp:runtime_screenshot"], params, {"save_path": save_path})
+
 func _register_await_runtime_condition(server_core: RefCounted) -> void:
 	server_core.register_tool(
 		"await_runtime_condition",
@@ -1257,6 +1300,10 @@ func _request_runtime_probe(command: String, payload: Array, response_messages: 
 		return refresh_result
 	if refresh_result.get("status", "") == "no_active_sessions":
 		return {"status": "no_active_sessions", "refresh_result": refresh_result}
+	# Force the debugger bridge to refresh captured message visibility before querying
+	# for the latest runtime payload. Without this, headless editor sessions can leave
+	# freshly received custom EngineDebugger captures invisible until another bridge read.
+	bridge.get_captured_messages(1, 0, "desc")
 	for message_name in response_messages:
 		var runtime_payload: Variant = bridge.get_latest_message_payload(message_name, match_fields)
 		if runtime_payload is Dictionary:

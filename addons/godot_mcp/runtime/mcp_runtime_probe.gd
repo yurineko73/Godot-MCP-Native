@@ -4,7 +4,9 @@ extends Node
 const CAPTURE_PREFIX: StringName = &"mcp"
 
 func _ready() -> void:
-	if EngineDebugger.is_active() and not EngineDebugger.has_capture(CAPTURE_PREFIX):
+	if EngineDebugger.is_active():
+		if EngineDebugger.has_capture(CAPTURE_PREFIX):
+			EngineDebugger.unregister_message_capture(CAPTURE_PREFIX)
 		EngineDebugger.register_message_capture(CAPTURE_PREFIX, Callable(self, "_capture_mcp_message"))
 		EngineDebugger.send_message("mcp:probe_ready", [_get_runtime_info()])
 
@@ -45,6 +47,8 @@ func _capture_mcp_message(message: String, data: Array) -> bool:
 			return _handle_call_node_method(data)
 		"evaluate_expression":
 			return _handle_evaluate_expression(data)
+		"get_runtime_screenshot":
+			return _handle_get_runtime_screenshot(data)
 		"debug_break":
 			EngineDebugger.debug(true, false)
 			return true
@@ -182,6 +186,56 @@ func _handle_evaluate_expression(data: Array) -> bool:
 		"value": _serialize_value(result)
 	}])
 	return true
+
+func _handle_get_runtime_screenshot(data: Array) -> bool:
+	var save_path: String = "user://mcp_runtime_capture.png"
+	if not data.is_empty() and data[0] is String and not String(data[0]).is_empty():
+		save_path = String(data[0])
+	var format: String = "png"
+	if data.size() >= 2 and data[1] is String and not String(data[1]).is_empty():
+		format = String(data[1]).to_lower()
+	var result: Dictionary = capture_runtime_screenshot(save_path, format)
+	if result.has("error"):
+		EngineDebugger.send_message("mcp:error", [result])
+		return true
+	EngineDebugger.send_message("mcp:runtime_screenshot", [result])
+	return true
+
+func capture_runtime_screenshot(save_path: String = "user://mcp_runtime_capture.png", format: String = "png") -> Dictionary:
+	if not ["png", "jpg"].has(format):
+		return {"error": "Unsupported screenshot format: " + format}
+
+	var viewport: Viewport = get_viewport()
+	if not viewport:
+		return {"error": "Runtime viewport is not available"}
+	var texture: Texture2D = viewport.get_texture()
+	if not texture:
+		return {"error": "Failed to get runtime viewport texture"}
+	var image: Image = texture.get_image()
+	if not image or image.is_empty():
+		return {"error": "Failed to capture runtime viewport image"}
+
+	var absolute_path: String = ProjectSettings.globalize_path(save_path)
+	var save_dir: String = absolute_path.get_base_dir()
+	if not save_dir.is_empty() and not DirAccess.dir_exists_absolute(save_dir):
+		DirAccess.make_dir_recursive_absolute(save_dir)
+
+	var err: Error = OK
+	if format == "jpg":
+		err = image.save_jpg(absolute_path, 0.9)
+	else:
+		err = image.save_png(absolute_path)
+	if err != OK:
+		return {"error": "Failed to save runtime screenshot: error " + str(err)}
+
+	return {
+		"save_path": save_path,
+		"format": format,
+		"width": image.get_width(),
+		"height": image.get_height(),
+		"size": str(image.get_width()) + "x" + str(image.get_height()),
+		"current_scene": str(get_tree().current_scene.get_path()) if get_tree().current_scene else ""
+	}
 
 func _resolve_target_node(node_path: String) -> Node:
 	if node_path.is_empty() or node_path == ".":

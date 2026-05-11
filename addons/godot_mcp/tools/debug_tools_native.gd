@@ -2066,18 +2066,19 @@ func _tool_update_runtime_audio_bus(params: Dictionary) -> Dictionary:
 func _register_get_runtime_screenshot(server_core: RefCounted) -> void:
 	server_core.register_tool(
 		"get_runtime_screenshot",
-		"Capture the current runtime viewport from the running game and save it to a file.",
+		"Capture the current runtime viewport, or a specific runtime Viewport/SubViewport node, from the running game and save it to a file.",
 		{
 			"type": "object",
 			"properties": {
 				"save_path": {"type": "string", "description": "Output path for the screenshot. Must use res:// or user://."},
 				"format": {"type": "string", "enum": ["png", "jpg"], "default": "png"},
+				"viewport_path": {"type": "string", "description": "Optional runtime node path to a Viewport or SubViewport to capture instead of the active root viewport."},
 				"session_id": {"type": "integer"},
 				"timeout_ms": {"type": "integer", "default": 1500}
 			}
 		},
 		Callable(self, "_tool_get_runtime_screenshot"),
-		{"type": "object", "properties": {"save_path": {"type": "string"}, "format": {"type": "string"}, "width": {"type": "integer"}, "height": {"type": "integer"}, "size": {"type": "string"}, "current_scene": {"type": "string"}}},
+		{"type": "object", "properties": {"save_path": {"type": "string"}, "format": {"type": "string"}, "viewport_path": {"type": "string"}, "width": {"type": "integer"}, "height": {"type": "integer"}, "size": {"type": "string"}, "current_scene": {"type": "string"}}},
 		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
 	)
 
@@ -2096,7 +2097,11 @@ func _tool_get_runtime_screenshot(params: Dictionary) -> Dictionary:
 	if format == "jpg" and not (save_path.to_lower().ends_with(".jpg") or save_path.to_lower().ends_with(".jpeg")):
 		return {"error": "save_path must end with .jpg or .jpeg when format is jpg"}
 
-	return _request_runtime_probe("get_runtime_screenshot", [save_path, format], ["mcp:runtime_screenshot"], params, {"save_path": save_path})
+	var viewport_path: String = str(params.get("viewport_path", "")).strip_edges()
+	var match_fields: Dictionary = {"save_path": save_path}
+	if not viewport_path.is_empty():
+		match_fields["viewport_path"] = viewport_path
+	return _request_runtime_probe("get_runtime_screenshot", [save_path, format, viewport_path], ["mcp:runtime_screenshot"], params, match_fields)
 
 func _register_await_runtime_condition(server_core: RefCounted) -> void:
 	server_core.register_tool(

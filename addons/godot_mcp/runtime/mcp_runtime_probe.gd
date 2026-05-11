@@ -402,7 +402,10 @@ func _handle_get_runtime_screenshot(data: Array) -> bool:
 	var format: String = "png"
 	if data.size() >= 2 and data[1] is String and not String(data[1]).is_empty():
 		format = String(data[1]).to_lower()
-	var result: Dictionary = capture_runtime_screenshot(save_path, format)
+	var viewport_path: String = ""
+	if data.size() >= 3 and data[2] is String and not String(data[2]).is_empty():
+		viewport_path = String(data[2])
+	var result: Dictionary = capture_runtime_screenshot(save_path, format, viewport_path)
 	if result.has("error"):
 		EngineDebugger.send_message("mcp:error", [result])
 		return true
@@ -1381,11 +1384,18 @@ func _sort_animation_entries(a: Dictionary, b: Dictionary) -> bool:
 func _sort_shader_parameter_entries(a: Dictionary, b: Dictionary) -> bool:
 	return str(a.get("name", "")) < str(b.get("name", ""))
 
-func capture_runtime_screenshot(save_path: String = "user://mcp_runtime_capture.png", format: String = "png") -> Dictionary:
+func capture_runtime_screenshot(save_path: String = "user://mcp_runtime_capture.png", format: String = "png", viewport_path: String = "") -> Dictionary:
 	if not ["png", "jpg"].has(format):
 		return {"error": "Unsupported screenshot format: " + format}
 
 	var viewport: Viewport = get_viewport()
+	if not viewport_path.is_empty():
+		var viewport_node: Node = _resolve_target_node(viewport_path)
+		if not viewport_node:
+			return {"error": "Viewport node not found: " + viewport_path}
+		if not (viewport_node is Viewport):
+			return {"error": "Node is not a Viewport: " + viewport_path, "node_type": viewport_node.get_class()}
+		viewport = viewport_node
 	if not viewport:
 		return {"error": "Runtime viewport is not available"}
 	var texture: Texture2D = viewport.get_texture()
@@ -1411,6 +1421,7 @@ func capture_runtime_screenshot(save_path: String = "user://mcp_runtime_capture.
 	return {
 		"save_path": save_path,
 		"format": format,
+		"viewport_path": str(viewport.get_path()),
 		"width": image.get_width(),
 		"height": image.get_height(),
 		"size": str(image.get_width()) + "x" + str(image.get_height()),

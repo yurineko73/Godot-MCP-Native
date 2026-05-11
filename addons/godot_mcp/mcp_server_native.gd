@@ -94,6 +94,15 @@ var _mcp_server_mode: bool = false
 var _tool_instances: Dictionary = {}
 var _debugger_bridge: MCPDebuggerBridge = null
 
+const TOOL_SCRIPT_PATHS: Dictionary = {
+	"NodeToolsNative": "res://addons/godot_mcp/tools/node_tools_native.gd",
+	"ScriptToolsNative": "res://addons/godot_mcp/tools/script_tools_native.gd",
+	"SceneToolsNative": "res://addons/godot_mcp/tools/scene_tools_native.gd",
+	"EditorToolsNative": "res://addons/godot_mcp/tools/editor_tools_native.gd",
+	"DebugToolsNative": "res://addons/godot_mcp/tools/debug_tools_native.gd",
+	"ProjectToolsNative": "res://addons/godot_mcp/tools/project_tools_native.gd"
+}
+
 # ============================================================================
 # 生命周期方法
 # ============================================================================
@@ -108,13 +117,16 @@ func _enter_tree() -> void:
 		_log_error("Failed to get EditorInterface")
 		return
 	
-	_native_server = load("res://addons/godot_mcp/native_mcp/mcp_server_core.gd").new()
-	
+	_native_server = _instantiate_script("res://addons/godot_mcp/native_mcp/mcp_server_core.gd")
+
 	if not _native_server:
 		_log_error("Failed to create MCP Server Core instance")
 		return
 
-	_debugger_bridge = MCPDebuggerBridge.new()
+	_debugger_bridge = load("res://addons/godot_mcp/native_mcp/mcp_debugger_bridge.gd").new()
+	if not _debugger_bridge:
+		_log_error("Failed to create debugger bridge instance")
+		return
 	add_debugger_plugin(_debugger_bridge)
 	
 	# 设置传输方式
@@ -369,7 +381,7 @@ func _start_native_server() -> bool:
 	var success: bool = _native_server.start()
 	
 	if success:
-		_log_info("Native MCP Server started - listening on stdio")
+		_log_info("Native MCP Server started - transport: " + transport_mode)
 	else:
 		_log_error("Failed to start MCP Server")
 	
@@ -410,12 +422,12 @@ func _register_all_tools() -> void:
 		_log_error("MCP Server instance not available")
 		return
 	
-	_register_tool_module("NodeToolsNative", NodeToolsNative.new())
-	_register_tool_module("ScriptToolsNative", ScriptToolsNative.new())
-	_register_tool_module("SceneToolsNative", SceneToolsNative.new())
-	_register_tool_module("EditorToolsNative", EditorToolsNative.new())
-	_register_tool_module("DebugToolsNative", DebugToolsNative.new())
-	_register_tool_module("ProjectToolsNative", ProjectToolsNative.new())
+	for module_name in TOOL_SCRIPT_PATHS.keys():
+		var instance: Variant = _instantiate_script(str(TOOL_SCRIPT_PATHS[module_name]))
+		if not instance:
+			_log_error("Failed to instantiate tool module: " + str(module_name))
+			continue
+		_register_tool_module(str(module_name), instance)
 	
 	var total_tools: int = _native_server.get_tools_count()
 	_log_info("All MCP tools registered successfully. Total: " + str(total_tools))
@@ -425,12 +437,23 @@ func _register_tool_module(module_name: String, instance: RefCounted) -> void:
 		return
 	
 	_tool_instances[module_name] = instance
+	var tools_before: int = _native_server.get_tools_count() if _native_server and _native_server.has_method("get_tools_count") else -1
+	_log_info("Registering tool module: %s (before=%d)" % [module_name, tools_before])
 	
 	if instance.has_method("initialize"):
 		instance.initialize(_editor_interface)
 	
 	if instance.has_method("register_tools"):
 		instance.register_tools(_native_server)
+	var tools_after: int = _native_server.get_tools_count() if _native_server and _native_server.has_method("get_tools_count") else -1
+	_log_info("Registered tool module: %s (after=%d, added=%d)" % [module_name, tools_after, tools_after - tools_before])
+
+func _instantiate_script(script_path: String) -> Variant:
+	var script: Script = ResourceLoader.load(script_path, "", ResourceLoader.CACHE_MODE_REPLACE)
+	if not script:
+		_log_error("Failed to load script: " + script_path)
+		return null
+	return script.new()
 
 # ============================================================================
 # 私有方法 - 资源注册（根据mcp-builder优化）

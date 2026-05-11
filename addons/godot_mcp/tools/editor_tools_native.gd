@@ -60,6 +60,10 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_get_editor_screenshot(server_core)
 	_register_get_signals(server_core)
 	_register_reload_project(server_core)
+	_register_list_export_presets(server_core)
+	_register_inspect_export_templates(server_core)
+	_register_validate_export_preset(server_core)
+	_register_run_export(server_core)
 
 # ============================================================================
 # get_editor_state - 获取编辑器状态
@@ -191,7 +195,12 @@ func _tool_run_project(params: Dictionary) -> Dictionary:
 			return {"error": "Scene file not found: " + scene_path}
 		editor_interface.play_custom_scene(scene_path)
 	else:
-		editor_interface.play_current_scene()
+		var scene_root: Node = _get_user_scene_root()
+		var current_scene_path: String = scene_root.scene_file_path if scene_root else ""
+		if not current_scene_path.is_empty():
+			editor_interface.play_custom_scene(current_scene_path)
+		else:
+			editor_interface.play_current_scene()
 	
 	return {
 		"status": "success",
@@ -319,6 +328,392 @@ func _tool_get_selected_nodes(params: Dictionary) -> Dictionary:
 		"selected_nodes": selected_nodes,
 		"count": selected_nodes.size()
 	}
+
+# ============================================================================
+# list_export_presets - 列出导出预设
+# ============================================================================
+
+func _register_list_export_presets(server_core: RefCounted) -> void:
+	var tool_name: String = "list_export_presets"
+	var description: String = "List export presets from export_presets.cfg."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"config_path": {"type": "string"},
+			"count": {"type": "integer"},
+			"presets": {
+				"type": "array",
+				"items": {"type": "object"}
+			}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_list_export_presets"),
+						  output_schema, annotations)
+
+func _tool_list_export_presets(params: Dictionary) -> Dictionary:
+	var preset_data: Dictionary = _load_export_presets()
+	if preset_data.has("error"):
+		return preset_data
+	return {
+		"config_path": preset_data["config_path"],
+		"count": preset_data["presets"].size(),
+		"presets": preset_data["presets"]
+	}
+
+# ============================================================================
+# inspect_export_templates - 检查本机导出模板
+# ============================================================================
+
+func _register_inspect_export_templates(server_core: RefCounted) -> void:
+	var tool_name: String = "inspect_export_templates"
+	var description: String = "Inspect locally installed Godot export templates for the current editor version."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"templates_root": {"type": "string"},
+			"current_version": {"type": "string"},
+			"matching_version_installed": {"type": "boolean"},
+			"installed_versions": {"type": "array"},
+			"detected_files": {"type": "array"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_inspect_export_templates"),
+						  output_schema, annotations)
+
+func _tool_inspect_export_templates(params: Dictionary) -> Dictionary:
+	return _inspect_export_templates()
+
+# ============================================================================
+# validate_export_preset - 校验导出预设
+# ============================================================================
+
+func _register_validate_export_preset(server_core: RefCounted) -> void:
+	var tool_name: String = "validate_export_preset"
+	var description: String = "Validate an export preset against export_presets.cfg and local template availability."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"preset": {
+				"type": "string",
+				"description": "Preset name or section, e.g. 'Windows Desktop' or 'preset.0'."
+			}
+		},
+		"required": ["preset"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"valid": {"type": "boolean"},
+			"preset": {"type": "object"},
+			"errors": {"type": "array"},
+			"warnings": {"type": "array"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_validate_export_preset"),
+						  output_schema, annotations)
+
+func _tool_validate_export_preset(params: Dictionary) -> Dictionary:
+	var preset_name: String = str(params.get("preset", "")).strip_edges()
+	if preset_name.is_empty():
+		return {"error": "Missing required parameter: preset"}
+
+	var preset_data: Dictionary = _load_export_presets()
+	if preset_data.has("error"):
+		return preset_data
+
+	var preset: Dictionary = _find_export_preset(preset_data["presets"], preset_name)
+	if preset.is_empty():
+		return {
+			"valid": false,
+			"errors": ["Export preset not found: " + preset_name],
+			"warnings": [],
+			"preset": {}
+		}
+
+	var errors: Array[String] = []
+	var warnings: Array[String] = []
+	if str(preset.get("platform", "")).is_empty():
+		errors.append("Preset is missing platform")
+	if str(preset.get("name", "")).is_empty():
+		errors.append("Preset is missing name")
+	if str(preset.get("export_path", "")).is_empty():
+		warnings.append("Preset does not define export_path; run_export must receive output_path")
+
+	var template_info: Dictionary = _inspect_export_templates()
+	if not bool(template_info.get("matching_version_installed", false)):
+		warnings.append("Matching export templates are not installed for current Godot version")
+
+	return {
+		"valid": errors.is_empty(),
+		"preset": preset,
+		"errors": errors,
+		"warnings": warnings,
+		"template_info": template_info
+	}
+
+# ============================================================================
+# run_export - 执行导出
+# ============================================================================
+
+func _register_run_export(server_core: RefCounted) -> void:
+	var tool_name: String = "run_export"
+	var description: String = "Run a Godot CLI export for a configured preset."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"preset": {
+				"type": "string",
+				"description": "Preset name or section."
+			},
+			"output_path": {
+				"type": "string",
+				"description": "Optional absolute or res:// output path override."
+			},
+			"mode": {
+				"type": "string",
+				"enum": ["release", "debug", "pack", "patch"],
+				"default": "release"
+			}
+		},
+		"required": ["preset"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"success": {"type": "boolean"},
+			"exit_code": {"type": "integer"},
+			"command": {"type": "array"},
+			"output_path": {"type": "string"},
+			"logs": {"type": "array"},
+			"errors": {"type": "array"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": false,
+		"idempotentHint": false,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_run_export"),
+						  output_schema, annotations)
+
+func _tool_run_export(params: Dictionary) -> Dictionary:
+	var preset_name: String = str(params.get("preset", "")).strip_edges()
+	if preset_name.is_empty():
+		return {"error": "Missing required parameter: preset"}
+
+	var mode: String = str(params.get("mode", "release")).strip_edges().to_lower()
+	var mode_to_flag: Dictionary = {
+		"release": "--export-release",
+		"debug": "--export-debug",
+		"pack": "--export-pack",
+		"patch": "--export-patch"
+	}
+	if not mode_to_flag.has(mode):
+		return {"error": "Invalid mode: " + mode}
+
+	var preset_data: Dictionary = _load_export_presets()
+	if preset_data.has("error"):
+		return preset_data
+
+	var preset: Dictionary = _find_export_preset(preset_data["presets"], preset_name)
+	if preset.is_empty():
+		return {"error": "Export preset not found: " + preset_name}
+
+	var output_path: String = str(params.get("output_path", "")).strip_edges()
+	if output_path.is_empty():
+		output_path = str(preset.get("export_path", "")).strip_edges()
+	if output_path.is_empty():
+		return {"error": "Export preset has no export_path and output_path was not provided"}
+
+	if output_path.begins_with("res://"):
+		output_path = ProjectSettings.globalize_path(output_path)
+
+	var output_dir: String = output_path.get_base_dir()
+	if not output_dir.is_empty():
+		DirAccess.make_dir_recursive_absolute(output_dir)
+
+	var executable_path: String = OS.get_executable_path()
+	var project_path: String = ProjectSettings.globalize_path("res://")
+	var args: Array[String] = [
+		"--headless",
+		"--path", project_path,
+		str(mode_to_flag[mode]),
+		str(preset.get("name", "")),
+		output_path
+	]
+
+	var logs: Array = []
+	var exit_code: int = OS.execute(executable_path, args, logs, true)
+	var sanitized_logs: Array[String] = []
+	for line in logs:
+		sanitized_logs.append(_sanitize_cli_output(str(line)))
+	var error_lines: Array[String] = []
+	for text_line in sanitized_logs:
+		if text_line.contains("ERROR:") or text_line.contains("Export failed") or text_line.contains("No export template"):
+			error_lines.append(text_line)
+
+	return {
+		"success": exit_code == OK,
+		"exit_code": exit_code,
+		"command": [executable_path] + args,
+		"output_path": output_path,
+		"preset": preset,
+		"logs": sanitized_logs,
+		"errors": error_lines
+	}
+
+func _load_export_presets() -> Dictionary:
+	var config_path: String = "res://export_presets.cfg"
+	if not FileAccess.file_exists(config_path):
+		return {
+			"config_path": config_path,
+			"presets": []
+		}
+
+	var config: ConfigFile = ConfigFile.new()
+	var load_error: Error = config.load(config_path)
+	if load_error != OK:
+		return {"error": "Failed to load export_presets.cfg: " + error_string(load_error)}
+
+	var presets: Array = []
+	for raw_section in config.get_sections():
+		var section_name: String = str(raw_section)
+		if not section_name.begins_with("preset.") or section_name.ends_with(".options"):
+			continue
+
+		var preset: Dictionary = {
+			"section": section_name,
+			"name": str(config.get_value(section_name, "name", "")),
+			"platform": str(config.get_value(section_name, "platform", "")),
+			"export_path": str(config.get_value(section_name, "export_path", "")),
+			"runnable": bool(config.get_value(section_name, "runnable", false))
+		}
+		presets.append(preset)
+
+	return {
+		"config_path": config_path,
+		"presets": presets
+	}
+
+func _inspect_export_templates() -> Dictionary:
+	var version_info: Dictionary = Engine.get_version_info()
+	var version_variants: Array[String] = []
+	var base_version: String = "%d.%d.%d.%s" % [
+		int(version_info.get("major", 0)),
+		int(version_info.get("minor", 0)),
+		int(version_info.get("patch", 0)),
+		str(version_info.get("status", "stable"))
+	]
+	version_variants.append(base_version)
+	version_variants.append(base_version + ".mono")
+
+	var templates_root: String = OS.get_environment("APPDATA").path_join("Godot").path_join("export_templates")
+	var installed_versions: Array[String] = []
+	var detected_files: Array[String] = []
+	var matching_version_installed: bool = false
+
+	var root_dir: DirAccess = DirAccess.open(templates_root)
+	if root_dir:
+		root_dir.list_dir_begin()
+		var entry: String = root_dir.get_next()
+		while entry != "":
+			if root_dir.current_is_dir() and not entry.begins_with("."):
+				installed_versions.append(entry)
+				if version_variants.has(entry):
+					matching_version_installed = true
+					var version_dir_path: String = templates_root.path_join(entry)
+					var version_dir: DirAccess = DirAccess.open(version_dir_path)
+					if version_dir:
+						version_dir.list_dir_begin()
+						var file_name: String = version_dir.get_next()
+						while file_name != "":
+							if not version_dir.current_is_dir():
+								detected_files.append(version_dir_path.path_join(file_name))
+							file_name = version_dir.get_next()
+						version_dir.list_dir_end()
+			entry = root_dir.get_next()
+		root_dir.list_dir_end()
+
+	installed_versions.sort()
+	detected_files.sort()
+
+	return {
+		"templates_root": templates_root,
+		"current_version": base_version,
+		"matching_version_installed": matching_version_installed,
+		"expected_versions": version_variants,
+		"installed_versions": installed_versions,
+		"detected_files": detected_files
+	}
+
+func _find_export_preset(presets: Array, preset_name: String) -> Dictionary:
+	for preset_value in presets:
+		var preset: Dictionary = preset_value
+		if str(preset.get("section", "")) == preset_name:
+			return preset
+		if str(preset.get("name", "")) == preset_name:
+			return preset
+	return {}
+
+func _sanitize_cli_output(text: String) -> String:
+	var sanitized: String = ""
+	for i in range(text.length()):
+		var codepoint: int = text.unicode_at(i)
+		var keep_char: bool = codepoint >= 32 and codepoint != 127
+		if codepoint == 9 or codepoint == 10 or codepoint == 13:
+			keep_char = true
+		if codepoint >= 0xE000 and codepoint <= 0xF8FF:
+			keep_char = false
+		if keep_char:
+			sanitized += String.chr(codepoint)
+	return sanitized
 
 # ============================================================================
 # set_editor_setting - 设置编辑器属性

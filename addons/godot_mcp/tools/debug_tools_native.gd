@@ -761,7 +761,7 @@ func _debug_named_variable_count(value: Variant) -> int:
 			return 2
 		TYPE_TRANSFORM2D:
 			return 3
-		TYPE_VECTOR4, TYPE_COLOR, TYPE_QUATERNION:
+		TYPE_VECTOR4, TYPE_VECTOR4I, TYPE_COLOR, TYPE_QUATERNION:
 			return 4
 		TYPE_OBJECT:
 			return _expand_debug_object_entries(value, []).size()
@@ -836,6 +836,13 @@ func _expand_debug_struct_fields(value: Variant, parent_path: Array) -> Array:
 				{"name": "y", "path": parent_path + ["y"], "type": "float", "value": value.y, "has_children": false},
 				{"name": "z", "path": parent_path + ["z"], "type": "float", "value": value.z, "has_children": false},
 				{"name": "w", "path": parent_path + ["w"], "type": "float", "value": value.w, "has_children": false}
+			])
+		TYPE_VECTOR4I:
+			entries.append_array([
+				{"name": "x", "path": parent_path + ["x"], "type": "int", "value": value.x, "has_children": false},
+				{"name": "y", "path": parent_path + ["y"], "type": "int", "value": value.y, "has_children": false},
+				{"name": "z", "path": parent_path + ["z"], "type": "int", "value": value.z, "has_children": false},
+				{"name": "w", "path": parent_path + ["w"], "type": "int", "value": value.w, "has_children": false}
 			])
 		TYPE_PLANE:
 			entries.append_array([
@@ -966,7 +973,7 @@ func _expand_debug_object_entries(value: Variant, parent_path: Array) -> Array:
 
 func _debug_value_has_children(value: Variant) -> bool:
 	match typeof(value):
-		TYPE_ARRAY, TYPE_DICTIONARY, TYPE_VECTOR2, TYPE_VECTOR2I, TYPE_VECTOR3, TYPE_VECTOR3I, TYPE_VECTOR4, TYPE_PLANE, TYPE_RECT2, TYPE_RECT2I, TYPE_AABB, TYPE_BASIS, TYPE_COLOR, TYPE_QUATERNION, TYPE_TRANSFORM2D, TYPE_TRANSFORM3D:
+		TYPE_ARRAY, TYPE_DICTIONARY, TYPE_VECTOR2, TYPE_VECTOR2I, TYPE_VECTOR3, TYPE_VECTOR3I, TYPE_VECTOR4, TYPE_VECTOR4I, TYPE_PLANE, TYPE_RECT2, TYPE_RECT2I, TYPE_AABB, TYPE_BASIS, TYPE_COLOR, TYPE_QUATERNION, TYPE_TRANSFORM2D, TYPE_TRANSFORM3D:
 			return true
 		TYPE_OBJECT:
 			return not _expand_debug_object_entries(value, []).is_empty()
@@ -1001,6 +1008,8 @@ func _serialize_runtime_value(value: Variant) -> Variant:
 		TYPE_VECTOR3I:
 			return {"x": value.x, "y": value.y, "z": value.z}
 		TYPE_VECTOR4:
+			return {"x": value.x, "y": value.y, "z": value.z, "w": value.w}
+		TYPE_VECTOR4I:
 			return {"x": value.x, "y": value.y, "z": value.z, "w": value.w}
 		TYPE_PLANE:
 			return {

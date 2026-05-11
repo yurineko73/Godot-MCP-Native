@@ -1028,10 +1028,24 @@ func _serialize_runtime_object(value: Variant) -> Dictionary:
 	var properties: Dictionary = {}
 	for entry in _expand_debug_object_entries(object_value, []):
 		properties[str(entry.get("name", ""))] = entry.get("value", null)
-	return {
+	var serialized: Dictionary = {
 		"class_name": object_value.get_class(),
+		"instance_id": object_value.get_instance_id(),
+		"script_path": "",
 		"properties": properties
 	}
+	var script: Script = object_value.get_script() as Script
+	if script:
+		serialized["script_path"] = String(script.resource_path)
+	if object_value is Node:
+		var node_value: Node = object_value as Node
+		var node_path: String = str(node_value.get_path())
+		if node_path.is_empty() and not String(node_value.name).is_empty():
+			node_path = "/" + String(node_value.name)
+		serialized["node_path"] = node_path
+	elif object_value is Resource:
+		serialized["resource_path"] = String((object_value as Resource).resource_path)
+	return serialized
 
 func _serialize_runtime_callable(value: Variant) -> Dictionary:
 	if typeof(value) != TYPE_CALLABLE:

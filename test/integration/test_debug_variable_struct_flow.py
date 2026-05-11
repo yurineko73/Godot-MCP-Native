@@ -356,6 +356,42 @@ def main() -> int:
         if bridge_signal_serialized.get("name") != "tree_entered" or bridge_signal_serialized.get("object_class") != "Node":
             raise AssertionError(f"Unexpected bridge Signal serialization: {helper_result}")
 
+        inspect_object_metadata = tool_call(
+            "execute_editor_script",
+            {
+                "code": (
+                    'var tools := DebugToolsNative.new()\n'
+                    'var bridge := MCPDebuggerBridge.new()\n'
+                    'var inspect_node := Node.new()\n'
+                    'inspect_node.name = "InspectableNode"\n'
+                    'var inspect_resource := ShaderMaterial.new()\n'
+                    'var result := {\n'
+                    '\t"node_object_serialized": tools._serialize_runtime_value(inspect_node),\n'
+                    '\t"resource_object_serialized": tools._serialize_runtime_value(inspect_resource),\n'
+                    '\t"bridge_node_object_serialized": bridge._serialize_debug_value(inspect_node),\n'
+                    '\t"bridge_resource_object_serialized": bridge._serialize_debug_value(inspect_resource)\n'
+                    '}\n'
+                    '_custom_print(JSON.stringify(result))\n'
+                ),
+            },
+            request_id=16,
+        )
+        if inspect_object_metadata.get("success") is not True or not inspect_object_metadata.get("output"):
+            raise AssertionError(f"Failed to inspect object metadata serialization: {inspect_object_metadata}")
+        object_metadata_result = json.loads(inspect_object_metadata["output"][-1])
+        node_object_serialized = object_metadata_result.get("node_object_serialized", {})
+        if node_object_serialized.get("class_name") != "Node" or node_object_serialized.get("node_path") != "/InspectableNode" or "instance_id" not in node_object_serialized or "script_path" not in node_object_serialized:
+            raise AssertionError(f"Unexpected node object serialization: {object_metadata_result}")
+        resource_object_serialized = object_metadata_result.get("resource_object_serialized", {})
+        if resource_object_serialized.get("class_name") != "ShaderMaterial" or "resource_path" not in resource_object_serialized or "instance_id" not in resource_object_serialized or "script_path" not in resource_object_serialized:
+            raise AssertionError(f"Unexpected resource object serialization: {object_metadata_result}")
+        bridge_node_object_serialized = object_metadata_result.get("bridge_node_object_serialized", {})
+        if bridge_node_object_serialized.get("class_name") != "Node" or bridge_node_object_serialized.get("node_path") != "/InspectableNode" or "instance_id" not in bridge_node_object_serialized or "script_path" not in bridge_node_object_serialized:
+            raise AssertionError(f"Unexpected bridge node object serialization: {object_metadata_result}")
+        bridge_resource_object_serialized = object_metadata_result.get("bridge_resource_object_serialized", {})
+        if bridge_resource_object_serialized.get("class_name") != "ShaderMaterial" or "resource_path" not in bridge_resource_object_serialized or "instance_id" not in bridge_resource_object_serialized or "script_path" not in bridge_resource_object_serialized:
+            raise AssertionError(f"Unexpected bridge resource object serialization: {object_metadata_result}")
+
         print("debug variable struct flow verified")
         return 0
     finally:

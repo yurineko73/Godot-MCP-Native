@@ -69,6 +69,12 @@ func _capture_mcp_message(message: String, data: Array) -> bool:
 			return _handle_stop_animation(data)
 		"get_animation_state":
 			return _handle_get_animation_state(data)
+		"list_tilemap_layers":
+			return _handle_list_tilemap_layers(data)
+		"get_tilemap_cell":
+			return _handle_get_tilemap_cell(data)
+		"set_tilemap_cell":
+			return _handle_set_tilemap_cell(data)
 		"list_audio_buses":
 			return _handle_list_audio_buses(data)
 		"get_audio_bus":
@@ -491,6 +497,65 @@ func _handle_get_animation_state(data: Array) -> bool:
 	EngineDebugger.send_message("mcp:animation_state", [_serialize_animation_state(player)])
 	return true
 
+func _handle_list_tilemap_layers(data: Array) -> bool:
+	if data.is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": "list_tilemap_layers requires node_path"}])
+		return true
+	var tilemap: TileMap = _resolve_tilemap(str(data[0]))
+	if not tilemap:
+		return true
+	var layers: Array = []
+	for layer_index in range(tilemap.get_layers_count()):
+		layers.append(_serialize_tilemap_layer(tilemap, layer_index))
+	EngineDebugger.send_message("mcp:tilemap_layers", [{
+		"node_path": str(tilemap.get_path()),
+		"layers": layers,
+		"count": layers.size()
+	}])
+	return true
+
+func _handle_get_tilemap_cell(data: Array) -> bool:
+	if data.size() < 3:
+		EngineDebugger.send_message("mcp:error", [{"message": "get_tilemap_cell requires node_path, layer, coords"}])
+		return true
+	var tilemap: TileMap = _resolve_tilemap(str(data[0]))
+	if not tilemap:
+		return true
+	var layer: int = int(data[1])
+	if not _is_valid_tilemap_layer(tilemap, layer):
+		return true
+	var coords: Vector2i = _variant_to_vector2i(data[2])
+	var use_proxies: bool = false
+	if data.size() >= 4:
+		use_proxies = bool(data[3])
+	EngineDebugger.send_message("mcp:tilemap_cell", [_serialize_tilemap_cell(tilemap, layer, coords, use_proxies)])
+	return true
+
+func _handle_set_tilemap_cell(data: Array) -> bool:
+	if data.size() < 3:
+		EngineDebugger.send_message("mcp:error", [{"message": "set_tilemap_cell requires node_path, layer, coords"}])
+		return true
+	var tilemap: TileMap = _resolve_tilemap(str(data[0]))
+	if not tilemap:
+		return true
+	var layer: int = int(data[1])
+	if not _is_valid_tilemap_layer(tilemap, layer):
+		return true
+	var coords: Vector2i = _variant_to_vector2i(data[2])
+	var updates: Dictionary = {}
+	if data.size() >= 4 and data[3] is Dictionary:
+		updates = data[3]
+	var erase: bool = bool(updates.get("erase", false))
+	if erase:
+		tilemap.erase_cell(layer, coords)
+	else:
+		var source_id: int = int(updates.get("source_id", -1))
+		var atlas_coords: Vector2i = _variant_to_vector2i(updates.get("atlas_coords", {"x": -1, "y": -1}))
+		var alternative_tile: int = int(updates.get("alternative_tile", 0))
+		tilemap.set_cell(layer, coords, source_id, atlas_coords, alternative_tile)
+	EngineDebugger.send_message("mcp:tilemap_cell_updated", [_serialize_tilemap_cell(tilemap, layer, coords, false)])
+	return true
+
 func _handle_list_audio_buses(data: Array) -> bool:
 	var buses: Array = []
 	for index in range(AudioServer.get_bus_count()):
@@ -558,6 +623,52 @@ func _resolve_animation_player(node_path: String) -> AnimationPlayer:
 		EngineDebugger.send_message("mcp:error", [{"message": "Node is not an AnimationPlayer: " + node_path, "node_type": node.get_class()}])
 		return null
 	return node
+
+func _resolve_tilemap(node_path: String) -> TileMap:
+	var node: Node = _resolve_target_node(node_path)
+	if not node:
+		EngineDebugger.send_message("mcp:error", [{"message": "Node not found: " + node_path}])
+		return null
+	if not (node is TileMap):
+		EngineDebugger.send_message("mcp:error", [{"message": "Node is not a TileMap: " + node_path, "node_type": node.get_class()}])
+		return null
+	return node
+
+func _is_valid_tilemap_layer(tilemap: TileMap, layer: int) -> bool:
+	if layer < 0 or layer >= tilemap.get_layers_count():
+		EngineDebugger.send_message("mcp:error", [{
+			"message": "TileMap layer is out of range",
+			"node_path": str(tilemap.get_path()),
+			"layer": layer,
+			"layer_count": tilemap.get_layers_count()
+		}])
+		return false
+	return true
+
+func _serialize_tilemap_layer(tilemap: TileMap, layer: int) -> Dictionary:
+	return {
+		"node_path": str(tilemap.get_path()),
+		"layer": layer,
+		"name": tilemap.get_layer_name(layer),
+		"enabled": tilemap.is_layer_enabled(layer),
+		"y_sort_enabled": tilemap.is_layer_y_sort_enabled(layer),
+		"y_sort_origin": tilemap.get_layer_y_sort_origin(layer),
+		"z_index": tilemap.get_layer_z_index(layer),
+		"used_cell_count": tilemap.get_used_cells(layer).size()
+	}
+
+func _serialize_tilemap_cell(tilemap: TileMap, layer: int, coords: Vector2i, use_proxies: bool) -> Dictionary:
+	var source_id: int = tilemap.get_cell_source_id(layer, coords, use_proxies)
+	return {
+		"node_path": str(tilemap.get_path()),
+		"layer": layer,
+		"coords": _serialize_value(coords),
+		"use_proxies": use_proxies,
+		"source_id": source_id,
+		"atlas_coords": _serialize_value(tilemap.get_cell_atlas_coords(layer, coords, use_proxies)),
+		"alternative_tile": tilemap.get_cell_alternative_tile(layer, coords, use_proxies),
+		"is_empty": source_id == -1
+	}
 
 func _serialize_animation_state(player: AnimationPlayer) -> Dictionary:
 	return {
@@ -758,6 +869,8 @@ func _serialize_value(value: Variant) -> Variant:
 			return value
 		TYPE_VECTOR2:
 			return {"x": value.x, "y": value.y}
+		TYPE_VECTOR2I:
+			return {"x": value.x, "y": value.y}
 		TYPE_VECTOR3:
 			return {"x": value.x, "y": value.y, "z": value.z}
 		TYPE_COLOR:
@@ -780,3 +893,10 @@ func _count_nodes(node: Node) -> int:
 	for child in node.get_children():
 		count += _count_nodes(child)
 	return count
+
+func _variant_to_vector2i(value: Variant) -> Vector2i:
+	if value is Vector2i:
+		return value
+	if value is Dictionary:
+		return Vector2i(int(value.get("x", 0)), int(value.get("y", 0)))
+	return Vector2i.ZERO

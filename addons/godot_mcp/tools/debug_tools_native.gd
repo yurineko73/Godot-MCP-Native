@@ -115,6 +115,9 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_play_runtime_animation(server_core)
 	_register_stop_runtime_animation(server_core)
 	_register_get_runtime_animation_state(server_core)
+	_register_list_runtime_tilemap_layers(server_core)
+	_register_get_runtime_tilemap_cell(server_core)
+	_register_set_runtime_tilemap_cell(server_core)
 	_register_list_runtime_audio_buses(server_core)
 	_register_get_runtime_audio_bus(server_core)
 	_register_update_runtime_audio_bus(server_core)
@@ -1484,6 +1487,98 @@ func _tool_get_runtime_animation_state(params: Dictionary) -> Dictionary:
 	if node_path.is_empty():
 		return {"error": "Missing required parameter: node_path"}
 	return _request_runtime_probe("get_animation_state", [node_path], ["mcp:animation_state"], params, {"node_path": node_path})
+
+func _register_list_runtime_tilemap_layers(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"list_runtime_tilemap_layers",
+		"List the layers and used-cell counts of a runtime TileMap node.",
+		{
+			"type": "object",
+			"properties": {
+				"node_path": {"type": "string"},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["node_path"]
+		},
+		Callable(self, "_tool_list_runtime_tilemap_layers"),
+		{"type": "object", "properties": {"node_path": {"type": "string"}, "layers": {"type": "array"}, "count": {"type": "integer"}}},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
+	)
+
+func _tool_list_runtime_tilemap_layers(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("node_path", "")
+	if node_path.is_empty():
+		return {"error": "Missing required parameter: node_path"}
+	return _request_runtime_probe("list_tilemap_layers", [node_path], ["mcp:tilemap_layers"], params, {"node_path": node_path})
+
+func _register_get_runtime_tilemap_cell(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"get_runtime_tilemap_cell",
+		"Return the runtime cell data at one TileMap layer coordinate.",
+		{
+			"type": "object",
+			"properties": {
+				"node_path": {"type": "string"},
+				"layer": {"type": "integer"},
+				"coords": {"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}, "required": ["x", "y"]},
+				"use_proxies": {"type": "boolean", "default": false},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["node_path", "layer", "coords"]
+		},
+		Callable(self, "_tool_get_runtime_tilemap_cell"),
+		{"type": "object", "properties": {"node_path": {"type": "string"}, "layer": {"type": "integer"}, "coords": {"type": "object"}, "source_id": {"type": "integer"}, "atlas_coords": {"type": "object"}, "alternative_tile": {"type": "integer"}, "is_empty": {"type": "boolean"}}},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
+	)
+
+func _tool_get_runtime_tilemap_cell(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("node_path", "")
+	if node_path.is_empty():
+		return {"error": "Missing required parameter: node_path"}
+	if not params.has("coords"):
+		return {"error": "Missing required parameter: coords"}
+	return _request_runtime_probe("get_tilemap_cell", [node_path, int(params.get("layer", 0)), params.get("coords", {}), bool(params.get("use_proxies", false))], ["mcp:tilemap_cell"], params, {"node_path": node_path, "layer": int(params.get("layer", 0))})
+
+func _register_set_runtime_tilemap_cell(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"set_runtime_tilemap_cell",
+		"Write or erase a single runtime TileMap cell at one layer coordinate.",
+		{
+			"type": "object",
+			"properties": {
+				"node_path": {"type": "string"},
+				"layer": {"type": "integer"},
+				"coords": {"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}, "required": ["x", "y"]},
+				"source_id": {"type": "integer"},
+				"atlas_coords": {"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}},
+				"alternative_tile": {"type": "integer", "default": 0},
+				"erase": {"type": "boolean", "default": false},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["node_path", "layer", "coords"]
+		},
+		Callable(self, "_tool_set_runtime_tilemap_cell"),
+		{"type": "object", "properties": {"node_path": {"type": "string"}, "layer": {"type": "integer"}, "coords": {"type": "object"}, "source_id": {"type": "integer"}, "atlas_coords": {"type": "object"}, "alternative_tile": {"type": "integer"}, "is_empty": {"type": "boolean"}}},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
+	)
+
+func _tool_set_runtime_tilemap_cell(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("node_path", "")
+	if node_path.is_empty():
+		return {"error": "Missing required parameter: node_path"}
+	if not params.has("coords"):
+		return {"error": "Missing required parameter: coords"}
+	var updates: Dictionary = {"erase": bool(params.get("erase", false))}
+	if params.has("source_id"):
+		updates["source_id"] = int(params.get("source_id"))
+	if params.has("atlas_coords"):
+		updates["atlas_coords"] = params.get("atlas_coords")
+	if params.has("alternative_tile"):
+		updates["alternative_tile"] = int(params.get("alternative_tile"))
+	return _request_runtime_probe("set_tilemap_cell", [node_path, int(params.get("layer", 0)), params.get("coords", {}), updates], ["mcp:tilemap_cell_updated"], params, {"node_path": node_path, "layer": int(params.get("layer", 0))})
 
 func _register_list_runtime_audio_buses(server_core: RefCounted) -> void:
 	server_core.register_tool(

@@ -82,6 +82,8 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_get_runtime_info(server_core)
 	_register_get_runtime_scene_tree(server_core)
 	_register_inspect_runtime_node(server_core)
+	_register_create_runtime_node(server_core)
+	_register_delete_runtime_node(server_core)
 	_register_update_runtime_node_property(server_core)
 	_register_call_runtime_node_method(server_core)
 	_register_evaluate_runtime_expression(server_core)
@@ -1085,6 +1087,62 @@ func _tool_inspect_runtime_node(params: Dictionary) -> Dictionary:
 	if node_path.is_empty():
 		return {"error": "Missing required parameter: node_path"}
 	return _request_runtime_probe("inspect_node", [node_path], ["mcp:node"], params, {"path": node_path})
+
+func _register_create_runtime_node(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"create_runtime_node",
+		"Create a new runtime node under an existing parent node in the running game.",
+		{
+			"type": "object",
+			"properties": {
+				"parent_path": {"type": "string", "description": "Runtime node path for the parent, e.g. /root/MainScene"},
+				"node_type": {"type": "string", "description": "Godot node class name to instantiate, e.g. Node2D or Sprite2D."},
+				"node_name": {"type": "string", "description": "Name for the new runtime node."},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["parent_path", "node_type", "node_name"]
+		},
+		Callable(self, "_tool_create_runtime_node"),
+		{"type": "object", "properties": {"parent_path": {"type": "string"}, "node_path": {"type": "string"}, "node_type": {"type": "string"}, "node_name": {"type": "string"}}},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
+	)
+
+func _tool_create_runtime_node(params: Dictionary) -> Dictionary:
+	var parent_path: String = params.get("parent_path", "")
+	var node_type: String = params.get("node_type", "")
+	var node_name: String = params.get("node_name", "")
+	if parent_path.is_empty():
+		return {"error": "Missing required parameter: parent_path"}
+	if node_type.is_empty():
+		return {"error": "Missing required parameter: node_type"}
+	if node_name.is_empty():
+		return {"error": "Missing required parameter: node_name"}
+	return _request_runtime_probe("create_node", [parent_path, node_type, node_name], ["mcp:runtime_node_created"], params, {"node_path": parent_path.path_join(node_name)})
+
+func _register_delete_runtime_node(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"delete_runtime_node",
+		"Delete a runtime node from the running game. The runtime scene root and MCPRuntimeProbe node are protected.",
+		{
+			"type": "object",
+			"properties": {
+				"node_path": {"type": "string", "description": "Runtime node path to delete, e.g. /root/MainScene/Enemy"},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["node_path"]
+		},
+		Callable(self, "_tool_delete_runtime_node"),
+		{"type": "object", "properties": {"node_path": {"type": "string"}, "node_type": {"type": "string"}}},
+		{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true}
+	)
+
+func _tool_delete_runtime_node(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("node_path", "")
+	if node_path.is_empty():
+		return {"error": "Missing required parameter: node_path"}
+	return _request_runtime_probe("delete_node", [node_path], ["mcp:runtime_node_deleted"], params, {"node_path": node_path})
 
 func _register_update_runtime_node_property(server_core: RefCounted) -> void:
 	server_core.register_tool(

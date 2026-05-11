@@ -41,6 +41,10 @@ func _capture_mcp_message(message: String, data: Array) -> bool:
 				return true
 			EngineDebugger.send_message("mcp:node", [_serialize_node(node, 0, 1, true)])
 			return true
+		"create_node":
+			return _handle_create_node(data)
+		"delete_node":
+			return _handle_delete_node(data)
 		"set_node_property":
 			return _handle_set_node_property(data)
 		"call_node_method":
@@ -130,6 +134,74 @@ func _handle_set_node_property(data: Array) -> bool:
 		"property_name": property_name,
 		"old_value": _serialize_value(old_value),
 		"new_value": _serialize_value(node.get(property_name))
+	}])
+	return true
+
+func _handle_create_node(data: Array) -> bool:
+	if data.size() < 3:
+		EngineDebugger.send_message("mcp:error", [{"message": "create_node requires parent_path, node_type, node_name"}])
+		return true
+	var parent_path: String = str(data[0])
+	var node_type: String = str(data[1])
+	var node_name: String = str(data[2])
+	var parent: Node = _resolve_target_node(parent_path)
+	if not parent:
+		EngineDebugger.send_message("mcp:error", [{"message": "Parent node not found: " + parent_path}])
+		return true
+	if node_type.is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": "node_type cannot be empty"}])
+		return true
+	if node_name.is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": "node_name cannot be empty"}])
+		return true
+	if not ClassDB.class_exists(node_type):
+		EngineDebugger.send_message("mcp:error", [{"message": "Invalid node type: " + node_type}])
+		return true
+	if not ClassDB.is_parent_class(node_type, "Node"):
+		EngineDebugger.send_message("mcp:error", [{"message": "Class is not a Node type: " + node_type}])
+		return true
+	var node_instance: Variant = ClassDB.instantiate(node_type)
+	if not (node_instance is Node):
+		EngineDebugger.send_message("mcp:error", [{"message": "Failed to instantiate node type: " + node_type}])
+		return true
+	var node: Node = node_instance
+	node.name = node_name
+	parent.add_child(node)
+	EngineDebugger.send_message("mcp:runtime_node_created", [{
+		"parent_path": str(parent.get_path()),
+		"node_path": str(node.get_path()),
+		"node_type": node.get_class(),
+		"node_name": String(node.name)
+	}])
+	return true
+
+func _handle_delete_node(data: Array) -> bool:
+	if data.is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": "delete_node requires node_path"}])
+		return true
+	var node_path: String = str(data[0])
+	var node: Node = _resolve_target_node(node_path)
+	if not node:
+		EngineDebugger.send_message("mcp:error", [{"message": "Node not found: " + node_path}])
+		return true
+	if node == get_tree().root:
+		EngineDebugger.send_message("mcp:error", [{"message": "Cannot delete the SceneTree root"}])
+		return true
+	if node == get_tree().current_scene:
+		EngineDebugger.send_message("mcp:error", [{"message": "Cannot delete the active runtime scene root"}])
+		return true
+	if node is MCPRuntimeProbe:
+		EngineDebugger.send_message("mcp:error", [{"message": "Cannot delete the MCPRuntimeProbe node while the runtime session is active"}])
+		return true
+	var deleted_path: String = str(node.get_path())
+	var deleted_type: String = node.get_class()
+	var parent: Node = node.get_parent()
+	if parent:
+		parent.remove_child(node)
+	node.queue_free()
+	EngineDebugger.send_message("mcp:runtime_node_deleted", [{
+		"node_path": deleted_path,
+		"node_type": deleted_type
 	}])
 	return true
 

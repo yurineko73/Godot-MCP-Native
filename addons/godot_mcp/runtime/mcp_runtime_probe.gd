@@ -55,6 +55,12 @@ func _capture_mcp_message(message: String, data: Array) -> bool:
 			return _handle_simulate_input_event(data)
 		"simulate_input_action":
 			return _handle_simulate_input_action(data)
+		"list_input_actions":
+			return _handle_list_input_actions(data)
+		"upsert_input_action":
+			return _handle_upsert_input_action(data)
+		"remove_input_action":
+			return _handle_remove_input_action(data)
 		"get_runtime_screenshot":
 			return _handle_get_runtime_screenshot(data)
 		"debug_break":
@@ -315,6 +321,95 @@ func _handle_simulate_input_event(data: Array) -> bool:
 	EngineDebugger.send_message("mcp:input_event_simulated", [_serialize_input_event(event)])
 	return true
 
+func _handle_list_input_actions(data: Array) -> bool:
+	var action_filter: String = ""
+	if not data.is_empty():
+		action_filter = str(data[0])
+	var actions: PackedStringArray = InputMap.get_actions()
+	var results: Array = []
+	for action_name in actions:
+		var action_text: String = str(action_name)
+		if not action_filter.is_empty() and action_text != action_filter:
+			continue
+		var events: Array = []
+		for event in InputMap.action_get_events(action_name):
+			events.append(_serialize_input_event(event))
+		results.append({
+			"action_name": action_text,
+			"deadzone": InputMap.action_get_deadzone(action_name),
+			"event_count": events.size(),
+			"events": events
+		})
+	results.sort_custom(Callable(self, "_sort_input_action_entries"))
+	EngineDebugger.send_message("mcp:input_actions", [{
+		"actions": results,
+		"count": results.size(),
+		"filter": action_filter
+	}])
+	return true
+
+func _handle_upsert_input_action(data: Array) -> bool:
+	if data.is_empty() or not data[0] is String or String(data[0]).is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": "upsert_input_action requires a non-empty action name"}])
+		return true
+	var action_name_text: String = String(data[0])
+	var action_name: StringName = StringName(action_name_text)
+	var deadzone: float = float(data[1]) if data.size() >= 2 else 0.5
+	var erase_existing: bool = bool(data[2]) if data.size() >= 3 else false
+	var event_payloads: Array = data[3] if data.size() >= 4 and data[3] is Array else []
+	var existed_before: bool = InputMap.has_action(action_name)
+
+	if not existed_before:
+		InputMap.add_action(action_name, deadzone)
+	else:
+		InputMap.action_set_deadzone(action_name, deadzone)
+		if erase_existing:
+			for existing_event in InputMap.action_get_events(action_name):
+				InputMap.action_erase_event(action_name, existing_event)
+
+	var added_events: Array = []
+	for payload in event_payloads:
+		if not (payload is Dictionary):
+			EngineDebugger.send_message("mcp:error", [{"message": "Input action events must be dictionaries", "action_name": action_name_text}])
+			return true
+		var event: InputEvent = _build_input_event(payload)
+		if not event:
+			EngineDebugger.send_message("mcp:error", [{"message": "Unsupported input action event payload", "action_name": action_name_text, "payload": payload}])
+			return true
+		InputMap.action_add_event(action_name, event)
+		added_events.append(_serialize_input_event(event))
+
+	var all_events: Array = []
+	for stored_event in InputMap.action_get_events(action_name):
+		all_events.append(_serialize_input_event(stored_event))
+	EngineDebugger.send_message("mcp:input_action_updated", [{
+		"action_name": action_name_text,
+		"existed_before": existed_before,
+		"deadzone": InputMap.action_get_deadzone(action_name),
+		"event_count": all_events.size(),
+		"events": all_events,
+		"added_events": added_events
+	}])
+	return true
+
+func _handle_remove_input_action(data: Array) -> bool:
+	if data.is_empty() or not data[0] is String or String(data[0]).is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": "remove_input_action requires a non-empty action name"}])
+		return true
+	var action_name_text: String = String(data[0])
+	var action_name: StringName = StringName(action_name_text)
+	if not InputMap.has_action(action_name):
+		EngineDebugger.send_message("mcp:error", [{"message": "Input action not found: " + action_name_text}])
+		return true
+	var event_count: int = InputMap.action_get_events(action_name).size()
+	InputMap.erase_action(action_name)
+	EngineDebugger.send_message("mcp:input_action_removed", [{
+		"action_name": action_name_text,
+		"removed": true,
+		"event_count": event_count
+	}])
+	return true
+
 func _build_input_event(payload: Dictionary) -> InputEvent:
 	var event_type: String = str(payload.get("type", "")).to_lower()
 	match event_type:
@@ -413,6 +508,9 @@ func _serialize_input_event(event: InputEvent) -> Dictionary:
 			"velocity": {"x": event.velocity.x, "y": event.velocity.y}
 		}
 	return {"type": "unknown", "class": event.get_class()}
+
+func _sort_input_action_entries(a: Dictionary, b: Dictionary) -> bool:
+	return str(a.get("action_name", "")) < str(b.get("action_name", ""))
 
 func capture_runtime_screenshot(save_path: String = "user://mcp_runtime_capture.png", format: String = "png") -> Dictionary:
 	if not ["png", "jpg"].has(format):

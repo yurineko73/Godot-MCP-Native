@@ -108,6 +108,9 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_evaluate_runtime_expression(server_core)
 	_register_simulate_runtime_input_event(server_core)
 	_register_simulate_runtime_input_action(server_core)
+	_register_list_runtime_input_actions(server_core)
+	_register_upsert_runtime_input_action(server_core)
+	_register_remove_runtime_input_action(server_core)
 	_register_get_runtime_screenshot(server_core)
 	_register_await_runtime_condition(server_core)
 	_register_assert_runtime_condition(server_core)
@@ -1297,6 +1300,81 @@ func _tool_simulate_runtime_input_action(params: Dictionary) -> Dictionary:
 	var pressed: bool = bool(params.get("pressed", true))
 	var strength: float = float(params.get("strength", 1.0 if pressed else 0.0))
 	return _request_runtime_probe("simulate_input_action", [action_name, pressed, strength], ["mcp:input_action_simulated"], params, {"action_name": action_name})
+
+func _register_list_runtime_input_actions(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"list_runtime_input_actions",
+		"List InputMap actions available in the running game, including serialized input events.",
+		{
+			"type": "object",
+			"properties": {
+				"action_name": {"type": "string", "description": "Optional exact action name filter."},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			}
+		},
+		Callable(self, "_tool_list_runtime_input_actions"),
+		{"type": "object", "properties": {"actions": {"type": "array"}, "count": {"type": "integer"}, "filter": {"type": "string"}}},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
+	)
+
+func _tool_list_runtime_input_actions(params: Dictionary) -> Dictionary:
+	var action_name: String = params.get("action_name", "")
+	return _request_runtime_probe("list_input_actions", [action_name], ["mcp:input_actions"], params, {"filter": action_name})
+
+func _register_upsert_runtime_input_action(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"upsert_runtime_input_action",
+		"Create or update an InputMap action in the running game. Supports replacing existing events.",
+		{
+			"type": "object",
+			"properties": {
+				"action_name": {"type": "string"},
+				"deadzone": {"type": "number", "default": 0.5},
+				"erase_existing": {"type": "boolean", "default": false},
+				"events": {"type": "array", "description": "Optional structured input event payloads to add to the action."},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["action_name"]
+		},
+		Callable(self, "_tool_upsert_runtime_input_action"),
+		{"type": "object", "properties": {"action_name": {"type": "string"}, "existed_before": {"type": "boolean"}, "deadzone": {"type": "number"}, "event_count": {"type": "integer"}, "events": {"type": "array"}, "added_events": {"type": "array"}}},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
+	)
+
+func _tool_upsert_runtime_input_action(params: Dictionary) -> Dictionary:
+	var action_name: String = params.get("action_name", "")
+	if action_name.is_empty():
+		return {"error": "Missing required parameter: action_name"}
+	var deadzone: float = float(params.get("deadzone", 0.5))
+	var erase_existing: bool = bool(params.get("erase_existing", false))
+	var events: Array = params.get("events", [])
+	return _request_runtime_probe("upsert_input_action", [action_name, deadzone, erase_existing, events], ["mcp:input_action_updated"], params, {"action_name": action_name})
+
+func _register_remove_runtime_input_action(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"remove_runtime_input_action",
+		"Remove an InputMap action from the running game.",
+		{
+			"type": "object",
+			"properties": {
+				"action_name": {"type": "string"},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["action_name"]
+		},
+		Callable(self, "_tool_remove_runtime_input_action"),
+		{"type": "object", "properties": {"action_name": {"type": "string"}, "removed": {"type": "boolean"}, "event_count": {"type": "integer"}}},
+		{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true}
+	)
+
+func _tool_remove_runtime_input_action(params: Dictionary) -> Dictionary:
+	var action_name: String = params.get("action_name", "")
+	if action_name.is_empty():
+		return {"error": "Missing required parameter: action_name"}
+	return _request_runtime_probe("remove_input_action", [action_name], ["mcp:input_action_removed"], params, {"action_name": action_name})
 
 func _register_get_runtime_screenshot(server_core: RefCounted) -> void:
 	server_core.register_tool(

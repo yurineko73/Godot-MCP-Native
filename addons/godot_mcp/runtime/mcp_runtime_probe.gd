@@ -49,6 +49,8 @@ func _capture_mcp_message(message: String, data: Array) -> bool:
 		"get_performance_snapshot":
 			EngineDebugger.send_message("mcp:performance_snapshot", [_get_performance_snapshot()])
 			return true
+		"get_memory_trend":
+			return _handle_get_memory_trend(data)
 		"get_scene_tree":
 			var max_depth: int = 6
 			if not data.is_empty() and data[0] is int:
@@ -158,6 +160,50 @@ func _get_performance_snapshot() -> Dictionary:
 		"current_scene": str(get_tree().current_scene.get_path()) if get_tree().current_scene else "",
 		"node_count": _count_nodes(get_tree().root)
 	}
+
+func _get_memory_sample(sample_index: int) -> Dictionary:
+	var memory_static: float = float(Performance.get_monitor(Performance.MEMORY_STATIC))
+	return {
+		"sample_index": sample_index,
+		"timestamp_ms": Time.get_ticks_msec(),
+		"memory_static_bytes": int(memory_static),
+		"memory_static_mb": memory_static / 1024.0 / 1024.0,
+		"object_count": int(Performance.get_monitor(Performance.OBJECT_COUNT)),
+		"resource_count": int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT))
+	}
+
+func _handle_get_memory_trend(data: Array) -> bool:
+	var sample_count: int = 5
+	var sample_interval_ms: int = 100
+	if data.size() > 0:
+		sample_count = max(int(data[0]), 1)
+	if data.size() > 1:
+		sample_interval_ms = max(int(data[1]), 0)
+	var samples: Array = []
+	for sample_index in range(sample_count):
+		samples.append(_get_memory_sample(sample_index))
+		if sample_index < sample_count - 1 and sample_interval_ms > 0:
+			OS.delay_msec(sample_interval_ms)
+
+	var first_sample: Dictionary = samples[0] if not samples.is_empty() else {}
+	var last_sample: Dictionary = samples[samples.size() - 1] if not samples.is_empty() else {}
+	var first_bytes: int = int(first_sample.get("memory_static_bytes", 0))
+	var last_bytes: int = int(last_sample.get("memory_static_bytes", 0))
+	var first_objects: int = int(first_sample.get("object_count", 0))
+	var last_objects: int = int(last_sample.get("object_count", 0))
+	var first_resources: int = int(first_sample.get("resource_count", 0))
+	var last_resources: int = int(last_sample.get("resource_count", 0))
+
+	EngineDebugger.send_message("mcp:memory_trend", [{
+		"sample_count": sample_count,
+		"sample_interval_ms": sample_interval_ms,
+		"memory_static_delta_bytes": last_bytes - first_bytes,
+		"object_count_delta": last_objects - first_objects,
+		"resource_count_delta": last_resources - first_resources,
+		"current_scene": str(get_tree().current_scene.get_path()) if get_tree().current_scene else "",
+		"samples": samples
+	}])
+	return true
 
 func _serialize_node(node: Node, depth: int, max_depth: int, include_properties: bool = false) -> Dictionary:
 	var result: Dictionary = {

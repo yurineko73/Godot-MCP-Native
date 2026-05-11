@@ -101,6 +101,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_await_debugger_state(server_core)
 	_register_get_runtime_info(server_core)
 	_register_get_runtime_performance_snapshot(server_core)
+	_register_get_runtime_memory_trend(server_core)
 	_register_get_runtime_scene_tree(server_core)
 	_register_inspect_runtime_node(server_core)
 	_register_create_runtime_node(server_core)
@@ -1115,6 +1116,61 @@ func _tool_get_runtime_performance_snapshot(params: Dictionary) -> Dictionary:
 				stale_snapshot["status"] = "stale"
 				stale_snapshot["refresh_result"] = result.get("refresh_result", {})
 				return stale_snapshot
+	return result
+
+func _register_get_runtime_memory_trend(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"get_runtime_memory_trend",
+		"Capture a short runtime memory and object-count trend from the running game over multiple samples.",
+		{
+			"type": "object",
+			"properties": {
+				"sample_count": {"type": "integer", "default": 5},
+				"sample_interval_ms": {"type": "integer", "default": 100},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 3000}
+			}
+		},
+		Callable(self, "_tool_get_runtime_memory_trend"),
+		{
+			"type": "object",
+			"properties": {
+				"sample_count": {"type": "integer"},
+				"sample_interval_ms": {"type": "integer"},
+				"memory_static_delta_bytes": {"type": "integer"},
+				"object_count_delta": {"type": "integer"},
+				"resource_count_delta": {"type": "integer"},
+				"current_scene": {"type": "string"},
+				"samples": {"type": "array"}
+			}
+		},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
+	)
+
+func _tool_get_runtime_memory_trend(params: Dictionary) -> Dictionary:
+	var sample_count: int = max(int(params.get("sample_count", 5)), 1)
+	var sample_interval_ms: int = max(int(params.get("sample_interval_ms", 100)), 0)
+	var result: Dictionary = _request_runtime_probe(
+		"get_memory_trend",
+		[sample_count, sample_interval_ms],
+		["mcp:memory_trend"],
+		params,
+		{
+			"sample_count": sample_count,
+			"sample_interval_ms": sample_interval_ms
+		}
+	)
+	if result.get("status", "") == "pending":
+		var bridge: RefCounted = _get_debugger_bridge()
+		if bridge:
+			var latest_trend: Variant = bridge.get_latest_message_payload("mcp:memory_trend")
+			if latest_trend is Dictionary \
+					and int(latest_trend.get("sample_count", -1)) == sample_count \
+					and int(latest_trend.get("sample_interval_ms", -1)) == sample_interval_ms:
+				var stale_trend: Dictionary = latest_trend.duplicate(true)
+				stale_trend["status"] = "stale"
+				stale_trend["refresh_result"] = result.get("refresh_result", {})
+				return stale_trend
 	return result
 
 func _register_get_runtime_scene_tree(server_core: RefCounted) -> void:

@@ -1,5 +1,5 @@
-# script_tools_native.gd - Script Tools原生实现（简化版）
-# 根据godot-dev-guide添加完整的类型提示
+# script_tools_native.gd - нативная реализация Script Tools (упрощенная версия)
+# Добавлены полные подсказки типов по godot-dev-guide
 
 @tool
 class_name ScriptToolsNative
@@ -20,7 +20,7 @@ func _get_editor_interface() -> EditorInterface:
 	return null
 
 # ============================================================================
-# 工具注册
+# Регистрация инструментов
 # ============================================================================
 
 func register_tools(server_core: RefCounted) -> void:
@@ -35,7 +35,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_search_in_files(server_core)
 
 # ============================================================================
-# list_project_scripts - 列出所有脚本
+# list_project_scripts - список всех скриптов
 # ============================================================================
 
 func _register_list_project_scripts(server_core: RefCounted) -> void:
@@ -74,28 +74,28 @@ func _register_list_project_scripts(server_core: RefCounted) -> void:
 		"openWorldHint": false
 	}
 	
-	# 注册工具
+	# Регистрация инструмента
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_list_project_scripts"),
 						  output_schema, annotations)
 
 func _tool_list_project_scripts(params: Dictionary) -> Dictionary:
-	# 参数提取
+	# Извлечение параметров
 	var search_path: String = params.get("search_path", "res://")
 	
-	# 使用PathValidator验证路径安全性
+	# Проверка безопасности пути через PathValidator
 	var validation: Dictionary = PathValidator.validate_directory_path(search_path)
 	if not validation["valid"]:
 		return {"error": "Invalid path: " + validation["error"]}
 	
-	# 使用清理后的路径
+	# Использование очищенного пути
 	search_path = validation["sanitized"]
 	
-	# 使用DirAccess递归查找所有.gd文件
+	# Рекурсивный поиск всех .gd-файлов через DirAccess
 	var scripts: Array = []
 	_collect_scripts(search_path, scripts)
 	
-	# 排序
+	# Сортировка
 	scripts.sort()
 	
 	return {
@@ -103,19 +103,19 @@ func _tool_list_project_scripts(params: Dictionary) -> Dictionary:
 		"count": scripts.size()
 	}
 
-# 辅助函数：递归收集脚本文件
+# Вспомогательная функция: рекурсивный сбор файлов скриптов
 func _collect_scripts(directory_path: String, result: Array) -> void:
 	var dir: DirAccess = DirAccess.open(directory_path)
 	
 	if not dir:
 		return
 	
-	# 列出所有文件和目录
+	# Перебор всех файлов и каталогов
 	dir.list_dir_begin()
 	var file_name: String = dir.get_next()
 	
 	while not file_name.is_empty():
-		# 跳过特殊目录
+		# Пропуск специальных каталогов
 		if file_name != "." and file_name != "..":
 			var full_path: String = directory_path
 			if not full_path.ends_with("/"):
@@ -123,10 +123,10 @@ func _collect_scripts(directory_path: String, result: Array) -> void:
 			full_path += file_name
 			
 			if dir.current_is_dir():
-				# 递归处理子目录
+				# Рекурсивная обработка подкаталогов
 				_collect_scripts(full_path, result)
 			elif file_name.ends_with(".gd"):
-				# 添加脚本文件
+				# Добавление файла скрипта
 				result.append(full_path)
 		
 		file_name = dir.get_next()
@@ -134,7 +134,7 @@ func _collect_scripts(directory_path: String, result: Array) -> void:
 	dir.list_dir_end()
 
 # ============================================================================
-# read_script - 读取脚本内容
+# read_script - чтение содержимого скрипта
 # ============================================================================
 
 func _register_read_script(server_core: RefCounted) -> void:
@@ -171,34 +171,34 @@ func _register_read_script(server_core: RefCounted) -> void:
 		"openWorldHint": false
 	}
 	
-	# 注册工具
+	# Регистрация инструмента
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_read_script"),
 						  output_schema, annotations)
 
 func _tool_read_script(params: Dictionary) -> Dictionary:
-	# 参数提取
+	# Извлечение параметров
 	var script_path: String = params.get("script_path", "")
 	
 	if script_path.is_empty():
 		return {"error": "Missing required parameter: script_path"}
 	
-	# 使用PathValidator验证路径安全性
+	# Проверка безопасности пути через PathValidator
 	var validation: Dictionary = PathValidator.validate_file_path(script_path, [".gd"])
 	if not validation["valid"]:
 		return {"error": "Invalid path: " + validation["error"]}
 	
-	# 使用清理后的路径
+	# Использование очищенного пути
 	script_path = validation["sanitized"]
 	
-	# 验证文件是否存在
+	# Проверка наличия файла
 	
 	var file: FileAccess = FileAccess.open(script_path, FileAccess.READ)
 	
 	if not file:
 		return {"error": "Failed to open file: " + script_path}
 	
-	# 读取内容
+	# Чтение содержимого
 	var content: String = file.get_as_text()
 	file.close()
 
@@ -211,7 +211,7 @@ func _tool_read_script(params: Dictionary) -> Dictionary:
 	}
 
 # ============================================================================
-# create_script - 创建新脚本
+# create_script - создание нового скрипта
 # ============================================================================
 
 func _register_create_script(server_core: RefCounted) -> void:
@@ -260,7 +260,7 @@ func _register_create_script(server_core: RefCounted) -> void:
 		"openWorldHint": false
 	}
 	
-	# 注册工具
+	# Регистрация инструмента
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_create_script"),
 						  output_schema, annotations)
@@ -330,7 +330,7 @@ func _resolve_node_path(editor_interface: EditorInterface, path: String) -> Node
 		return edited_scene.get_node_or_null(relative)
 	return edited_scene.get_node_or_null(path)
 
-# 辅助函数：获取脚本模板
+# Вспомогательная функция: получение шаблона скрипта
 func _get_script_template(template_name: String) -> String:
 	if template_name == "node":
 		return """@tool
@@ -362,7 +362,7 @@ func _physics_process(delta: float) -> void:
 		return ""
 
 # ============================================================================
-# modify_script - 修改脚本内容
+# modify_script - изменение содержимого скрипта
 # ============================================================================
 
 func _register_modify_script(server_core: RefCounted) -> void:
@@ -402,41 +402,41 @@ func _register_modify_script(server_core: RefCounted) -> void:
 	# annotations - destructiveHint = true
 	var annotations: Dictionary = {
 		"readOnlyHint": false,
-		"destructiveHint": true,  # 会覆盖文件
+		"destructiveHint": true,  # перезаписывает файл
 		"idempotentHint": false,
 		"openWorldHint": false
 	}
 	
-	# 注册工具
+	# Регистрация инструмента
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_modify_script"),
 						  output_schema, annotations)
 
 func _tool_modify_script(params: Dictionary) -> Dictionary:
-	# 参数提取
+	# Извлечение параметров
 	var script_path: String = params.get("script_path", "")
 	var new_content: String = params.get("content", "")
 	var line_number: int = params.get("line_number", 0)
 	
-	# 参数验证
+	# Проверка параметров
 	if script_path.is_empty():
 		return {"error": "Missing required parameter: script_path"}
 	if new_content.is_empty():
 		return {"error": "Missing required parameter: content"}
 	
-	# 使用PathValidator验证路径安全性
+	# Проверка безопасности пути через PathValidator
 	var validation: Dictionary = PathValidator.validate_file_path(script_path, [".gd"])
 	if not validation["valid"]:
 		return {"error": "Invalid path: " + validation["error"]}
 	
-	# 使用清理后的路径
+	# Использование очищенного пути
 	script_path = validation["sanitized"]
 	
-	# 验证文件是否存在
+	# Проверка наличия файла
 	if not FileAccess.file_exists(script_path):
 		return {"error": "File not found: " + script_path}
 	
-	# 读取现有内容
+	# Чтение текущего содержимого
 	var file: FileAccess = FileAccess.open(script_path, FileAccess.READ)
 	if not file:
 		return {"error": "Failed to open file for reading: " + script_path}
@@ -446,18 +446,18 @@ func _tool_modify_script(params: Dictionary) -> Dictionary:
 		existing_lines.append(file.get_line())
 	file.close()
 	
-	# 修改内容
+	# Изменение содержимого
 	var final_content: String
 	
 	if line_number > 0 and line_number <= existing_lines.size():
-		# 替换特定行
+		# Замена конкретной строки
 		existing_lines[line_number - 1] = new_content
 		final_content = "\n".join(existing_lines)
 	else:
-		# 全量替换
+		# Полная замена
 		final_content = new_content
 	
-	# 写入文件
+	# Запись файла
 	file = FileAccess.open(script_path, FileAccess.WRITE)
 	if not file:
 		return {"error": "Failed to open file for writing: " + script_path}
@@ -465,7 +465,7 @@ func _tool_modify_script(params: Dictionary) -> Dictionary:
 	file.store_string(final_content)
 	file.close()
 	
-	# 计算行数
+	# Подсчет количества строк
 	var line_count: int = final_content.split("\n").size()
 	
 	return {
@@ -475,7 +475,7 @@ func _tool_modify_script(params: Dictionary) -> Dictionary:
 	}
 
 # ============================================================================
-# analyze_script - 分析脚本结构（完整版）
+# analyze_script - анализ структуры скрипта (полная версия)
 # ============================================================================
 
 func _register_analyze_script(server_core: RefCounted) -> void:
@@ -516,28 +516,28 @@ func _register_analyze_script(server_core: RefCounted) -> void:
 		"openWorldHint": false
 	}
 	
-	# 注册工具
+	# Регистрация инструмента
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_analyze_script"),
 						  output_schema, annotations)
 
 func _tool_analyze_script(params: Dictionary) -> Dictionary:
-	# 参数提取
+	# Извлечение параметров
 	var script_path: String = params.get("script_path", "")
 	
-	# 参数验证
+	# Проверка параметров
 	if script_path.is_empty():
 		return {"error": "Missing required parameter: script_path"}
 	
-	# 使用PathValidator验证路径安全性
+	# Проверка безопасности пути через PathValidator
 	var validation: Dictionary = PathValidator.validate_file_path(script_path, [".gd"])
 	if not validation["valid"]:
 		return {"error": "Invalid path: " + validation["error"]}
 	
-	# 使用清理后的路径
+	# Использование очищенного пути
 	script_path = validation["sanitized"]
 	
-	# 验证文件是否存在
+	# Проверка наличия файла
 	var line_count: int = 0
 	var has_class_name: bool = false
 	var extends_from: String = ""
@@ -545,7 +545,7 @@ func _tool_analyze_script(params: Dictionary) -> Dictionary:
 	var signals: Array = []
 	var properties: Array = []
 	
-	# 读取文件内容
+	# Чтение файла
 	var file: FileAccess = FileAccess.open(script_path, FileAccess.READ)
 	if not file:
 		return {"error": "Failed to open file: " + script_path}
@@ -554,7 +554,7 @@ func _tool_analyze_script(params: Dictionary) -> Dictionary:
 		var line: String = file.get_line()
 		line_count += 1
 		
-		# 简单解析
+		# Упрощенный разбор
 		var trimmed: String = line.strip_edges()
 		
 		if trimmed.begins_with("class_name "):
@@ -562,7 +562,7 @@ func _tool_analyze_script(params: Dictionary) -> Dictionary:
 		elif trimmed.begins_with("extends ") and extends_from.is_empty():
 			extends_from = trimmed.split(" ")[1]
 		elif trimmed.begins_with("func "):
-			# 提取函数名
+			# Извлечение имени функции
 			var func_name: String = trimmed.replace("func ", "").split("(")[0]
 			functions.append(func_name)
 		elif trimmed.begins_with("signal "):
@@ -587,7 +587,7 @@ func _tool_analyze_script(params: Dictionary) -> Dictionary:
 	}
 
 # ============================================================================
-# get_current_script - 获取当前正在编辑的脚本
+# get_current_script - получение текущего редактируемого скрипта
 # ============================================================================
 
 func _register_get_current_script(server_core: RefCounted) -> void:
@@ -654,7 +654,7 @@ func _tool_get_current_script(params: Dictionary) -> Dictionary:
 	}
 
 # ============================================================================
-# attach_script - 将脚本附加到节点
+# attach_script - прикрепление скрипта к узлу
 # ============================================================================
 
 func _register_attach_script(server_core: RefCounted) -> void:
@@ -742,7 +742,7 @@ func _tool_attach_script(params: Dictionary) -> Dictionary:
 	}
 
 # ============================================================================
-# validate_script - 验证 GDScript 语法
+# validate_script - проверка синтаксиса GDScript
 # ============================================================================
 
 func _register_validate_script(server_core: RefCounted) -> void:
@@ -882,7 +882,7 @@ func _strip_class_names(source: String) -> String:
 	return "\n".join(result)
 
 # ============================================================================
-# search_in_files - 在项目文件中搜索内容
+# search_in_files - поиск по файлам проекта
 # ============================================================================
 
 func _register_search_in_files(server_core: RefCounted) -> void:

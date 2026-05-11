@@ -1,22 +1,22 @@
-# mcp_server_core.gd - MCP服务器核心实现
-# 整合传输层、协议处理、工具注册、资源管理
-# 根据godot-dev-guide添加完整的类型提示
-# 根据mcp-builder添加outputSchema和annotations支持
+# mcp_server_core.gd - основная реализация MCP-сервера
+# Объединяет транспортный слой, обработку протокола, регистрацию инструментов и управление ресурсами
+# Добавлены полные подсказки типов (по godot-dev-guide)
+# Добавлена поддержка outputSchema и annotations (по mcp-builder)
 
 class_name MCPServerCore
 extends RefCounted
 
 # ============================================================================
-# 传输类型枚举
+# Перечисление типов транспорта
 # ============================================================================
 
 enum TransportType {
-	TRANSPORT_STDIO,    # stdio 传输（默认）
-	TRANSPORT_HTTP      # HTTP 传输
+	TRANSPORT_STDIO,    # транспорт stdio (по умолчанию)
+	TRANSPORT_HTTP      # транспорт HTTP
 }
 
 # ============================================================================
-# 信号定义（使用信号解耦通信 - 根据godot-dev-guide）
+# Определение сигналов (развязка через сигналы по godot-dev-guide)
 # ============================================================================
 
 signal server_started
@@ -31,57 +31,57 @@ signal resource_loaded(resource_uri: String, content: Dictionary)
 signal log_message(level: String, message: String)
 
 # ============================================================================
-# 常量
+# Константы
 # ============================================================================
 
 const JSONRPC_VERSION: String = "2.0"
 const PROTOCOL_VERSION: String = "2025-11-25"
 
 # ============================================================================
-# 状态变量（使用完整类型提示 - 根据godot-dev-guide）
+# Переменные состояния (полные подсказки типов по godot-dev-guide)
 # ============================================================================
 
 var _active: bool = false
 var _thread: Thread = null
 var _mutex: Mutex = Mutex.new()
 
-# 传输方式相关变量（新增 - 支持多种传输方式）
+# Переменные, связанные с транспортом (добавлено - поддержка нескольких транспортов)
 var _transport_type: TransportType = TransportType.TRANSPORT_STDIO
-var _transport: McpTransportBase = null  # 传输层实例（使用基类类型）
-var _auth_manager: McpAuthManager = null  # 认证管理器（HTTP 模式使用）
-var _http_port: int = 9080  # HTTP 监听端口
+var _transport: McpTransportBase = null  # Экземпляр транспортного слоя (тип базового класса)
+var _auth_manager: McpAuthManager = null  # Менеджер аутентификации (для режима HTTP)
+var _http_port: int = 9080  # Порт прослушивания HTTP
 
-# 消息队列（使用类型化数组 - 根据godot-dev-guide）
+# Очереди сообщений (типизированные массивы по godot-dev-guide)
 var _message_queue: Array[Dictionary] = []
 var _response_queue: Array[Dictionary] = []
 
-# 工具和资源注册表
+# Реестр инструментов и ресурсов
 var _tools: Dictionary = {}  # String -> MCPTool
 var _resources: Dictionary = {}  # String -> MCPResource
 var _prompts: Dictionary = {}  # String -> MCPPrompt
 
-# 配置
+# Конфигурация
 var _log_level: int = MCPTypes.LogLevel.INFO
 var _security_level: int = MCPTypes.SecurityLevel.STRICT
-var _rate_limit: int = 100  # 每60秒最多100个请求
+var _rate_limit: int = 100  # Не более 100 запросов за 60 секунд
 
-# 速率限制跟踪
+# Отслеживание лимита запросов
 var _request_count: Dictionary = {}  # String (client_id) -> int
 var _request_timestamps: Dictionary = {}  # String (client_id) -> Array[int]
 
-# 缓存
+# Кэш
 var _scene_structure_cache: Dictionary = {}  # String -> Dictionary
 var _cache_timestamp: Dictionary = {}  # String -> int
 
-# JSONRPC实例（如需使用Godot内置JSONRPC处理，可取消注释）
+# Экземпляр JSONRPC (если нужен встроенный обработчик Godot, можно раскомментировать)
 # var _jsonrpc: JSONRPC = JSONRPC.new()
 
 # ============================================================================
-# 传输层接口方法（新增 - 支持多种传输方式）
+# Методы интерфейса транспортного слоя (добавлено - поддержка разных транспортов)
 # ============================================================================
 
-## 设置传输方式（必须在服务器启动前调用）
-## @param type: TransportType - 传输类型枚举
+## Установить тип транспорта (вызывать до старта сервера)
+## @param type: TransportType - перечисление типов транспорта
 func set_transport_type(type: TransportType) -> void:
 	if _active:
 		_log_error("Cannot change transport type while server is running")
@@ -89,14 +89,14 @@ func set_transport_type(type: TransportType) -> void:
 	_transport_type = type
 	_log_info("Transport type set to: " + str(_transport_type))
 
-## 设置认证管理器（HTTP 模式使用）
-## @param manager: McpAuthManager - 认证管理器实例
+## Установить менеджер аутентификации (режим HTTP)
+## @param manager: McpAuthManager - экземпляр менеджера аутентификации
 func set_auth_manager(manager: McpAuthManager) -> void:
 	_auth_manager = manager
 	_log_info("Auth manager set")
 
-## 设置 HTTP 端口（HTTP 模式使用，必须在服务器启动前调用）
-## @param port: int - 监听端口号
+## Установить HTTP-порт (режим HTTP, вызывать до старта сервера)
+## @param port: int - номер порта прослушивания
 func set_http_port(port: int) -> void:
 	if _transport and _transport.has_method("set_port"):
 		_transport.set_port(port)
@@ -113,8 +113,8 @@ func set_remote_config(allow_remote: bool, cors_origin: String) -> void:
 		_transport.set_remote_config(allow_remote, cors_origin)
 	_log_info("Remote config - allow: " + str(allow_remote) + ", CORS: " + cors_origin)
 
-## 初始化传输层（根据 _transport_type 创建对应实例）
-## @returns: bool - 初始化成功返回 true，失败返回 false
+## Инициализировать транспортный слой (создаёт экземпляр по _transport_type)
+## @returns: bool - true при успешной инициализации, иначе false
 func _init_transport() -> bool:
 	match _transport_type:
 		TransportType.TRANSPORT_STDIO:
@@ -136,7 +136,7 @@ func _init_transport() -> bool:
 			_log_error("Unknown transport type: " + str(_transport_type))
 			return false
 	
-	# 连接信号（确保线程安全）
+	# Подключение сигналов (для потокобезопасности)
 	_transport.message_received.connect(_on_transport_message_received)
 	_transport.server_error.connect(_on_transport_error)
 	_transport.server_started.connect(_on_transport_started)
@@ -145,11 +145,11 @@ func _init_transport() -> bool:
 	_log_info("Transport layer initialized: " + str(_transport_type))
 	return true
 
-## 处理来自传输层的消息（线程安全：此函数在主线程执行）
-## @param message: Dictionary - JSON-RPC 消息
-## @param context: Variant - 传输上下文（stdio: null, HTTP: StreamPeerTCP）
+## Обработка сообщения от транспортного слоя (потокобезопасно: выполняется в главном потоке)
+## @param message: Dictionary - сообщение JSON-RPC
+## @param context: Variant - транспортный контекст (stdio: null, HTTP: StreamPeerTCP)
 func _on_transport_message_received(message: Dictionary, context: Variant) -> void:
-	# 验证消息格式
+	# Проверка формата сообщения
 	if not message.has("jsonrpc"):
 		_send_error(null, MCPTypes.ERROR_INVALID_REQUEST, 
 				   "Missing 'jsonrpc' field. Please ensure the message is a valid JSON-RPC 2.0 message.")
@@ -160,43 +160,43 @@ func _on_transport_message_received(message: Dictionary, context: Variant) -> vo
 				   "Invalid JSON-RPC version. Expected '2.0', got: " + str(message["jsonrpc"]))
 		return
 	
-	# 记录收到的消息
+	# Логирование полученного сообщения
 	message_received.emit(message)
 	_log_debug("Received message: " + JSON.stringify(message))
 	
-	# 处理请求
+	# Обработка запроса
 	var response: Dictionary = {}
 	
 	if message.has("method"):
-		# 这是一个请求或通知
+		# Это запрос или уведомление
 		response = _handle_request(message)
 	else:
-		# 这是一个响应（通常不需要处理）
+		# Это ответ (обычно не требует обработки)
 		_log_warn("Received unexpected response message: " + JSON.stringify(message))
 		return
 	
-	# 发送响应（如果有）
+	# Отправка ответа (если есть)
 	if response:
 		_send_response(response, context)
 
-## 处理传输层错误
-## @param error: String - 错误描述
+## Обработка ошибки транспортного слоя
+## @param error: String - описание ошибки
 func _on_transport_error(error: String) -> void:
 	_log_error("Transport error: " + error)
 
-## 处理传输层启动
+## Обработка запуска транспортного слоя
 func _on_transport_started() -> void:
 	_log_info("Transport layer started")
 	server_started.emit()
 
-## 处理传输层停止
+## Обработка остановки транспортного слоя
 func _on_transport_stopped() -> void:
 	_log_info("Transport layer stopped")
 	server_stopped.emit()
 
 
 # ============================================================================
-# 生命周期方法
+# Методы жизненного цикла
 # ============================================================================
 
 func start() -> bool:
@@ -206,12 +206,12 @@ func start() -> bool:
 	
 	_log_info("Starting MCP Server (transport: " + str(_transport_type) + ")...")
 	
-	# 初始化传输层
+	# Инициализация транспортного слоя
 	if not _init_transport():
 		_log_error("Failed to initialize transport layer")
 		return false
 	
-	# 启动传输层
+	# Запуск транспортного слоя
 	var success: bool = _transport.start()
 	
 	if not success:
@@ -229,7 +229,7 @@ func stop() -> void:
 	
 	_log_info("Stopping MCP Server...")
 	
-	# 停止传输层
+	# Остановка транспортного слоя
 	if _transport:
 		_transport.stop()
 		_transport = null
@@ -243,7 +243,7 @@ func is_running() -> bool:
 	return false
 
 # ============================================================================
-# 请求处理（根据mcp-builder优化）
+# Обработка запросов (оптимизация по mcp-builder)
 # ============================================================================
 
 func _handle_request(message: Dictionary) -> Dictionary:
@@ -251,7 +251,7 @@ func _handle_request(message: Dictionary) -> Dictionary:
 	var id: Variant = message.get("id", null)
 	var params: Dictionary = message.get("params", {})
 	
-	# 速率限制检查
+	# Проверка лимита запросов
 	if not _check_rate_limit("default"):
 		return MCPTypes.create_error_response(id, MCPTypes.ERROR_INTERNAL_ERROR, "Rate limit exceeded")
 	
@@ -288,7 +288,7 @@ func _handle_request(message: Dictionary) -> Dictionary:
 			return MCPTypes.create_error_response(id, MCPTypes.ERROR_METHOD_NOT_FOUND, "Method not found: " + method)
 
 # ============================================================================
-# MCP协议方法实现（完整版 - 根据mcp-builder）
+# Реализация методов MCP-протокола (полная версия по mcp-builder)
 # ============================================================================
 
 func _handle_initialize(message: Dictionary) -> Dictionary:
@@ -335,13 +335,13 @@ func _negotiate_protocol_version(client_version: String) -> String:
 
 func _handle_initialized_notification(message: Dictionary) -> Dictionary:
 	_log_info("Client initialized notification received")
-	# 这是一个通知，不需要返回响应
+	# Это уведомление, ответ не требуется
 	return {}
 
 func _handle_tools_list(message: Dictionary) -> Dictionary:
 	var id: Variant = message.get("id")
 	
-	# 构建工具列表（根据mcp-builder，包含annotations和outputSchema）
+	# Формирование списка инструментов (по mcp-builder, включая annotations и outputSchema)
 	var tools_list: Array[Dictionary] = []
 	
 	for tool_name in _tools:
@@ -367,7 +367,7 @@ func _handle_tool_call(message: Dictionary) -> Dictionary:
 	_log_info("Tool call: " + tool_name)
 	_log_debug("Tool arguments: " + JSON.stringify(arguments))
 	
-	# 检查工具是否存在
+	# Проверка существования инструмента
 	if not _tools.has(tool_name):
 		_log_error("Tool not found: " + tool_name)
 		var error_result: Dictionary = {
@@ -392,24 +392,24 @@ func _handle_tool_call(message: Dictionary) -> Dictionary:
 		}
 		return MCPTypes.create_response(id, error_result)
 	
-	# 发送开始信号
+	# Отправка сигнала начала выполнения
 	tool_execution_started.emit(tool_name, arguments)
 	
-	# 执行工具
+	# Выполнение инструмента
 	var result: Variant = null
 	var error: String = ""
 	
 	if tool.callable.is_valid():
-		# 使用Callable调用工具
+		# Вызов инструмента через Callable
 		var status: Error = OK
 		
-		# 捕获执行错误
+		# Обработка ошибок выполнения
 		if status == OK:
 			result = tool.callable.call(arguments)
 		else:
 			error = "Tool execution failed with error: " + str(status)
 	
-	# 处理执行结果
+	# Обработка результата выполнения
 	if not error.is_empty():
 		_log_error("Tool execution failed: " + tool_name + " - " + error)
 		tool_execution_failed.emit(tool_name, error)
@@ -439,7 +439,7 @@ func _handle_tool_call(message: Dictionary) -> Dictionary:
 	
 	_append_tool_log(tool_name, result, error)
 	
-	# 发送完成信号
+	# Отправка сигнала завершения
 	tool_execution_completed.emit(tool_name, result)
 	_log_info("Tool execution completed: " + tool_name)
 	
@@ -450,7 +450,7 @@ func _handle_resources_list(message: Dictionary) -> Dictionary:
 	
 	_log_info("Resources list requested. Available resources: " + str(_resources.size()))
 	
-	# 构建资源列表（根据mcp-builder，包含description）
+	# Формирование списка ресурсов (по mcp-builder, включая description)
 	var resources_list: Array[Dictionary] = []
 	
 	for uri in _resources:
@@ -472,7 +472,7 @@ func _handle_resource_read(message: Dictionary) -> Dictionary:
 	
 	_log_info("Resource read: " + uri)
 	
-	# 检查资源是否存在
+	# Проверка существования ресурса
 	if not _resources.has(uri):
 		_log_error("Resource not found: " + uri)
 		return MCPTypes.create_error_response(id, MCPTypes.ERROR_RESOURCE_NOT_FOUND, "Resource not found: " + uri)
@@ -501,7 +501,7 @@ func _handle_resource_read(message: Dictionary) -> Dictionary:
 	
 	var response: Dictionary = MCPTypes.create_response(id, result)
 	
-	# 发送资源加载信号
+	# Отправка сигнала загрузки ресурса
 	resource_loaded.emit(uri, content)
 	_log_info("Resource loaded: " + uri)
 	
@@ -514,7 +514,7 @@ func _handle_resource_subscribe(message: Dictionary) -> Dictionary:
 	
 	_log_info("Resource subscribe: " + uri)
 	
-	# TODO: 实现资源订阅逻辑
+	# TODO: Реализовать логику подписки на ресурс
 	var result: Dictionary = {"subscriptionId": MCPTypes.generate_id()}
 	var response: Dictionary = MCPTypes.create_response(id, result)
 	
@@ -544,7 +544,7 @@ func _handle_prompt_get(message: Dictionary) -> Dictionary:
 	
 	_log_info("Prompt get: " + prompt_name)
 	
-	# TODO: 实现prompt获取逻辑
+	# TODO: Реализовать логику получения prompt
 	var result: Dictionary = {
 		"description": "Prompt: " + prompt_name,
 		"messages": []
@@ -555,7 +555,7 @@ func _handle_prompt_get(message: Dictionary) -> Dictionary:
 	return response
 
 # ============================================================================
-# 工具注册API（优化版 - 根据mcp-builder）
+# API регистрации инструментов (оптимизировано по mcp-builder)
 # ============================================================================
 
 func register_tool(name: String, description: String, 
@@ -629,21 +629,21 @@ func has_tool(name: String) -> bool:
 	return _tools.has(name)
 
 # ============================================================================
-# 资源注册API（优化版 - 根据mcp-builder）
+# API регистрации ресурсов (оптимизировано по mcp-builder)
 # ============================================================================
 
 func register_resource(uri: String, name: String, 
 					  mime_type: String, load_callable: Callable,
-					  description: String = "") -> void:  # 新增description参数
-	# 创建资源对象
+					  description: String = "") -> void:  # Добавлен параметр description
+	# Создание объекта ресурса
 	var resource: MCPTypes.MCPResource = MCPTypes.MCPResource.new()
 	resource.uri = uri
 	resource.name = name
-	resource.description = description  # 新增（根据mcp-builder）
+	resource.description = description  # Добавлено по mcp-builder
 	resource.mime_type = mime_type
 	resource.load_callable = load_callable
 	
-	# 验证资源定义
+	# Проверка определения ресурса
 	if not resource.is_valid():
 		_log_error("Invalid resource definition: " + uri)
 		return
@@ -663,7 +663,7 @@ func get_all_resources() -> Dictionary:
 	return _resources.duplicate()
 
 # ============================================================================
-# Prompt注册API
+# API регистрации Prompt
 # ============================================================================
 
 func register_prompt(name: String, description: String, 
@@ -678,7 +678,7 @@ func register_prompt(name: String, description: String,
 	_log_info("Prompt registered: " + name)
 
 # ============================================================================
-# 响应发送
+# Отправка ответов
 # ============================================================================
 
 func _send_response(response: Dictionary, context: Variant = null) -> void:
@@ -696,7 +696,7 @@ func _send_error(id: Variant, code: int, message: String, data: Variant = null) 
 	_send_response(error_response)
 
 # ============================================================================
-# 速率限制（根据mcp-builder安全最佳实践）
+# Ограничение частоты запросов (best practices безопасности mcp-builder)
 # ============================================================================
 
 func _check_rate_limit(client_id: String) -> bool:
@@ -709,38 +709,38 @@ func _check_rate_limit(client_id: String) -> bool:
 	
 	var timestamps: Array[int] = _request_timestamps[client_id]
 	
-	# 移除60秒前的记录
+	# Удаление записей старше 60 секунд
 	while not timestamps.is_empty() and current_time - timestamps[0] > 60:
 		timestamps.pop_front()
 		_request_count[client_id] -= 1
 	
-	# 检查是否超过限制
+	# Проверка превышения лимита
 	if _request_count[client_id] >= _rate_limit:
 		_log_warn("Rate limit exceeded for client: " + client_id)
 		return false
 	
-	# 添加新记录
+	# Добавление новой записи
 	timestamps.append(current_time)
 	_request_count[client_id] += 1
 	
 	return true
 
 # ============================================================================
-# 缓存机制（根据godot-dev-guide新增）
+# Механизм кэширования (добавлено по godot-dev-guide)
 # ============================================================================
 
 func get_cached_scene_structure(scene_path: String) -> Dictionary:
 	var cache_key: String = scene_path
 	var current_time: int = Time.get_unix_time_from_system()
 	
-	# 检查缓存是否有效（5分钟有效期）
+	# Проверка актуальности кэша (TTL: 5 минут)
 	if _scene_structure_cache.has(cache_key):
 		var cache_time: int = _cache_timestamp.get(cache_key, 0)
-		if current_time - cache_time < 300:  # 5分钟
+		if current_time - cache_time < 300:  # 5 минут
 			_log_debug("Cache hit: " + scene_path)
 			return _scene_structure_cache[cache_key]
 	
-	# 缓存未命中或已过期
+	# Кэш не найден или устарел
 	_log_debug("Cache miss: " + scene_path)
 	return {}
 
@@ -759,7 +759,7 @@ func clear_cache() -> void:
 	_log_info("Cache cleared")
 
 # ============================================================================
-# 配置方法
+# Методы конфигурации
 # ============================================================================
 
 func set_log_level(level: int) -> void:
@@ -775,7 +775,7 @@ func set_rate_limit(limit: int) -> void:
 	_log_info("Rate limit set to: " + str(limit) + " requests/minute")
 
 # ============================================================================
-# 日志方法（根据godot-dev-guide优化）
+# Методы логирования (оптимизировано по godot-dev-guide)
 # ============================================================================
 
 func _log_error(message: String) -> void:
@@ -795,14 +795,14 @@ func _log_debug(message: String) -> void:
 		call_deferred("emit_signal", "log_message", "DEBUG", message)
 
 # ============================================================================
-# 清理
+# Очистка
 # ============================================================================
 
 func cleanup() -> void:
 	stop()
 
 # ============================================================================
-# 工具调用日志（用于批量验证）
+# Журнал вызовов инструментов (для пакетной валидации)
 # ============================================================================
 
 var _tool_log_path: String = "user://mcp_tool_verification_log.json"
@@ -815,12 +815,12 @@ func clear_tool_log() -> void:
 
 
 # ============================================================================
-# 传输层日志转发
+# Проброс логов транспортного слоя
 # ============================================================================
 
-## 传输层日志回调，将 printerr 替换为通过核心日志系统输出
-## @param level: String - 日志级别（ERROR/WARN/INFO/DEBUG）
-## @param message: String - 日志消息
+## Колбэк логов транспорта, заменяет printerr выводом через систему логов ядра
+## @param level: String - уровень логирования (ERROR/WARN/INFO/DEBUG)
+## @param message: String - сообщение лога
 func _log_transport_message(level: String, message: String) -> void:
 	match level:
 		"ERROR":

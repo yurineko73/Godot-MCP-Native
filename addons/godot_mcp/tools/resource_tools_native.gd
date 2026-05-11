@@ -1,8 +1,8 @@
 # resource_tools_native.gd
-# 资源工具 - 实现 MCP 资源读取功能
-# 版本: 1.0
-# 作者: AI Assistant
-# 日期: 2026-05-01
+# Инструменты ресурсов - реализация чтения MCP-ресурсов
+# Версия: 1.0
+# Автор: AI Assistant
+# Дата: 2026-05-01
 
 @tool
 class_name ResourceToolsNative
@@ -19,13 +19,13 @@ func initialize(editor_interface: EditorInterface, base_control: Control) -> voi
 	_editor_interface = editor_interface
 	_base_control = base_control
 	if _log_callback.is_valid():
-		_log_callback.call("INFO", "初始化完成")
+		_log_callback.call("INFO", "Инициализация завершена")
 
 # ===========================================
-# 资源读取功能
+# Функции чтения ресурсов
 # ===========================================
 
-## 读取场景列表资源
+## Чтение ресурса со списком сцен
 func _resource_scene_list(params: Dictionary) -> Dictionary:
 	var scenes: Array = []
 	var dir = DirAccess.open("res://")
@@ -47,7 +47,7 @@ func _resource_scene_list(params: Dictionary) -> Dictionary:
 		}]
 	}
 
-## 读取当前场景资源
+## Чтение ресурса текущей сцены
 func _resource_scene_current(params: Dictionary) -> Dictionary:
 	if not _editor_interface:
 		return {"contents": [{"uri": "godot://scene/current", "mimeType": "application/json", "text": "{}"}]}
@@ -72,7 +72,7 @@ func _resource_scene_current(params: Dictionary) -> Dictionary:
 		}]
 	}
 
-## 读取脚本列表资源
+## Чтение ресурса со списком скриптов
 func _resource_script_list(params: Dictionary) -> Dictionary:
 	var scripts: Array = []
 	var dir = DirAccess.open("res://")
@@ -94,7 +94,7 @@ func _resource_script_list(params: Dictionary) -> Dictionary:
 		}]
 	}
 
-## 读取当前脚本资源
+## Чтение ресурса текущего скрипта
 func _resource_script_current(params: Dictionary) -> Dictionary:
 	if not _editor_interface:
 		return {"contents": [{"uri": "godot://script/current", "mimeType": "application/json", "text": "{}"}]}
@@ -138,10 +138,10 @@ func _resource_script_current(params: Dictionary) -> Dictionary:
 		}]
 	}
 
-## 读取项目信息资源
+## Чтение ресурса информации о проекте
 func _resource_project_info(params: Dictionary) -> Dictionary:
 	var project_info: Dictionary = {
-		"name": ProjectSettings.get_setting("application/config/name", "未命名项目"),
+		"name": ProjectSettings.get_setting("application/config/name", "Проект без названия"),
 		"version": ProjectSettings.get_setting("application/config/version", "1.0"),
 		"description": ProjectSettings.get_setting("application/config/description", ""),
 		"author": ProjectSettings.get_setting("application/config/author", ""),
@@ -158,7 +158,7 @@ func _resource_project_info(params: Dictionary) -> Dictionary:
 		}]
 	}
 
-## 读取项目设置资源
+## Чтение ресурса настроек проекта
 func _resource_project_settings(params: Dictionary) -> Dictionary:
 	var settings: Dictionary = {}
 	var property_list: Array = ProjectSettings.get_property_list()
@@ -180,7 +180,7 @@ func _resource_project_settings(params: Dictionary) -> Dictionary:
 		}]
 	}
 
-## 读取编辑器状态资源
+## Чтение ресурса состояния редактора
 func _resource_editor_state(params: Dictionary) -> Dictionary:
 	if not _editor_interface:
 		return {"contents": [{"uri": "godot://editor/state", "mimeType": "application/json", "text": "{}"}]}
@@ -210,10 +210,10 @@ func _resource_editor_state(params: Dictionary) -> Dictionary:
 	}
 
 # ===========================================
-# 辅助函数
+# Вспомогательные функции
 # ===========================================
 
-## 递归查找文件
+## Рекурсивный поиск файлов
 static func _find_files_recursive(dir: DirAccess, extension: String, result: Array, base_path: String = "res://") -> void:
 	dir.list_dir_begin()
 	var file_name: String = dir.get_next()
@@ -232,7 +232,7 @@ static func _find_files_recursive(dir: DirAccess, extension: String, result: Arr
 
 	dir.list_dir_end()
 
-## 计算节点数量
+## Подсчет количества узлов
 static func _count_nodes(node: Node) -> int:
 	var count: int = 1
 
@@ -241,7 +241,7 @@ static func _count_nodes(node: Node) -> int:
 
 	return count
 
-## 获取节点树结构
+## Получение структуры дерева узлов
 static func _get_node_tree(node: Node, max_depth: int, current_depth: int = 0) -> Array:
 	if current_depth >= max_depth:
 		return []
@@ -258,7 +258,7 @@ static func _get_node_tree(node: Node, max_depth: int, current_depth: int = 0) -
 
 	return result
 
-## 获取Godot版本
+## Получение версии Godot
 static func _get_godot_version() -> Dictionary:
 	return {
 		"version": Engine.get_version_info()["string"],
@@ -268,14 +268,14 @@ static func _get_godot_version() -> Dictionary:
 	}
 
 # ===========================================
-# 资源注册
+# Регистрация ресурсов
 # ===========================================
 
-## 注册所有资源到MCPServerCore
+## Зарегистрировать все ресурсы в MCPServerCore
 func register_resources(server_core: RefCounted) -> void:
 	if not server_core:
 		if _log_callback.is_valid():
-			_log_callback.call("ERROR", "server_core 为空")
+			_log_callback.call("ERROR", "server_core пуст")
 		return
 
 	server_core.register_resource(
@@ -335,4 +335,4 @@ func register_resources(server_core: RefCounted) -> void:
 	)
 
 	if _log_callback.is_valid():
-		_log_callback.call("INFO", "已注册 7 个资源")
+		_log_callback.call("INFO", "Зарегистрировано 7 ресурсов")

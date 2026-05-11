@@ -121,7 +121,7 @@ func _create_settings_tab() -> VBoxContainer:
 	margin.add_child(content)
 
 	var transport_title: Label = Label.new()
-	transport_title.text = "传输设置:"
+	transport_title.text = "Настройки транспорта:"
 	transport_title.add_theme_font_size_override("font_size", 13)
 	content.add_child(transport_title)
 
@@ -129,7 +129,7 @@ func _create_settings_tab() -> VBoxContainer:
 	content.add_child(transport_hbox)
 
 	var transport_label: Label = Label.new()
-	transport_label.text = "传输模式:"
+	transport_label.text = "Режим транспорта:"
 	transport_hbox.add_child(transport_label)
 
 	_transport_mode_option = OptionButton.new()
@@ -145,7 +145,7 @@ func _create_settings_tab() -> VBoxContainer:
 	_http_config_container.add_child(port_hbox)
 
 	var port_label: Label = Label.new()
-	port_label.text = "端口:"
+	port_label.text = "Порт:"
 	port_hbox.add_child(port_label)
 
 	_http_port_spin = SpinBox.new()
@@ -160,7 +160,7 @@ func _create_settings_tab() -> VBoxContainer:
 	_http_config_container.add_child(auth_hbox)
 
 	_auth_enabled_check = CheckBox.new()
-	_auth_enabled_check.text = "启用认证"
+	_auth_enabled_check.text = "Включить аутентификацию"
 	_auth_enabled_check.toggled.connect(_on_auth_enabled_toggled)
 	auth_hbox.add_child(_auth_enabled_check)
 
@@ -170,18 +170,18 @@ func _create_settings_tab() -> VBoxContainer:
 
 	_auth_token_edit = LineEdit.new()
 	_auth_token_edit.secret = true
-	_auth_token_edit.placeholder_text = "输入认证令牌"
+	_auth_token_edit.placeholder_text = "Введите токен аутентификации"
 	_auth_token_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_auth_token_edit.text_changed.connect(_on_auth_token_changed)
 	auth_hbox.add_child(_auth_token_edit)
 
 	_sse_enabled_check = CheckBox.new()
-	_sse_enabled_check.text = "启用 SSE"
+	_sse_enabled_check.text = "Включить SSE"
 	_sse_enabled_check.toggled.connect(_on_sse_enabled_toggled)
 	_http_config_container.add_child(_sse_enabled_check)
 
 	_allow_remote_check = CheckBox.new()
-	_allow_remote_check.text = "允许远程访问"
+	_allow_remote_check.text = "Разрешить удаленный доступ"
 	_allow_remote_check.toggled.connect(_on_allow_remote_toggled)
 	_http_config_container.add_child(_allow_remote_check)
 
@@ -189,7 +189,7 @@ func _create_settings_tab() -> VBoxContainer:
 	_http_config_container.add_child(cors_hbox)
 
 	var cors_label: Label = Label.new()
-	cors_label.text = "CORS 源:"
+	cors_label.text = "Источник CORS:"
 	cors_hbox.add_child(cors_label)
 
 	_cors_origin_edit = LineEdit.new()

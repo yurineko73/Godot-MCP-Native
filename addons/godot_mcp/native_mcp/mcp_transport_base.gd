@@ -1,66 +1,66 @@
 class_name McpTransportBase
 extends RefCounted
 
-# 传输层基类 - 定义所有传输方式的统一接口
-# 符合 Godot 4.x 开发规范和 MCP 协议规范
+# Базовый класс транспортного слоя - единый интерфейс для всех видов транспорта
+# Соответствует стандартам разработки Godot 4.x и протоколу MCP
 
 # ==============================================================================
-# 信号定义（用于线程间通信，确保线程安全）
+# Определение сигналов (для межпоточного взаимодействия и потокобезопасности)
 # ==============================================================================
 
-## 收到消息时触发
-## @param message: Dictionary - JSON-RPC 消息
-## @param context: Variant - 传输上下文（stdio: null, HTTP: StreamPeerTCP）
+## Срабатывает при получении сообщения
+## @param message: Dictionary - сообщение JSON-RPC
+## @param context: Variant - контекст транспорта (stdio: null, HTTP: StreamPeerTCP)
 signal message_received(message: Dictionary, context: Variant)
 
-## 发生错误时触发
-## @param error: String - 错误描述
+## Срабатывает при возникновении ошибки
+## @param error: String - описание ошибки
 signal server_error(error: String)
 
-## 服务器成功启动时触发
+## Срабатывает при успешном запуске сервера
 signal server_started()
 
-## 服务器停止时触发
+## Срабатывает при остановке сервера
 signal server_stopped()
 
 
 # ==============================================================================
-# 虚方法（子类必须实现）
+# Виртуальные методы (должны быть реализованы в наследниках)
 # ==============================================================================
 
-## 启动传输层
-## @returns: bool - 启动成功返回 true，失败返回 false
+## Запуск транспортного слоя
+## @returns: bool - true при успешном запуске, иначе false
 func start() -> bool:
 	push_error("McpTransportBase.start() must be overridden")
 	return false
 
-## 停止传输层
+## Остановка транспортного слоя
 func stop() -> void:
 	push_error("McpTransportBase.stop() must be overridden")
 
-## 检查传输层是否正在运行
-## @returns: bool - 运行中返回 true，否则返回 false
+## Проверка, работает ли транспортный слой
+## @returns: bool - true, если работает; иначе false
 func is_running() -> bool:
 	push_error("McpTransportBase.is_running() must be overridden")
 	return false
 
 
 # ==============================================================================
-# 可选方法（子类可以重写）
+# Дополнительные методы (могут быть переопределены в наследниках)
 # ==============================================================================
 
-## 设置端口（HTTP 模式使用）
-## @param port: int - 监听端口
+## Установить порт (используется в режиме HTTP)
+## @param port: int - порт прослушивания
 func set_port(port: int) -> void:
 	push_error("McpTransportBase.set_port() is not implemented")
 
-## 设置认证管理器（HTTP 模式使用）
-## @param manager: RefCounted - 认证管理器实例
+## Установить менеджер аутентификации (режим HTTP)
+## @param manager: RefCounted - экземпляр менеджера аутентификации
 func set_auth_manager(manager: RefCounted) -> void:
 	push_error("McpTransportBase.set_auth_manager() is not implemented")
 
-## 发送响应（某些传输方式需要）
-## @param response: Dictionary - JSON-RPC 响应
-## @param context: Variant - 传输上下文
+## Отправить ответ (требуется для некоторых транспортов)
+## @param response: Dictionary - ответ JSON-RPC
+## @param context: Variant - контекст транспорта
 func send_response(response: Dictionary, context: Variant) -> void:
 	push_error("McpTransportBase.send_response() is not implemented")

@@ -1,12 +1,12 @@
 class_name McpHttpServer
 extends McpTransportBase
 
-# HTTP 传输实现 - 支持 JSON-RPC over HTTP
-# 符合 MCP 2025-03-26 规范（Streamable HTTP）
-# 使用 Godot TCPServer 实现 HTTP 服务器
+# Реализация HTTP-транспорта - поддержка JSON-RPC over HTTP
+# Соответствует спецификации MCP 2025-03-26 (Streamable HTTP)
+# Использует Godot TCPServer для реализации HTTP-сервера
 
 # ==============================================================================
-# 信号继承自 McpTransportBase（不要在此重新定义，避免遮蔽父类信号）
+# Сигналы унаследованы от McpTransportBase (не переопределять здесь, чтобы не затенять сигналы родителя)
 # - message_received(message: Dictionary, context: Variant)
 # - server_error(error: String)
 # - server_started()
@@ -15,83 +15,83 @@ extends McpTransportBase
 
 
 # ==============================================================================
-# 常量
+# Константы
 # ==============================================================================
 
-## 最大请求大小（1MB）
+## Максимальный размер запроса (1MB)
 const MAX_REQUEST_SIZE: int = 1024 * 1024
 
-## 请求超时时间（30秒）
+## Таймаут запроса (30 секунд)
 const REQUEST_TIMEOUT: float = 30.0
 
-## HTTP 认证头名称
+## Имя HTTP-заголовка аутентификации
 const AUTH_HEADER: String = "authorization"
 
-## Bearer 认证方案
+## Схема аутентификации Bearer
 const AUTH_SCHEME: String = "Bearer"
 
 
 # ==============================================================================
-# 状态变量（带类型提示 - 根据 godot-dev-guide）
+# Переменные состояния (с подсказками типов по godot-dev-guide)
 # ==============================================================================
 
-## TCP 服务器实例
+## Экземпляр TCP-сервера
 var _tcp_server: TCPServer = null
 
-## 监听端口
+## Порт прослушивания
 var _port: int = 9080
 
-## 是否正在运行
+## Флаг активности
 var _active: bool = false
 
-## HTTP 服务器线程
+## Поток HTTP-сервера
 var _thread: Thread = null
 
-## 活跃连接列表
+## Список активных подключений
 var _connections: Array[StreamPeerTCP] = []
 
-## SSE 连接列表（保持打开的连接）
+## Список SSE-подключений (удерживаемые открытыми подключения)
 var _sse_connections: Dictionary = {}  # peer -> session_id
 
-## 认证管理器
+## Менеджер аутентификации
 var _auth_manager: McpAuthManager = null
 
-## 会话管理
+## Управление сессиями
 var _sessions: Dictionary = {}  # session_id -> session_data
 
-## 远程访问配置
+## Конфигурация удалённого доступа
 var _allow_remote: bool = false
 var _cors_origin: String = "*"
 
 
-## 日志回调函数（由 McpServerCore 设置，用于替代 printerr）
+## Колбэк логирования (задаётся в McpServerCore, используется вместо printerr)
 var _log_callback: Callable = Callable()
 
 
 # ==============================================================================
-# McpTransportBase 接口实现
+# Реализация интерфейса McpTransportBase
 # ==============================================================================
 
-## 设置端口
-## @param port: int - 监听端口
+## Установить порт
+## @param port: int - порт прослушивания
 func set_port(port: int) -> void:
 	if _active:
 		push_error("Cannot change port while server is running")
 		return
 	_port = port
 
-## 设置日志回调
-## @param callback: Callable - 日志回调函数，接受 level (String) 和 message (String) 参数
+## Установить колбэк логирования
+## @param callback: Callable - колбэк логов, принимает level (String) и message (String)
 func set_log_callback(callback: Callable) -> void:
 	_log_callback = callback
 
-## 设置认证管理器
-## @param manager: RefCounted - 认证管理器实例（与父类签名一致）
+## Установить менеджер аутентификации
+## @param manager: RefCounted - экземпляр менеджера аутентификации (сигнатура как у родителя)
 func set_auth_manager(manager: RefCounted) -> void:
 	_auth_manager = manager as McpAuthManager
 
-## 启动 HTTP 服务器
-## @returns: bool - 启动成功返回 true，失败返回 false
+## Запустить HTTP-сервер
+## @returns: bool - true при успешном запуске, иначе false
 func start() -> bool:
 	var conflict_info: String = _check_port_conflict(_port)
 	if not conflict_info.is_empty():
@@ -152,21 +152,21 @@ func _check_port_conflict(port: int) -> String:
 			return "(PID " + pid + ")"
 	return ""
 
-## 停止 HTTP 服务器
+## Остановить HTTP-сервер
 func stop() -> void:
 	_active = false
 	
-	# 停止 TCP 服务器（不再接受新连接）
+	# Остановить TCP-сервер (новые подключения больше не принимаются)
 	if _tcp_server:
 		_tcp_server.stop()
 		_tcp_server = null
 	
-	# 等待线程结束（必须在线程退出后再修改共享数据）
+	# Дождаться завершения потока (общие данные менять только после выхода потока)
 	if _thread and _thread.is_alive():
 		_thread.wait_to_finish()
 	_thread = null
 	
-	# 线程已退出，安全清理连接
+	# Поток завершён, можно безопасно очистить подключения
 	for peer in _connections:
 		if peer and peer.get_status() == StreamPeerTCP.STATUS_CONNECTED:
 			peer.disconnect_from_host()
@@ -177,17 +177,17 @@ func stop() -> void:
 	if _log_callback.is_valid():
 		_log_callback.call("INFO", "Server stopped")
 
-## 检查传输层是否正在运行
-## @returns: bool - 运行中返回 true，否则返回 false
+## Проверить, работает ли транспортный слой
+## @returns: bool - true, если работает; иначе false
 func is_running() -> bool:
 	return _active and _tcp_server != null and _tcp_server.is_listening()
 
 
 # ==============================================================================
-# HTTP 服务器核心逻辑
+# Основная логика HTTP-сервера
 # ==============================================================================
 
-## HTTP 服务器主循环（在独立线程中运行）
+## Главный цикл HTTP-сервера (выполняется в отдельном потоке)
 func _http_server_loop() -> void:
 	if _log_callback.is_valid():
 		_log_callback.call("INFO", "Server loop started")
@@ -198,7 +198,7 @@ func _http_server_loop() -> void:
 		if not _tcp_server:
 			break
 		
-		# 检查新连接
+		# Проверка новых подключений
 		var peer: StreamPeerTCP = null
 		if _tcp_server.is_connection_available():
 			peer = _tcp_server.take_connection()
@@ -207,7 +207,7 @@ func _http_server_loop() -> void:
 			if _log_callback.is_valid():
 				_log_callback.call("INFO", "New connection: " + str(peer.get_status()))
 		
-		# 处理所有活跃连接（复制一份避免并发修改）
+		# Обработка всех активных подключений (работаем с копией, чтобы избежать конкурентных изменений)
 		var disconnected: Array[StreamPeerTCP] = []
 		var current_connections: Array[StreamPeerTCP] = _connections.duplicate()
 		
@@ -223,26 +223,26 @@ func _http_server_loop() -> void:
 			if p.get_available_bytes() > 0:
 				_handle_http_request(p)
 		
-		# 移除已断开的连接
+		# Удаление разорванных подключений
 		for d in disconnected:
 			_connections.erase(d)
 		
-		# 处理 SSE 连接的心跳
+		# Обработка heartbeat для SSE-подключений
 		var current_time: int = Time.get_ticks_msec()
 		if current_time - last_keepalive > 30000:
 			_send_sse_keepalive()
 			last_keepalive = current_time
 		
-		# 避免 CPU 占用过高
+		# Не допускает излишней нагрузки на CPU
 		OS.delay_msec(10)
 	
-	# 清理所有 SSE 连接
+	# Очистка всех SSE-подключений
 	_cleanup_all_sse_connections()
 	
 	if _log_callback.is_valid():
 		_log_callback.call("INFO", "Server loop stopped")
 
-## 发送 SSE 心跳
+## Отправить SSE heartbeat
 func _send_sse_keepalive() -> void:
 	var disconnected_peers: Array[StreamPeerTCP] = []
 	
@@ -255,11 +255,11 @@ func _send_sse_keepalive() -> void:
 				_log_callback.call("WARN", "Failed to send keepalive, closing connection")
 			disconnected_peers.append(peer)
 	
-	# 清理断开的连接
+	# Очистка разорванных подключений
 	for peer in disconnected_peers:
 		_close_sse_connection(peer)
 
-## 清理所有 SSE 连接
+## Очистить все SSE-подключения
 func _cleanup_all_sse_connections() -> void:
 	var peers: Array = _sse_connections.keys()
 	for peer in peers:
@@ -271,8 +271,8 @@ func _cleanup_all_sse_connections() -> void:
 	if _log_callback.is_valid():
 		_log_callback.call("INFO", "All SSE connections cleaned up")
 
-## 处理 HTTP 请求
-## @param peer: StreamPeerTCP - 客户端连接
+## Обработать HTTP-запрос
+## @param peer: StreamPeerTCP - подключение клиента
 func _handle_http_request(peer: StreamPeerTCP) -> void:
 	var request: String = ""
 	var start_time: int = Time.get_ticks_msec()
@@ -327,15 +327,15 @@ func _handle_http_request(peer: StreamPeerTCP) -> void:
 	if request.is_empty():
 		return
 	
-	# 解析 HTTP 请求
+	# Разбор HTTP-запроса
 	var parsed: Dictionary = _parse_http_request(request)
 	
-	# 检查认证（如果启用了认证）
+	# Проверка аутентификации (если включена)
 	if _auth_manager and not _auth_manager.validate_request(parsed["headers"]):
 		_send_http_error(peer, 401, "Unauthorized. Please provide a valid Bearer token in the Authorization header.")
 		return
 	
-	# 路由请求
+	# Маршрутизация запроса
 	match parsed["method"]:
 		"POST":
 			_handle_post_request(peer, parsed)
@@ -346,9 +346,9 @@ func _handle_http_request(peer: StreamPeerTCP) -> void:
 		_:
 			_send_http_error(peer, 405, "Method not allowed. Only POST, GET, and OPTIONS are supported.")
 
-## 解析 HTTP 请求
-## @param raw: String - 原始 HTTP 请求字符串
-## @returns: Dictionary - 解析后的请求信息（method, path, headers, body）
+## Разобрать HTTP-запрос
+## @param raw: String - исходная строка HTTP-запроса
+## @returns: Dictionary - разобранная информация запроса (method, path, headers, body)
 func _parse_http_request(raw: String) -> Dictionary:
 	var lines: PackedStringArray = raw.split("\r\n")
 	var request_line: PackedStringArray = lines[0].split(" ")
@@ -357,7 +357,7 @@ func _parse_http_request(raw: String) -> Dictionary:
 	var path: String = request_line[1]
 	var version: String = request_line[2] if request_line.size() > 2 else "HTTP/1.1"
 	
-	# 解析头部
+	# Разбор заголовков
 	var headers: Dictionary = {}
 	var body_start: int = -1
 	
@@ -372,7 +372,7 @@ func _parse_http_request(raw: String) -> Dictionary:
 			var header_value: String = lines[i].substr(colon_pos + 1).strip_edges()
 			headers[header_name] = header_value
 	
-	# 提取正文
+	# Извлечение тела запроса
 	var body: String = ""
 	if body_start != -1 and body_start < lines.size():
 		var body_parts: PackedStringArray = []
@@ -388,11 +388,11 @@ func _parse_http_request(raw: String) -> Dictionary:
 		"body": body
 	}
 
-## 处理 POST 请求（JSON-RPC over HTTP）
-## @param peer: StreamPeerTCP - 客户端连接
-## @param parsed: Dictionary - 解析后的 HTTP 请求
+## Обработать POST-запрос (JSON-RPC over HTTP)
+## @param peer: StreamPeerTCP - подключение клиента
+## @param parsed: Dictionary - разобранный HTTP-запрос
 func _handle_post_request(peer: StreamPeerTCP, parsed: Dictionary) -> void:
-	# 检查路径
+	# Проверка пути
 	if parsed["path"] != "/mcp" and parsed["path"] != "/":
 		_send_http_error(peer, 404, "Not found. Please use path '/mcp' for MCP requests.")
 		return
@@ -424,16 +424,16 @@ func _handle_post_request(peer: StreamPeerTCP, parsed: Dictionary) -> void:
 	if is_notification:
 		_send_http_accepted(peer)
 
-## 处理 GET 请求（SSE 或健康检查）
-## @param peer: StreamPeerTCP - 客户端连接
-## @param parsed: Dictionary - 解析后的 HTTP 请求
+## Обработать GET-запрос (SSE или health-check)
+## @param peer: StreamPeerTCP - подключение клиента
+## @param parsed: Dictionary - разобранный HTTP-запрос
 func _handle_get_request(peer: StreamPeerTCP, parsed: Dictionary) -> void:
-	# 检查是否是 SSE 请求
+	# Проверка, является ли запрос SSE
 	if parsed["headers"].get("accept", "") == "text/event-stream":
 		_handle_sse_request(peer, parsed)
 		return
 	
-	# 普通 GET 请求，返回服务器信息
+	# Обычный GET-запрос: вернуть информацию о сервере
 	var info: Dictionary = {
 		"name": "Godot MCP Native",
 		"version": "1.0.0",
@@ -447,9 +447,9 @@ func _handle_get_request(peer: StreamPeerTCP, parsed: Dictionary) -> void:
 	
 	_send_http_response(peer, info)
 
-## 处理 OPTIONS 请求（CORS 预检）
-## @param peer: StreamPeerTCP - 客户端连接
-## @param parsed: Dictionary - 解析后的 HTTP 请求
+## Обработать OPTIONS-запрос (CORS preflight)
+## @param peer: StreamPeerTCP - подключение клиента
+## @param parsed: Dictionary - разобранный HTTP-запрос
 func _handle_options_request(peer: StreamPeerTCP, parsed: Dictionary) -> void:
 	var response: String = "HTTP/1.1 204 No Content\r\n"
 	response += "Access-Control-Allow-Origin: *\r\n"
@@ -461,19 +461,19 @@ func _handle_options_request(peer: StreamPeerTCP, parsed: Dictionary) -> void:
 	peer.put_data(response.to_utf8_buffer())
 	peer.disconnect_from_host()
 
-## 处理 SSE 请求（Server-sent Events）
-## @param peer: StreamPeerTCP - 客户端连接
-## @param parsed: Dictionary - 解析后的 HTTP 请求
+## Обработать SSE-запрос (Server-sent Events)
+## @param peer: StreamPeerTCP - подключение клиента
+## @param parsed: Dictionary - разобранный HTTP-запрос
 func _handle_sse_request(peer: StreamPeerTCP, parsed: Dictionary) -> void:
-	# 验证认证
+	# Проверка аутентификации
 	if _auth_manager and not _auth_manager.validate_request(parsed["headers"]):
 		_send_http_error(peer, 401, "Unauthorized")
 		return
 	
-	# 生成会话 ID
+	# Генерация ID сессии
 	var session_id: String = _generate_session_id()
 	
-	# 发送 SSE 响应头
+	# Отправка заголовков SSE-ответа
 	var response_header: String = "HTTP/1.1 200 OK\r\n"
 	response_header += "Content-Type: text/event-stream\r\n"
 	response_header += "Cache-Control: no-cache\r\n"
@@ -483,10 +483,10 @@ func _handle_sse_request(peer: StreamPeerTCP, parsed: Dictionary) -> void:
 	
 	peer.put_data(response_header.to_utf8_buffer())
 	
-	# 发送初始消息
+	# Отправка начального сообщения
 	_send_sse_event(peer, "connected", {"session_id": session_id})
 	
-	# 保存 SSE 连接
+	# Сохранение SSE-подключения
 	_sse_connections[peer] = session_id
 	_sessions[session_id] = {
 		"peer": peer,
@@ -496,10 +496,10 @@ func _handle_sse_request(peer: StreamPeerTCP, parsed: Dictionary) -> void:
 	if _log_callback.is_valid():
 		_log_callback.call("INFO", "SSE connection established: " + session_id)
 
-## 发送 SSE 事件
-## @param peer: StreamPeerTCP - 客户端连接
-## @param event: String - 事件名称
-## @param data: Dictionary - 事件数据
+## Отправить SSE-событие
+## @param peer: StreamPeerTCP - подключение клиента
+## @param event: String - имя события
+## @param data: Dictionary - данные события
 func _send_sse_event(peer: StreamPeerTCP, event: String, data: Dictionary) -> void:
 	var message: String = "event: " + event + "\r\n"
 	message += "data: " + JSON.stringify(data) + "\r\n"
@@ -511,8 +511,8 @@ func _send_sse_event(peer: StreamPeerTCP, event: String, data: Dictionary) -> vo
 			_log_callback.call("ERROR", "Failed to send SSE event: " + str(error))
 		_close_sse_connection(peer)
 
-## 关闭 SSE 连接
-## @param peer: StreamPeerTCP - 客户端连接
+## Закрыть SSE-подключение
+## @param peer: StreamPeerTCP - подключение клиента
 func _close_sse_connection(peer: StreamPeerTCP) -> void:
 	if _sse_connections.has(peer):
 		var session_id: String = _sse_connections[peer]
@@ -523,8 +523,8 @@ func _close_sse_connection(peer: StreamPeerTCP) -> void:
 	
 	peer.disconnect_from_host()
 
-## 生成会话 ID
-## @returns: String - 唯一会话 ID
+## Сгенерировать ID сессии
+## @returns: String - уникальный ID сессии
 func _generate_session_id() -> String:
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.randomize()
@@ -538,9 +538,9 @@ func _generate_session_id() -> String:
 	
 	return session_id
 
-## 设置远程访问配置
-## @param allow_remote: bool - 是否允许远程访问
-## @param cors_origin: String - CORS 允许的源
+## Установить конфигурацию удалённого доступа
+## @param allow_remote: bool - разрешить ли удалённый доступ
+## @param cors_origin: String - разрешённый источник CORS
 func set_remote_config(allow_remote: bool, cors_origin: String = "*") -> void:
 	_allow_remote = allow_remote
 	_cors_origin = cors_origin
@@ -550,23 +550,23 @@ func set_remote_config(allow_remote: bool, cors_origin: String = "*") -> void:
 
 
 # ==============================================================================
-# 信号发射（线程安全）
+# Отправка сигналов (потокобезопасно)
 # ==============================================================================
 
-## 在主线程中发送消息接收信号
-## @param message: Dictionary - JSON-RPC 消息
-## @param peer: StreamPeerTCP - 客户端连接
+## Отправить сигнал получения сообщения в главном потоке
+## @param message: Dictionary - сообщение JSON-RPC
+## @param peer: StreamPeerTCP - подключение клиента
 func _emit_message_received(message: Dictionary, peer: StreamPeerTCP) -> void:
 	message_received.emit(message, peer as Variant)
 
 
 # ==============================================================================
-# HTTP 响应处理
+# Обработка HTTP-ответов
 # ==============================================================================
 
-## 发送 HTTP 响应（从主线程调用）
-## @param peer: StreamPeerTCP - 客户端连接
-## @param data: Dictionary - 要发送的 JSON 数据
+## Отправить HTTP-ответ (вызывается из главного потока)
+## @param peer: StreamPeerTCP - подключение клиента
+## @param data: Dictionary - JSON-данные для отправки
 func send_response(response: Dictionary, context: Variant) -> void:
 	var peer: StreamPeerTCP = context as StreamPeerTCP
 	if not peer:
@@ -575,9 +575,9 @@ func send_response(response: Dictionary, context: Variant) -> void:
 		return
 	_send_http_response(peer, response)
 
-## 构建并发送 HTTP 响应
-## @param peer: StreamPeerTCP - 客户端连接
-## @param data: Dictionary - 要发送的 JSON 数据
+## Сформировать и отправить HTTP-ответ
+## @param peer: StreamPeerTCP - подключение клиента
+## @param data: Dictionary - JSON-данные для отправки
 func _send_http_response(peer: StreamPeerTCP, data: Dictionary) -> void:
 	var json_string: String = JSON.stringify(data)
 	var json_bytes: PackedByteArray = json_string.to_utf8_buffer()
@@ -599,10 +599,10 @@ func _send_http_response(peer: StreamPeerTCP, data: Dictionary) -> void:
 	
 	peer.disconnect_from_host()
 
-## 发送 HTTP 错误响应
-## @param peer: StreamPeerTCP - 客户端连接
-## @param status_code: int - HTTP 状态码
-## @param message: String - 错误消息
+## Отправить HTTP-ответ с ошибкой
+## @param peer: StreamPeerTCP - подключение клиента
+## @param status_code: int - HTTP-код статуса
+## @param message: String - сообщение об ошибке
 func _send_http_accepted(peer: StreamPeerTCP) -> void:
 	var response: String = "HTTP/1.1 202 Accepted\r\n"
 	response += "Content-Length: 0\r\n"

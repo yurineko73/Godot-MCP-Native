@@ -1,21 +1,21 @@
-# mcp_types.gd - MCP类型定义和常量
-# 根据mcp-builder添加outputSchema和annotations支持
-# 根据godot-dev-guide添加完整的类型提示
+# mcp_types.gd - определения типов и констант MCP
+# Добавлена поддержка outputSchema и annotations (по mcp-builder)
+# Добавлены полные подсказки типов (по godot-dev-guide)
 
 class_name MCPTypes
 extends RefCounted
 
 # ============================================================================
-# 常量定义
+# Определение констант
 # ============================================================================
 
-# JSON-RPC版本
+# Версия JSON-RPC
 const JSONRPC_VERSION: String = "2.0"
 
-# MCP协议版本
+# Версия протокола MCP
 const PROTOCOL_VERSION: String = "2025-11-25"
 
-# 标准MCP方法
+# Стандартные методы MCP
 const METHOD_INITIALIZE: String = "initialize"
 const METHOD_NOTIFICATIONS_INITIALIZED: String = "notifications/initialized"
 const METHOD_TOOLS_LIST: String = "tools/list"
@@ -26,34 +26,34 @@ const METHOD_RESOURCES_SUBSCRIBE: String = "resources/subscribe"
 const METHOD_PROMPTS_LIST: String = "prompts/list"
 const METHOD_PROMPTS_GET: String = "prompts/get"
 
-# JSON-RPC错误码
+# Коды ошибок JSON-RPC
 const ERROR_PARSE_ERROR: int = -32700
 const ERROR_INVALID_REQUEST: int = -32600
 const ERROR_METHOD_NOT_FOUND: int = -32601
 const ERROR_INVALID_PARAMS: int = -32602
 const ERROR_INTERNAL_ERROR: int = -32603
 
-# MCP自定义错误码
+# Пользовательские коды ошибок MCP
 const ERROR_TOOL_NOT_FOUND: int = -32001
 const ERROR_RESOURCE_NOT_FOUND: int = -32002
 const ERROR_EXECUTION_FAILED: int = -32003
 
-# 安全级别
+# Уровни безопасности
 enum SecurityLevel {
-	PERMISSIVE,  # 宽松模式
-	STRICT       # 严格模式
+	PERMISSIVE,  # Мягкий режим
+	STRICT       # Строгий режим
 }
 
-# 日志级别
+# Уровни логирования
 enum LogLevel {
-	ERROR,  # 只记录错误
-	WARN,   # 记录警告和错误
-	INFO,   # 记录信息、警告和错误
-	DEBUG   # 记录所有信息
+	ERROR,  # Логировать только ошибки
+	WARN,   # Логировать предупреждения и ошибки
+	INFO,   # Логировать информацию, предупреждения и ошибки
+	DEBUG   # Логировать всё
 }
 
 # ============================================================================
-# MCPTool类 - 工具元数据（根据mcp-builder优化）
+# Класс MCPTool - метаданные инструмента (оптимизация по mcp-builder)
 # ============================================================================
 
 class MCPTool:
@@ -65,7 +65,7 @@ class MCPTool:
 	var callable: Callable = Callable()
 	var enabled: bool = true
 	
-	# 转换为Dictionary（用于JSON序列化）
+	# Преобразование в Dictionary (для JSON-сериализации)
 	func to_dict() -> Dictionary:
 		var result: Dictionary = {
 			"name": name,
@@ -73,17 +73,17 @@ class MCPTool:
 			"inputSchema": input_schema
 		}
 		
-		# 添加outputSchema（根据mcp-builder）
+		# Добавление outputSchema (по mcp-builder)
 		if not output_schema.is_empty():
 			result["outputSchema"] = output_schema
 		
-		# 添加annotations（根据mcp-builder）
+		# Добавление annotations (по mcp-builder)
 		if not annotations.is_empty():
 			result["annotations"] = annotations
 		
 		return result
 	
-	# 验证工具定义是否有效
+	# Проверка валидности определения инструмента
 	func is_valid() -> bool:
 		if name.is_empty():
 			return false
@@ -93,7 +93,7 @@ class MCPTool:
 			return false
 		return true
 	
-	# 创建annotations的帮助方法（根据mcp-builder）
+	# Вспомогательный метод создания annotations (по mcp-builder)
 	static func create_annotations(read_only: bool = false, 
 								   destructive: bool = false,
 								   idempotent: bool = false,
@@ -106,17 +106,17 @@ class MCPTool:
 		}
 
 # ============================================================================
-# MCPResource类 - 资源元数据（根据mcp-builder添加description）
+# Класс MCPResource - метаданные ресурса (добавлено description по mcp-builder)
 # ============================================================================
 
 class MCPResource:
 	var uri: String = ""
 	var name: String = ""
-	var description: String = ""  # 新增（根据mcp-builder）
+	var description: String = ""  # Добавлено по mcp-builder
 	var mime_type: String = "application/octet-stream"
 	var load_callable: Callable = Callable()
 	
-	# 转换为Dictionary
+	# Преобразование в Dictionary
 	func to_dict() -> Dictionary:
 		var result: Dictionary = {
 			"uri": uri,
@@ -124,13 +124,13 @@ class MCPResource:
 			"mimeType": mime_type
 		}
 		
-		# 添加description（根据mcp-builder）
+		# Добавление description (по mcp-builder)
 		if not description.is_empty():
 			result["description"] = description
 		
 		return result
 	
-	# 验证资源定义是否有效
+	# Проверка валидности определения ресурса
 	func is_valid() -> bool:
 		if uri.is_empty():
 			return false
@@ -141,7 +141,7 @@ class MCPResource:
 		return true
 
 # ============================================================================
-# MCPPrompt类 - 提示模板元数据
+# Класс MCPPrompt - метаданные шаблона prompt
 # ============================================================================
 
 class MCPPrompt:
@@ -160,10 +160,10 @@ class MCPPrompt:
 		return not name.is_empty()
 
 # ============================================================================
-# 工具函数
+# Вспомогательные функции
 # ============================================================================
 
-# 创建标准JSON-RPC响应
+# Создать стандартный JSON-RPC ответ
 static func create_response(id: Variant, result: Variant) -> Dictionary:
 	return {
 		"jsonrpc": JSONRPC_VERSION,
@@ -171,7 +171,7 @@ static func create_response(id: Variant, result: Variant) -> Dictionary:
 		"result": result
 	}
 
-# 创建标准JSON-RPC错误响应
+# Создать стандартный JSON-RPC ответ с ошибкой
 static func create_error_response(id: Variant, code: int, message: String, data: Variant = null) -> Dictionary:
 	var error: Dictionary = {
 		"code": code,
@@ -187,7 +187,7 @@ static func create_error_response(id: Variant, code: int, message: String, data:
 		"error": error
 	}
 
-# 创建标准MCP capabilities响应（根据mcp-builder优化）
+# Создать стандартный ответ MCP capabilities (оптимизация по mcp-builder)
 static func create_capabilities(tools_changed: bool = true,
 								resources_subscribe: bool = true,
 								resources_changed: bool = true,
@@ -210,9 +210,9 @@ static func create_capabilities(tools_changed: bool = true,
 	
 	return capabilities
 
-# 验证路径是否安全（根据mcp-builder安全最佳实践）
+# Проверка безопасности пути (best practices mcp-builder)
 static func is_path_safe(path: String) -> bool:
-	# 检查白名单
+	# Проверка белого списка
 	var allowed_prefixes: Array[String] = ["res://", "user://"]
 	var is_allowed: bool = false
 	
@@ -224,19 +224,19 @@ static func is_path_safe(path: String) -> bool:
 	if not is_allowed:
 		return false
 	
-	# 检查黑名单模式
+	# Проверка шаблонов чёрного списка
 	var blocked_patterns: Array[String] = ["..", "~", "$", "|", ";", "`", "&&", "||"]
 	for pattern in blocked_patterns:
 		if path.contains(pattern):
 			return false
 	
-	# 检查路径长度
+	# Проверка длины пути
 	if path.length() > 4096:
 		return false
 	
 	return true
 
-# 清理路径（根据mcp-builder安全最佳实践）
+# Очистка пути (best practices mcp-builder)
 static func sanitize_path(path: String) -> String:
 	var sanitized: String = path.replace("..", "").replace("~", "")
 	
@@ -245,12 +245,12 @@ static func sanitize_path(path: String) -> String:
 	
 	return sanitized
 
-# 生成唯一ID
+# Генерация уникального ID
 static func generate_id() -> String:
 	return "mcp_" + str(Time.get_unix_time_from_system()) + "_" + str(randi())
 
 # ============================================================================
-# 日志工具类
+# Класс утилит логирования
 # ============================================================================
 
 class MCPLogger:

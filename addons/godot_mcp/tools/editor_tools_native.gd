@@ -1,5 +1,5 @@
-# editor_tools_native.gd - Editor Tools原生实现
-# 根据godot-dev-guide添加完整的类型提示
+# editor_tools_native.gd - нативная реализация Editor Tools
+# Добавлены полные подсказки типов по godot-dev-guide
 
 @tool
 class_name EditorToolsNative
@@ -48,7 +48,7 @@ static func _make_friendly_path(node: Node, scene_root: Node) -> String:
 	return node_path
 
 # ============================================================================
-# 工具注册
+# Регистрация инструментов
 # ============================================================================
 
 func register_tools(server_core: RefCounted) -> void:
@@ -62,7 +62,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_reload_project(server_core)
 
 # ============================================================================
-# get_editor_state - 获取编辑器状态
+# get_editor_state - получение состояния редактора
 # ============================================================================
 
 func _register_get_editor_state(server_core: RefCounted) -> void:
@@ -97,7 +97,7 @@ func _register_get_editor_state(server_core: RefCounted) -> void:
 		"openWorldHint": false
 	}
 	
-	# 注册工具
+	# Регистрация инструмента
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_get_editor_state"),
 						  output_schema, annotations)
@@ -136,7 +136,7 @@ func _tool_get_editor_state(params: Dictionary) -> Dictionary:
 	}
 
 # ============================================================================
-# run_project - 运行项目
+# run_project - запуск проекта
 # ============================================================================
 
 func _register_run_project(server_core: RefCounted) -> void:
@@ -171,7 +171,7 @@ func _register_run_project(server_core: RefCounted) -> void:
 		"openWorldHint": false
 	}
 	
-	# 注册工具
+	# Регистрация инструмента
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_run_project"),
 						  output_schema, annotations)
@@ -199,7 +199,7 @@ func _tool_run_project(params: Dictionary) -> Dictionary:
 	}
 
 # ============================================================================
-# stop_project - 停止运行
+# stop_project - остановка запуска
 # ============================================================================
 
 func _register_stop_project(server_core: RefCounted) -> void:
@@ -229,7 +229,7 @@ func _register_stop_project(server_core: RefCounted) -> void:
 		"openWorldHint": false
 	}
 	
-	# 注册工具
+	# Регистрация инструмента
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_stop_project"),
 						  output_schema, annotations)
@@ -250,7 +250,7 @@ func _tool_stop_project(params: Dictionary) -> Dictionary:
 	}
 
 # ============================================================================
-# get_selected_nodes - 获取选中的节点
+# get_selected_nodes - получение выбранных узлов
 # ============================================================================
 
 func _register_get_selected_nodes(server_core: RefCounted) -> void:
@@ -321,7 +321,7 @@ func _tool_get_selected_nodes(params: Dictionary) -> Dictionary:
 	}
 
 # ============================================================================
-# set_editor_setting - 设置编辑器属性
+# set_editor_setting - установка параметра редактора
 # ============================================================================
 
 func _register_set_editor_setting(server_core: RefCounted) -> void:
@@ -362,7 +362,7 @@ func _register_set_editor_setting(server_core: RefCounted) -> void:
 		"openWorldHint": false
 	}
 	
-	# 注册工具
+	# Регистрация инструмента
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_set_editor_setting"),
 						  output_schema, annotations)
@@ -399,7 +399,7 @@ func _tool_set_editor_setting(params: Dictionary) -> Dictionary:
 	}
 
 # ============================================================================
-# get_editor_screenshot - 截取编辑器视口
+# get_editor_screenshot - снимок окна редактора
 # ============================================================================
 
 func _register_get_editor_screenshot(server_core: RefCounted) -> void:
@@ -502,7 +502,7 @@ func _tool_get_editor_screenshot(params: Dictionary) -> Dictionary:
 	}
 
 # ============================================================================
-# get_signals - 获取节点的所有信号及连接
+# get_signals - получение всех сигналов узла и соединений
 # ============================================================================
 
 func _register_get_signals(server_core: RefCounted) -> void:
@@ -603,7 +603,7 @@ func _resolve_node_path(editor_interface: EditorInterface, path: String) -> Node
 	return edited_scene.get_node_or_null(path)
 
 # ============================================================================
-# reload_project - 重新扫描文件系统并重新加载脚本
+# reload_project - повторное сканирование файловой системы и перезагрузка скриптов
 # ============================================================================
 
 func _register_reload_project(server_core: RefCounted) -> void:

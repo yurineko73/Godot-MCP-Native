@@ -1,50 +1,50 @@
 # path_validator.gd
-# 路径验证工具 - 防止路径遍历攻击和非法访问
-# 版本: 1.0
-# 作者: AI Assistant
-# 日期: 2026-05-01
+# Утилита валидации путей - защита от обхода директорий и невалидного доступа
+# Версия: 1.0
+# Автор: AI Assistant
+# Дата: 2026-05-01
 
 @tool
 class_name PathValidator
 extends RefCounted
 
-# 信号
+# Сигналы
 signal path_rejected(path: String, reason: String)
 signal path_approved(path: String)
 
-# 常量 - 允许的路径前缀
+# Константы - разрешенные префиксы путей
 const ALLOWED_PATHS := ["res://", "user://"]
 
-# 常量 - 危险路径模式
+# Константы - опасные шаблоны путей
 const DANGEROUS_PATTERNS := [
-	"~",            # 用户目录
-	"\\\\",         # Windows网络路径
-	"C:\\",         # Windows绝对路径
-	"/etc/",        # Linux系统目录
-	"/var/",        # Linux变量目录
-	"/tmp/",        # 临时目录
-	"D:\\",        # 其他Windows盘符
+	"~",            # Домашний каталог пользователя
+	"\\\\",         # Windows-сетевой путь
+	"C:\\",         # Абсолютный путь Windows
+	"/etc/",        # Системный каталог Linux
+	"/var/",        # Каталог данных Linux
+	"/tmp/",        # Временный каталог
+	"D:\\",        # Другие диски Windows
 	"E:\\",
 	"F:\\"
 ]
 
-# 配置
-var _strict_mode: bool = true  # true=严格模式，false=宽松模式
-var _allowed_extensions: Array[String] = []  # 允许的文件扩展名（空=不限制）
+# Конфигурация
+var _strict_mode: bool = true  # true=строгий режим, false=мягкий режим
+var _allowed_extensions: Array[String] = []  # Разрешенные расширения файлов (пусто = без ограничений)
 
-# 日志回调
+# Колбэк логирования
 var _log_callback: Callable = Callable()
 
-## 设置日志回调函数
+## Установить функцию логирования
 func set_log_callback(callback: Callable) -> void:
 	_log_callback = callback
 
 # ===========================================
-# 路径验证主函数
+# Основные функции валидации пути
 # ===========================================
 
-## 验证路径是否安全
-## 返回: {valid: bool, error: String, sanitized: String}
+## Проверяет, безопасен ли путь
+## Возвращает: {valid: bool, error: String, sanitized: String}
 static func validate_path(path: String, strict: bool = true) -> Dictionary:
 	var result: Dictionary = {
 		"valid": false,
@@ -87,8 +87,8 @@ static func validate_path(path: String, strict: bool = true) -> Dictionary:
 	result["sanitized"] = sanitized
 	return result
 
-## 验证文件路径（检查扩展名）
-## 返回: {valid: bool, error: String, sanitized: String}
+## Проверяет путь к файлу (с проверкой расширения)
+## Возвращает: {valid: bool, error: String, sanitized: String}
 static func validate_file_path(path: String, allowed_extensions: Array = []) -> Dictionary:
 	var result: Dictionary = validate_path(path)
 	if not result["valid"]:
@@ -110,8 +110,8 @@ static func validate_file_path(path: String, allowed_extensions: Array = []) -> 
 	
 	return result
 
-## 验证目录路径
-## 返回: {valid: bool, error: String, sanitized: String}
+## Проверяет путь к каталогу
+## Возвращает: {valid: bool, error: String, sanitized: String}
 static func validate_directory_path(path: String) -> Dictionary:
 	var result: Dictionary = validate_path(path)
 	if not result["valid"]:
@@ -131,10 +131,10 @@ static func validate_directory_path(path: String) -> Dictionary:
 	return result
 
 # ===========================================
-# 路径清理
+# Очистка пути
 # ===========================================
 
-## 清理路径（移除危险字符）
+## Очищает путь (удаляет опасные символы)
 static func _sanitize_path(path: String) -> String:
 	var sanitized: String = path
 	
@@ -162,11 +162,11 @@ static func _sanitize_path(path: String) -> String:
 	return prefix + sanitized
 
 # ===========================================
-# 批量验证
+# Пакетная валидация
 # ===========================================
 
-## 批量验证多个路径
-## 返回: {valid: Array, invalid: Array[Dictionary]}
+## Пакетно проверяет несколько путей
+## Возвращает: {valid: Array, invalid: Array[Dictionary]}
 static func validate_paths(paths: Array[String], strict: bool = true) -> Dictionary:
 	var result: Dictionary = {
 		"valid": [],
@@ -186,11 +186,11 @@ static func validate_paths(paths: Array[String], strict: bool = true) -> Diction
 	return result
 
 # ===========================================
-# 实例方法（支持信号）
+# Методы экземпляра (с поддержкой сигналов)
 # ===========================================
 
-## 实例方法：验证路径（会发射信号）
-## 返回: bool
+## Метод экземпляра: проверка пути (эмитит сигнал)
+## Возвращает: bool
 func validate_path_with_signal(path: String) -> bool:
 	var result: Dictionary = validate_path(path, _strict_mode)
 	
@@ -201,31 +201,31 @@ func validate_path_with_signal(path: String) -> bool:
 		path_rejected.emit(path, result["error"])
 		return false
 
-## 设置严格模式
+## Установить строгий режим
 func set_strict_mode(strict: bool) -> void:
 	_strict_mode = strict
 	if _log_callback.is_valid():
 		_log_callback.call("INFO", "Strict mode: " + str(strict))
 
-## 添加允许的扩展名
+## Добавить разрешенное расширение
 func add_allowed_extension(extension: String) -> void:
 	if not _allowed_extensions.has(extension):
 		_allowed_extensions.append(extension)
 		if _log_callback.is_valid():
 			_log_callback.call("INFO", "Added allowed extension: " + extension)
 
-## 清除允许的扩展名（不限制）
+## Очистить список разрешенных расширений (без ограничений)
 func clear_allowed_extensions() -> void:
 	_allowed_extensions.clear()
 	if _log_callback.is_valid():
 		_log_callback.call("INFO", "Cleared allowed extensions (no restriction)")
 
 # ===========================================
-# 调试功能
+# Отладочные функции
 # ===========================================
 
-## 测试路径验证（调试用）
-## 返回: Array[String] 验证结果文本
+## Тест валидации путей (для отладки)
+## Возвращает: Array[String] Текст с результатами проверки
 static func test_validation() -> Array[String]:
 	var output: Array[String] = []
 	output.append("Testing path validation...")

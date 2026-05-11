@@ -1,38 +1,38 @@
 # mcp_resource_manager.gd
-# MCP 资源管理器 - 负责注册和读取MCP资源
-# 版本: 1.0
-# 作者: AI Assistant
-# 日期: 2026-05-01
+# MCP Resource Manager - отвечает за регистрацию и чтение MCP-ресурсов
+# Версия: 1.0
+# Автор: AI Assistant
+# Дата: 2026-05-01
 
 class_name MCPResourceManager
 extends RefCounted
 
-# 信号
+# Сигналы
 signal resource_registered(uri: String, name: String)
 signal resource_read(uri: String, result: Dictionary)
 
-# 常量
+# Константы
 const JSONRPC_VERSION := "2.0"
 
-# 资源注册表: uri -> {name, mimeType, load_callable}
+# Реестр ресурсов: uri -> {name, mimeType, load_callable}
 var _resources: Dictionary = {}
 
-# 日志回调
+# Колбэк логирования
 var _log_callback: Callable = Callable()
 
-## 设置日志回调函数
+## Установить колбэк логирования
 func set_log_callback(callback: Callable) -> void:
 	_log_callback = callback
 
 # ===========================================
-# 资源注册
+# Регистрация ресурсов
 # ===========================================
 
-## 注册资源
+## Зарегистрировать ресурс
 func register_resource(uri: String, name: String, mime_type: String, load_callable: Callable) -> void:
 	if _resources.has(uri):
 		if _log_callback.is_valid():
-			_log_callback.call("WARN", "资源已存在，将覆盖: " + uri)
+			_log_callback.call("WARN", "Ресурс уже существует, будет перезаписан: " + uri)
 
 	_resources[uri] = {
 		"name": name,
@@ -42,18 +42,18 @@ func register_resource(uri: String, name: String, mime_type: String, load_callab
 
 	resource_registered.emit(uri, name)
 	if _log_callback.is_valid():
-		_log_callback.call("INFO", "注册资源: " + uri + " (" + name + ")")
+		_log_callback.call("INFO", "Ресурс зарегистрирован: " + uri + " (" + name + ")")
 
-## 注销资源
+## Удалить регистрацию ресурса
 func unregister_resource(uri: String) -> bool:
 	if _resources.has(uri):
 		_resources.erase(uri)
 		if _log_callback.is_valid():
-			_log_callback.call("INFO", "注销资源: " + uri)
+			_log_callback.call("INFO", "Ресурс удалён из реестра: " + uri)
 		return true
 	return false
 
-## 获取资源列表
+## Получить список ресурсов
 func list_resources() -> Array:
 	var resource_list: Array = []
 
@@ -68,10 +68,10 @@ func list_resources() -> Array:
 	return resource_list
 
 # ===========================================
-# 资源读取
+# Чтение ресурсов
 # ===========================================
 
-## 读取资源
+## Прочитать ресурс
 func read_resource(uri: String, params: Dictionary = {}) -> Dictionary:
 	if not _resources.has(uri):
 		return _error_response(null, -32602, "Resource not found: " + uri)
@@ -90,10 +90,10 @@ func read_resource(uri: String, params: Dictionary = {}) -> Dictionary:
 	return result
 
 # ===========================================
-# JSON-RPC 响应辅助函数
+# Вспомогательные функции ответа JSON-RPC
 # ===========================================
 
-## 成功响应
+## Успешный ответ
 static func _success_response(id: Variant, result: Variant) -> Dictionary:
 	return {
 		"jsonrpc": "2.0",
@@ -101,7 +101,7 @@ static func _success_response(id: Variant, result: Variant) -> Dictionary:
 		"result": result
 	}
 
-## 错误响应
+## Ответ с ошибкой
 static func _error_response(id: Variant, code: int, message: String) -> Dictionary:
 	return {
 		"jsonrpc": "2.0",
@@ -113,19 +113,19 @@ static func _error_response(id: Variant, code: int, message: String) -> Dictiona
 	}
 
 # ===========================================
-# 调试功能
+# Отладочные функции
 # ===========================================
 
-## 获取注册的资源数量
+## Получить количество зарегистрированных ресурсов
 func get_resource_count() -> int:
 	return _resources.size()
 
-## 打印所有注册的资源
+## Вывести все зарегистрированные ресурсы
 func print_resources() -> void:
 	if not _log_callback.is_valid():
 		return
-	_log_callback.call("INFO", "已注册的资源:")
+	_log_callback.call("INFO", "Зарегистрированные ресурсы:")
 	for uri in _resources.keys():
 		var info: Dictionary = _resources[uri]
 		_log_callback.call("INFO", "  - " + uri + " (" + info["name"] + ")")
-	_log_callback.call("INFO", "  总计: " + str(_resources.size()) + " 个资源")
+	_log_callback.call("INFO", "  Всего: " + str(_resources.size()) + " ресурсов")

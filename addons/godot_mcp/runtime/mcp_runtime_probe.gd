@@ -99,6 +99,12 @@ func _capture_mcp_message(message: String, data: Array) -> bool:
 			return _handle_set_animation_tree_active(data)
 		"travel_animation_tree":
 			return _handle_travel_animation_tree(data)
+		"get_material_state":
+			return _handle_get_material_state(data)
+		"get_shader_parameters":
+			return _handle_get_shader_parameters(data)
+		"set_shader_parameter":
+			return _handle_set_shader_parameter(data)
 		"list_tilemap_layers":
 			return _handle_list_tilemap_layers(data)
 		"get_tilemap_cell":
@@ -571,6 +577,62 @@ func _handle_travel_animation_tree(data: Array) -> bool:
 	EngineDebugger.send_message("mcp:animation_tree_travelled", [_serialize_animation_tree_state(animation_tree)])
 	return true
 
+func _handle_get_material_state(data: Array) -> bool:
+	if data.is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": "get_material_state requires node_path"}])
+		return true
+	var resolution: Dictionary = _resolve_material_binding(str(data[0]), str(data[1]) if data.size() >= 2 else "auto", int(data[2]) if data.size() >= 3 else 0)
+	if resolution.has("error"):
+		EngineDebugger.send_message("mcp:error", [resolution])
+		return true
+	EngineDebugger.send_message("mcp:material_state", [_serialize_material_state(resolution)])
+	return true
+
+func _handle_get_shader_parameters(data: Array) -> bool:
+	if data.is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": "get_shader_parameters requires node_path"}])
+		return true
+	var resolution: Dictionary = _resolve_material_binding(str(data[0]), str(data[1]) if data.size() >= 2 else "auto", int(data[2]) if data.size() >= 3 else 0)
+	if resolution.has("error"):
+		EngineDebugger.send_message("mcp:error", [resolution])
+		return true
+	var material: Material = resolution.get("material")
+	if not (material is ShaderMaterial):
+		EngineDebugger.send_message("mcp:error", [{
+			"message": "Resolved material is not a ShaderMaterial",
+			"node_path": str(resolution.get("node_path", "")),
+			"material_class": material.get_class() if material else ""
+		}])
+		return true
+	EngineDebugger.send_message("mcp:shader_parameters", [_serialize_shader_parameters(resolution, material)])
+	return true
+
+func _handle_set_shader_parameter(data: Array) -> bool:
+	if data.size() < 3:
+		EngineDebugger.send_message("mcp:error", [{"message": "set_shader_parameter requires node_path, parameter_name, value, and optional material_target/surface_index"}])
+		return true
+	var resolution: Dictionary = _resolve_material_binding(str(data[0]), str(data[3]) if data.size() >= 4 else "auto", int(data[4]) if data.size() >= 5 else 0)
+	if resolution.has("error"):
+		EngineDebugger.send_message("mcp:error", [resolution])
+		return true
+	var material: Material = resolution.get("material")
+	if not (material is ShaderMaterial):
+		EngineDebugger.send_message("mcp:error", [{
+			"message": "Resolved material is not a ShaderMaterial",
+			"node_path": str(resolution.get("node_path", "")),
+			"material_class": material.get_class() if material else ""
+		}])
+		return true
+	var parameter_name: String = str(data[1])
+	if parameter_name.is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": "parameter_name cannot be empty"}])
+		return true
+	var shader_material: ShaderMaterial = material
+	var old_value: Variant = shader_material.get_shader_parameter(parameter_name)
+	shader_material.set_shader_parameter(parameter_name, data[2])
+	EngineDebugger.send_message("mcp:shader_parameter_updated", [_serialize_shader_parameter_update(resolution, shader_material, parameter_name, old_value)])
+	return true
+
 func _handle_list_tilemap_layers(data: Array) -> bool:
 	if data.is_empty():
 		EngineDebugger.send_message("mcp:error", [{"message": "list_tilemap_layers requires node_path"}])
@@ -708,6 +770,58 @@ func _resolve_animation_tree(node_path: String) -> AnimationTree:
 		return null
 	return node
 
+func _resolve_material_binding(node_path: String, material_target: String = "auto", surface_index: int = 0) -> Dictionary:
+	var node: Node = _resolve_target_node(node_path)
+	if not node:
+		return {"error": "Node not found: " + node_path, "node_path": node_path}
+	var target: String = material_target.strip_edges().to_lower()
+	if target.is_empty():
+		target = "auto"
+	var material: Material = null
+	var resolved_target: String = target
+	match target:
+		"auto":
+			if node is CanvasItem and node.material:
+				material = node.material
+				resolved_target = "material"
+			elif node.has_method("get_material_override") and node.call("get_material_override"):
+				material = node.call("get_material_override")
+				resolved_target = "material_override"
+			elif node is MeshInstance3D:
+				material = node.get_active_material(surface_index)
+				resolved_target = "surface_override"
+		"material":
+			if node is CanvasItem:
+				material = node.material
+			elif node.has_method("get_material"):
+				material = node.call("get_material")
+		"material_override":
+			if node.has_method("get_material_override"):
+				material = node.call("get_material_override")
+		"surface_override":
+			if node is MeshInstance3D:
+				material = node.get_active_material(surface_index)
+			else:
+				return {"error": "surface_override target requires MeshInstance3D", "node_path": node_path, "node_type": node.get_class()}
+		_:
+			return {"error": "Unsupported material_target: " + material_target, "node_path": node_path}
+	if material == null:
+		return {
+			"error": "No material resolved for target",
+			"node_path": node_path,
+			"node_type": node.get_class(),
+			"material_target": resolved_target,
+			"surface_index": surface_index
+		}
+	return {
+		"node": node,
+		"node_path": str(node.get_path()),
+		"node_type": node.get_class(),
+		"material": material,
+		"material_target": resolved_target,
+		"surface_index": surface_index
+	}
+
 func _resolve_tilemap(node_path: String) -> TileMap:
 	var node: Node = _resolve_target_node(node_path)
 	if not node:
@@ -790,6 +904,48 @@ func _serialize_animation_tree_state(animation_tree: AnimationTree) -> Dictionar
 			result["playback_current_position"] = float(playback.get_current_play_position())
 		if playback.has_method("get_travel_path"):
 			result["travel_path"] = PackedStringArray(playback.get_travel_path())
+	return result
+
+func _serialize_material_state(resolution: Dictionary) -> Dictionary:
+	var material: Material = resolution.get("material")
+	var shader_material: ShaderMaterial = material as ShaderMaterial
+	var result: Dictionary = {
+		"node_path": str(resolution.get("node_path", "")),
+		"node_type": str(resolution.get("node_type", "")),
+		"material_target": str(resolution.get("material_target", "")),
+		"surface_index": int(resolution.get("surface_index", 0)),
+		"material_class": material.get_class() if material else "",
+		"resource_path": material.resource_path if material else "",
+		"is_shader_material": shader_material != null
+	}
+	if shader_material:
+		result["shader_resource_path"] = shader_material.shader.resource_path if shader_material.shader else ""
+		result["shader_uniform_count"] = shader_material.shader.get_shader_uniform_list().size() if shader_material.shader else 0
+	return result
+
+func _serialize_shader_parameters(resolution: Dictionary, material: ShaderMaterial) -> Dictionary:
+	var uniforms: Array = material.shader.get_shader_uniform_list() if material.shader else []
+	var parameters: Array = []
+	for uniform_info in uniforms:
+		var uniform_name: String = str(uniform_info.get("name", ""))
+		parameters.append({
+			"name": uniform_name,
+			"type": int(uniform_info.get("type", -1)),
+			"hint": int(uniform_info.get("hint", 0)),
+			"hint_string": str(uniform_info.get("hint_string", "")),
+			"value": _serialize_value(material.get_shader_parameter(uniform_name))
+		})
+	parameters.sort_custom(Callable(self, "_sort_shader_parameter_entries"))
+	var result: Dictionary = _serialize_material_state(resolution)
+	result["parameters"] = parameters
+	result["count"] = parameters.size()
+	return result
+
+func _serialize_shader_parameter_update(resolution: Dictionary, material: ShaderMaterial, parameter_name: String, old_value: Variant) -> Dictionary:
+	var result: Dictionary = _serialize_material_state(resolution)
+	result["parameter_name"] = parameter_name
+	result["old_value"] = _serialize_value(old_value)
+	result["new_value"] = _serialize_value(material.get_shader_parameter(parameter_name))
 	return result
 
 func _build_input_event(payload: Dictionary) -> InputEvent:
@@ -895,6 +1051,9 @@ func _sort_input_action_entries(a: Dictionary, b: Dictionary) -> bool:
 	return str(a.get("action_name", "")) < str(b.get("action_name", ""))
 
 func _sort_animation_entries(a: Dictionary, b: Dictionary) -> bool:
+	return str(a.get("name", "")) < str(b.get("name", ""))
+
+func _sort_shader_parameter_entries(a: Dictionary, b: Dictionary) -> bool:
 	return str(a.get("name", "")) < str(b.get("name", ""))
 
 func capture_runtime_screenshot(save_path: String = "user://mcp_runtime_capture.png", format: String = "png") -> Dictionary:

@@ -119,6 +119,9 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_get_runtime_animation_tree_state(server_core)
 	_register_set_runtime_animation_tree_active(server_core)
 	_register_travel_runtime_animation_tree(server_core)
+	_register_get_runtime_material_state(server_core)
+	_register_get_runtime_shader_parameters(server_core)
+	_register_set_runtime_shader_parameter(server_core)
 	_register_list_runtime_tilemap_layers(server_core)
 	_register_get_runtime_tilemap_cell(server_core)
 	_register_set_runtime_tilemap_cell(server_core)
@@ -1568,6 +1571,87 @@ func _tool_travel_runtime_animation_tree(params: Dictionary) -> Dictionary:
 	if node_path.is_empty() or state_name.is_empty():
 		return {"error": "node_path and state_name are required"}
 	return _request_runtime_probe("travel_animation_tree", [node_path, state_name], ["mcp:animation_tree_travelled"], params, {"node_path": node_path, "current_node": state_name})
+
+func _register_get_runtime_material_state(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"get_runtime_material_state",
+		"Resolve a runtime node material binding and return material metadata.",
+		{
+			"type": "object",
+			"properties": {
+				"node_path": {"type": "string"},
+				"material_target": {"type": "string", "enum": ["auto", "material", "material_override", "surface_override"], "default": "auto"},
+				"surface_index": {"type": "integer", "default": 0},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["node_path"]
+		},
+		Callable(self, "_tool_get_runtime_material_state"),
+		{"type": "object", "properties": {"node_path": {"type": "string"}, "material_class": {"type": "string"}, "material_target": {"type": "string"}, "is_shader_material": {"type": "boolean"}}},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
+	)
+
+func _tool_get_runtime_material_state(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("node_path", "")
+	if node_path.is_empty():
+		return {"error": "Missing required parameter: node_path"}
+	return _request_runtime_probe("get_material_state", [node_path, str(params.get("material_target", "auto")), int(params.get("surface_index", 0))], ["mcp:material_state"], params, {"node_path": node_path})
+
+func _register_get_runtime_shader_parameters(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"get_runtime_shader_parameters",
+		"List shader uniforms and current values from a runtime ShaderMaterial binding.",
+		{
+			"type": "object",
+			"properties": {
+				"node_path": {"type": "string"},
+				"material_target": {"type": "string", "enum": ["auto", "material", "material_override", "surface_override"], "default": "auto"},
+				"surface_index": {"type": "integer", "default": 0},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["node_path"]
+		},
+		Callable(self, "_tool_get_runtime_shader_parameters"),
+		{"type": "object", "properties": {"node_path": {"type": "string"}, "parameters": {"type": "array"}, "count": {"type": "integer"}}},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
+	)
+
+func _tool_get_runtime_shader_parameters(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("node_path", "")
+	if node_path.is_empty():
+		return {"error": "Missing required parameter: node_path"}
+	return _request_runtime_probe("get_shader_parameters", [node_path, str(params.get("material_target", "auto")), int(params.get("surface_index", 0))], ["mcp:shader_parameters"], params, {"node_path": node_path})
+
+func _register_set_runtime_shader_parameter(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"set_runtime_shader_parameter",
+		"Update one shader uniform on a runtime ShaderMaterial binding.",
+		{
+			"type": "object",
+			"properties": {
+				"node_path": {"type": "string"},
+				"parameter_name": {"type": "string"},
+				"value": {},
+				"material_target": {"type": "string", "enum": ["auto", "material", "material_override", "surface_override"], "default": "auto"},
+				"surface_index": {"type": "integer", "default": 0},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["node_path", "parameter_name", "value"]
+		},
+		Callable(self, "_tool_set_runtime_shader_parameter"),
+		{"type": "object", "properties": {"node_path": {"type": "string"}, "parameter_name": {"type": "string"}, "old_value": {}, "new_value": {}}},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
+	)
+
+func _tool_set_runtime_shader_parameter(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("node_path", "")
+	var parameter_name: String = params.get("parameter_name", "")
+	if node_path.is_empty() or parameter_name.is_empty() or not params.has("value"):
+		return {"error": "node_path, parameter_name, and value are required"}
+	return _request_runtime_probe("set_shader_parameter", [node_path, parameter_name, params.get("value"), str(params.get("material_target", "auto")), int(params.get("surface_index", 0))], ["mcp:shader_parameter_updated"], params, {"node_path": node_path, "parameter_name": parameter_name})
 
 func _register_list_runtime_tilemap_layers(server_core: RefCounted) -> void:
 	server_core.register_tool(

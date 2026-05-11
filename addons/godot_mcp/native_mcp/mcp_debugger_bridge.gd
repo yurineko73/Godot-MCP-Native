@@ -542,6 +542,8 @@ func _build_nested_variables_reference(value: Variant) -> int:
 				_build_variable_entry("basis", value.basis, "Basis"),
 				_build_variable_entry("origin", value.origin, "Vector3")
 			])
+		TYPE_OBJECT:
+			entries = _build_object_variable_entries(value)
 		TYPE_PACKED_BYTE_ARRAY, TYPE_PACKED_INT32_ARRAY, TYPE_PACKED_INT64_ARRAY, TYPE_PACKED_FLOAT32_ARRAY, TYPE_PACKED_FLOAT64_ARRAY, TYPE_PACKED_STRING_ARRAY, TYPE_PACKED_VECTOR2_ARRAY, TYPE_PACKED_VECTOR3_ARRAY, TYPE_PACKED_COLOR_ARRAY, TYPE_PACKED_VECTOR4_ARRAY:
 			entries.append(_build_variable_entry("size", value.size(), "int"))
 			for index in range(value.size()):
@@ -566,6 +568,8 @@ func _describe_child_counts(value: Variant) -> Dictionary:
 			return {"indexed_variables": 0, "named_variables": 3}
 		TYPE_VECTOR4, TYPE_COLOR, TYPE_QUATERNION:
 			return {"indexed_variables": 0, "named_variables": 4}
+		TYPE_OBJECT:
+			return {"indexed_variables": 0, "named_variables": _build_object_variable_entries(value).size()}
 		TYPE_PACKED_BYTE_ARRAY, TYPE_PACKED_INT32_ARRAY, TYPE_PACKED_INT64_ARRAY, TYPE_PACKED_FLOAT32_ARRAY, TYPE_PACKED_FLOAT64_ARRAY, TYPE_PACKED_STRING_ARRAY, TYPE_PACKED_VECTOR2_ARRAY, TYPE_PACKED_VECTOR3_ARRAY, TYPE_PACKED_COLOR_ARRAY, TYPE_PACKED_VECTOR4_ARRAY:
 			return {"indexed_variables": value.size() + 1, "named_variables": 0}
 		_:
@@ -631,6 +635,8 @@ func _serialize_debug_value(value: Variant) -> Variant:
 				"basis": _serialize_debug_value(value.basis),
 				"origin": _serialize_debug_value(value.origin)
 			}
+		TYPE_OBJECT:
+			return _serialize_debug_object(value)
 		TYPE_ARRAY:
 			var serialized_array: Array = []
 			for item in value:
@@ -648,6 +654,42 @@ func _serialize_debug_value(value: Variant) -> Variant:
 			return packed_array
 		_:
 			return str(value)
+
+func _build_object_variable_entries(value: Variant) -> Array:
+	if typeof(value) != TYPE_OBJECT or value == null:
+		return []
+	var object_value: Object = value
+	if not is_instance_valid(object_value):
+		return []
+	var entries: Array = []
+	var seen: Dictionary = {}
+	for property_info in object_value.get_property_list():
+		var property_name: String = str(property_info.get("name", ""))
+		if property_name.is_empty() or seen.has(property_name):
+			continue
+		if property_name == "script" or property_name.begins_with("_") or property_name.contains("/"):
+			continue
+		var usage: int = int(property_info.get("usage", 0))
+		var include_property: bool = (usage & PROPERTY_USAGE_SCRIPT_VARIABLE) != 0 or (usage & PROPERTY_USAGE_STORAGE) != 0
+		if not include_property:
+			continue
+		seen[property_name] = true
+		entries.append(_build_variable_entry(property_name, object_value.get(property_name)))
+	return entries
+
+func _serialize_debug_object(value: Variant) -> Dictionary:
+	if typeof(value) != TYPE_OBJECT or value == null:
+		return {}
+	var object_value: Object = value
+	if not is_instance_valid(object_value):
+		return {"class_name": "<freed>"}
+	var properties: Dictionary = {}
+	for entry in _build_object_variable_entries(object_value):
+		properties[str(entry.get("name", ""))] = entry.get("value", null)
+	return {
+		"class_name": object_value.get_class(),
+		"properties": properties
+	}
 
 func _find_captured_message_after_sequence(sequence: int, response_messages: Array, error_messages: Array) -> Dictionary:
 	for entry in _captured_messages:

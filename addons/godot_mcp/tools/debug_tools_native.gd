@@ -763,6 +763,8 @@ func _debug_named_variable_count(value: Variant) -> int:
 			return 3
 		TYPE_VECTOR4, TYPE_COLOR, TYPE_QUATERNION:
 			return 4
+		TYPE_OBJECT:
+			return _expand_debug_object_entries(value, []).size()
 		_:
 			return 0
 
@@ -799,6 +801,8 @@ func _expand_debug_value_entries(value: Variant, parent_path: Array) -> Array:
 		var vector_entries: Array = _expand_debug_struct_fields(value, parent_path)
 		if not vector_entries.is_empty():
 			return vector_entries
+		if typeof(value) == TYPE_OBJECT:
+			return _expand_debug_object_entries(value, parent_path)
 	return entries
 
 func _expand_debug_struct_fields(value: Variant, parent_path: Array) -> Array:
@@ -889,10 +893,41 @@ func _expand_debug_struct_fields(value: Variant, parent_path: Array) -> Array:
 			])
 	return entries
 
+func _expand_debug_object_entries(value: Variant, parent_path: Array) -> Array:
+	if typeof(value) != TYPE_OBJECT or value == null:
+		return []
+	var object_value: Object = value
+	if not is_instance_valid(object_value):
+		return []
+	var entries: Array = []
+	var seen: Dictionary = {}
+	for property_info in object_value.get_property_list():
+		var property_name: String = str(property_info.get("name", ""))
+		if property_name.is_empty() or seen.has(property_name):
+			continue
+		if property_name == "script" or property_name.begins_with("_") or property_name.contains("/"):
+			continue
+		var usage: int = int(property_info.get("usage", 0))
+		var include_property: bool = (usage & PROPERTY_USAGE_SCRIPT_VARIABLE) != 0 or (usage & PROPERTY_USAGE_STORAGE) != 0
+		if not include_property:
+			continue
+		seen[property_name] = true
+		var property_value: Variant = object_value.get(property_name)
+		entries.append({
+			"name": property_name,
+			"path": parent_path + [property_name],
+			"type": type_string(typeof(property_value)),
+			"value": _serialize_runtime_value(property_value),
+			"has_children": _debug_value_has_children(property_value)
+		})
+	return entries
+
 func _debug_value_has_children(value: Variant) -> bool:
 	match typeof(value):
 		TYPE_ARRAY, TYPE_DICTIONARY, TYPE_VECTOR2, TYPE_VECTOR2I, TYPE_VECTOR3, TYPE_VECTOR3I, TYPE_VECTOR4, TYPE_PLANE, TYPE_RECT2, TYPE_RECT2I, TYPE_AABB, TYPE_BASIS, TYPE_COLOR, TYPE_QUATERNION, TYPE_TRANSFORM2D, TYPE_TRANSFORM3D:
 			return true
+		TYPE_OBJECT:
+			return not _expand_debug_object_entries(value, []).is_empty()
 		_:
 			return false
 
@@ -956,6 +991,8 @@ func _serialize_runtime_value(value: Variant) -> Variant:
 				"basis": _serialize_runtime_value(value.basis),
 				"origin": _serialize_runtime_value(value.origin)
 			}
+		TYPE_OBJECT:
+			return _serialize_runtime_object(value)
 		TYPE_ARRAY:
 			var array_result: Array = []
 			for item in value:
@@ -968,6 +1005,20 @@ func _serialize_runtime_value(value: Variant) -> Variant:
 			return dict_result
 		_:
 			return str(value)
+
+func _serialize_runtime_object(value: Variant) -> Dictionary:
+	if typeof(value) != TYPE_OBJECT or value == null:
+		return {}
+	var object_value: Object = value
+	if not is_instance_valid(object_value):
+		return {"class_name": "<freed>"}
+	var properties: Dictionary = {}
+	for entry in _expand_debug_object_entries(object_value, []):
+		properties[str(entry.get("name", ""))] = entry.get("value", null)
+	return {
+		"class_name": object_value.get_class(),
+		"properties": properties
+	}
 
 func _register_install_runtime_probe(server_core: RefCounted) -> void:
 	server_core.register_tool(

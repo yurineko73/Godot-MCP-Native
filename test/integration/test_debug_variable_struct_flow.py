@@ -97,6 +97,10 @@ def main() -> int:
                     'bridge._latest_evaluations["basis_value"] = {"type": "Basis", "value": Basis(Vector3(1, 2, 3), Vector3(4, 5, 6), Vector3(7, 8, 9))}\n'
                     'bridge._latest_evaluations["quaternion_value"] = {"type": "Quaternion", "value": Quaternion(0.1, 0.2, 0.3, 0.9)}\n'
                     'bridge._latest_evaluations["transform3d_value"] = {"type": "Transform3D", "value": Transform3D(Basis(Vector3(1, 2, 3), Vector3(4, 5, 6), Vector3(7, 8, 9)), Vector3(10, 11, 12))}\n'
+                    'var object_script := GDScript.new()\n'
+                    'object_script.source_code = "extends RefCounted\\nvar display_name := \\"Probe\\"\\nvar hit_points := 42\\nvar grid := Vector2i(2, 3)\\n"\n'
+                    'object_script.reload()\n'
+                    'bridge._latest_evaluations["object_value"] = {"type": "Object", "value": object_script.new()}\n'
                     'var plugin_script := GDScript.new()\n'
                     'plugin_script.source_code = "extends RefCounted\\nvar _bridge: RefCounted\\nfunc _init(bridge: RefCounted) -> void:\\n\\t_bridge = bridge\\nfunc get_debugger_bridge() -> RefCounted:\\n\\treturn _bridge\\n"\n'
                     'plugin_script.reload()\n'
@@ -111,7 +115,8 @@ def main() -> int:
                     '\t"aabb_reference": bridge.get_evaluation_variables_reference("aabb_value"),\n'
                     '\t"basis_reference": bridge.get_evaluation_variables_reference("basis_value"),\n'
                     '\t"quaternion_reference": bridge.get_evaluation_variables_reference("quaternion_value"),\n'
-                    '\t"transform3d_reference": bridge.get_evaluation_variables_reference("transform3d_value")\n'
+                    '\t"transform3d_reference": bridge.get_evaluation_variables_reference("transform3d_value"),\n'
+                    '\t"object_reference": bridge.get_evaluation_variables_reference("object_value")\n'
                     '}))\n'
                 ),
             },
@@ -130,6 +135,7 @@ def main() -> int:
             "basis_reference",
             "quaternion_reference",
             "transform3d_reference",
+            "object_reference",
         ):
             if references.get(key, 0) <= 0:
                 raise AssertionError(f"Expected non-zero variables reference for {key}: {references}")
@@ -244,6 +250,29 @@ def main() -> int:
         if transform3d_children["basis"]["variables_reference"] <= 0 or transform3d_children["origin"]["variables_reference"] <= 0:
             raise AssertionError(f"Expected Transform3D nested children to be expandable: {transform3d_variables}")
 
+        object_variables = tool_call(
+            "get_debug_variables",
+            {"variables_reference": references["object_reference"]},
+            request_id=13,
+        )
+        object_children = {entry["name"]: entry for entry in object_variables.get("variables", [])}
+        for required_name in ("display_name", "grid", "hit_points"):
+            if required_name not in object_children:
+                raise AssertionError(f"Missing expected object child {required_name}: {object_variables}")
+        if object_children["display_name"]["value"] != "Probe" or object_children["hit_points"]["value"] != 42:
+            raise AssertionError(f"Unexpected object scalar values: {object_variables}")
+        if object_children["grid"]["variables_reference"] <= 0:
+            raise AssertionError(f"Expected object grid property to be expandable: {object_variables}")
+
+        object_grid_variables = tool_call(
+            "get_debug_variables",
+            {"variables_reference": object_children["grid"]["variables_reference"]},
+            request_id=14,
+        )
+        object_grid_children = {entry["name"]: entry for entry in object_grid_variables.get("variables", [])}
+        if object_grid_children.get("x", {}).get("value") != 2 or object_grid_children.get("y", {}).get("value") != 3:
+            raise AssertionError(f"Unexpected object grid values: {object_grid_variables}")
+
         inspect_helpers = tool_call(
             "execute_editor_script",
             {
@@ -257,12 +286,13 @@ def main() -> int:
                     '\t"transform2d_serialized": tools._serialize_runtime_value(Transform2D(0.25, Vector2(10, 20))),\n'
                     '\t"transform3d_serialized": tools._serialize_runtime_value(Transform3D(Basis(Vector3(1, 2, 3), Vector3(4, 5, 6), Vector3(7, 8, 9)), Vector3(10, 11, 12))),\n'
                     '\t"rect2i_entries": tools._expand_debug_struct_fields(Rect2i(Vector2i(1, 2), Vector2i(5, 6)), ["rect2i_value"]),\n'
-                    '\t"plane_entries": tools._expand_debug_struct_fields(Plane(Vector3(0, 1, 0), 2.5), ["plane_value"])\n'
+                    '\t"plane_entries": tools._expand_debug_struct_fields(Plane(Vector3(0, 1, 0), 2.5), ["plane_value"]),\n'
+                    '\t"object_script_source": "extends RefCounted\\nvar display_name := \\"Probe\\"\\nvar hit_points := 42\\nvar grid := Vector2i(2, 3)\\n"\n'
                     '}\n'
                     '_custom_print(JSON.stringify(result))\n'
                 ),
             },
-            request_id=13,
+            request_id=15,
         )
         if inspect_helpers.get("success") is not True or not inspect_helpers.get("output"):
             raise AssertionError(f"Failed to inspect debug tool helpers: {inspect_helpers}")

@@ -32,6 +32,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_list_project_global_classes(server_core)
 	_register_get_class_api_metadata(server_core)
 	_register_inspect_csharp_project_support(server_core)
+	_register_compare_render_screenshots(server_core)
 	_register_inspect_tileset_resource(server_core)
 	_register_list_project_resources(server_core)
 	_register_create_resource(server_core)
@@ -642,6 +643,135 @@ func _tool_inspect_csharp_project_support(params: Dictionary) -> Dictionary:
 		"solution_count": solutions.size(),
 		"projects": projects,
 		"solutions": solutions
+	}
+
+# ============================================================================
+# compare_render_screenshots - 比较渲染截图
+# ============================================================================
+
+func _register_compare_render_screenshots(server_core: RefCounted) -> void:
+	var tool_name: String = "compare_render_screenshots"
+	var description: String = "Compare two screenshot images and report pixel differences, RMSE, and threshold-based match status."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"baseline_path": {
+				"type": "string",
+				"description": "Baseline screenshot image path."
+			},
+			"candidate_path": {
+				"type": "string",
+				"description": "Candidate screenshot image path."
+			},
+			"max_diff_pixels": {
+				"type": "integer",
+				"description": "Maximum differing pixels allowed for a passing match. Default is 0.",
+				"default": 0
+			}
+		},
+		"required": ["baseline_path", "candidate_path"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"baseline_path": {"type": "string"},
+			"candidate_path": {"type": "string"},
+			"width": {"type": "integer"},
+			"height": {"type": "integer"},
+			"diff_pixel_count": {"type": "integer"},
+			"diff_ratio": {"type": "number"},
+			"rmse": {"type": "number"},
+			"max_channel_delta": {"type": "number"},
+			"matches": {"type": "boolean"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_compare_render_screenshots"),
+						  output_schema, annotations)
+
+func _tool_compare_render_screenshots(params: Dictionary) -> Dictionary:
+	var baseline_path: String = str(params.get("baseline_path", "")).strip_edges()
+	var candidate_path: String = str(params.get("candidate_path", "")).strip_edges()
+	if baseline_path.is_empty():
+		return {"error": "Missing required parameter: baseline_path"}
+	if candidate_path.is_empty():
+		return {"error": "Missing required parameter: candidate_path"}
+
+	var baseline_validation: Dictionary = PathValidator.validate_file_path(baseline_path, [".png", ".jpg", ".jpeg", ".webp", ".bmp"])
+	if not baseline_validation.get("valid", false):
+		return {"error": baseline_validation.get("error", "Invalid baseline_path")}
+	baseline_path = str(baseline_validation.get("sanitized", baseline_path))
+
+	var candidate_validation: Dictionary = PathValidator.validate_file_path(candidate_path, [".png", ".jpg", ".jpeg", ".webp", ".bmp"])
+	if not candidate_validation.get("valid", false):
+		return {"error": candidate_validation.get("error", "Invalid candidate_path")}
+	candidate_path = str(candidate_validation.get("sanitized", candidate_path))
+
+	var baseline_image: Image = Image.load_from_file(ProjectSettings.globalize_path(baseline_path))
+	var candidate_image: Image = Image.load_from_file(ProjectSettings.globalize_path(candidate_path))
+	if baseline_image == null or baseline_image.is_empty():
+		return {"error": "Failed to load baseline image: " + baseline_path}
+	if candidate_image == null or candidate_image.is_empty():
+		return {"error": "Failed to load candidate image: " + candidate_path}
+
+	if baseline_image.get_width() != candidate_image.get_width() or baseline_image.get_height() != candidate_image.get_height():
+		return {
+			"baseline_path": baseline_path,
+			"candidate_path": candidate_path,
+			"width": baseline_image.get_width(),
+			"height": baseline_image.get_height(),
+			"candidate_width": candidate_image.get_width(),
+			"candidate_height": candidate_image.get_height(),
+			"matches": false,
+			"error": "Image dimensions do not match"
+		}
+
+	var width: int = baseline_image.get_width()
+	var height: int = baseline_image.get_height()
+	var diff_pixel_count: int = 0
+	var max_channel_delta: float = 0.0
+	var squared_error_sum: float = 0.0
+
+	for y in range(height):
+		for x in range(width):
+			var baseline_color: Color = baseline_image.get_pixel(x, y)
+			var candidate_color: Color = candidate_image.get_pixel(x, y)
+			var dr: float = absf(baseline_color.r - candidate_color.r)
+			var dg: float = absf(baseline_color.g - candidate_color.g)
+			var db: float = absf(baseline_color.b - candidate_color.b)
+			var da: float = absf(baseline_color.a - candidate_color.a)
+			var pixel_delta: float = maxf(maxf(dr, dg), maxf(db, da))
+			if pixel_delta > 0.00001:
+				diff_pixel_count += 1
+			max_channel_delta = maxf(max_channel_delta, pixel_delta)
+			squared_error_sum += dr * dr + dg * dg + db * db + da * da
+
+	var total_pixels: int = width * height
+	var total_channels: int = total_pixels * 4
+	var rmse: float = sqrt(squared_error_sum / float(total_channels)) if total_channels > 0 else 0.0
+	var diff_ratio: float = float(diff_pixel_count) / float(total_pixels) if total_pixels > 0 else 0.0
+	var max_diff_pixels: int = max(0, int(params.get("max_diff_pixels", 0)))
+
+	return {
+		"baseline_path": baseline_path,
+		"candidate_path": candidate_path,
+		"width": width,
+		"height": height,
+		"diff_pixel_count": diff_pixel_count,
+		"diff_ratio": diff_ratio,
+		"rmse": rmse,
+		"max_channel_delta": max_channel_delta,
+		"matches": diff_pixel_count <= max_diff_pixels
 	}
 
 # ============================================================================

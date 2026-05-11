@@ -488,6 +488,11 @@ func _build_nested_variables_reference(value: Variant) -> int:
 				_build_variable_entry("z", value.z, "float"),
 				_build_variable_entry("w", value.w, "float")
 			])
+		TYPE_PLANE:
+			entries.append_array([
+				_build_variable_entry("normal", value.normal, "Vector3"),
+				_build_variable_entry("d", value.d, "float")
+			])
 		TYPE_RECT2:
 			entries.append_array([
 				_build_variable_entry("position", value.position, "Vector2"),
@@ -500,6 +505,18 @@ func _build_nested_variables_reference(value: Variant) -> int:
 				_build_variable_entry("size", value.size, "Vector2i"),
 				_build_variable_entry("end", value.end, "Vector2i")
 			])
+		TYPE_AABB:
+			entries.append_array([
+				_build_variable_entry("position", value.position, "Vector3"),
+				_build_variable_entry("size", value.size, "Vector3"),
+				_build_variable_entry("end", value.end, "Vector3")
+			])
+		TYPE_BASIS:
+			entries.append_array([
+				_build_variable_entry("x", value.x, "Vector3"),
+				_build_variable_entry("y", value.y, "Vector3"),
+				_build_variable_entry("z", value.z, "Vector3")
+			])
 		TYPE_COLOR:
 			entries.append_array([
 				_build_variable_entry("r", value.r, "float"),
@@ -507,11 +524,23 @@ func _build_nested_variables_reference(value: Variant) -> int:
 				_build_variable_entry("b", value.b, "float"),
 				_build_variable_entry("a", value.a, "float")
 			])
+		TYPE_QUATERNION:
+			entries.append_array([
+				_build_variable_entry("x", value.x, "float"),
+				_build_variable_entry("y", value.y, "float"),
+				_build_variable_entry("z", value.z, "float"),
+				_build_variable_entry("w", value.w, "float")
+			])
 		TYPE_TRANSFORM2D:
 			entries.append_array([
 				_build_variable_entry("x", value.x, "Vector2"),
 				_build_variable_entry("y", value.y, "Vector2"),
 				_build_variable_entry("origin", value.origin, "Vector2")
+			])
+		TYPE_TRANSFORM3D:
+			entries.append_array([
+				_build_variable_entry("basis", value.basis, "Basis"),
+				_build_variable_entry("origin", value.origin, "Vector3")
 			])
 		TYPE_PACKED_BYTE_ARRAY, TYPE_PACKED_INT32_ARRAY, TYPE_PACKED_INT64_ARRAY, TYPE_PACKED_FLOAT32_ARRAY, TYPE_PACKED_FLOAT64_ARRAY, TYPE_PACKED_STRING_ARRAY, TYPE_PACKED_VECTOR2_ARRAY, TYPE_PACKED_VECTOR3_ARRAY, TYPE_PACKED_COLOR_ARRAY, TYPE_PACKED_VECTOR4_ARRAY:
 			entries.append(_build_variable_entry("size", value.size(), "int"))
@@ -529,11 +558,13 @@ func _describe_child_counts(value: Variant) -> Dictionary:
 			return {"indexed_variables": 0, "named_variables": value.size()}
 		TYPE_VECTOR2, TYPE_VECTOR2I:
 			return {"indexed_variables": 0, "named_variables": 2}
-		TYPE_VECTOR3, TYPE_VECTOR3I:
+		TYPE_VECTOR3, TYPE_VECTOR3I, TYPE_RECT2, TYPE_RECT2I, TYPE_AABB, TYPE_BASIS:
 			return {"indexed_variables": 0, "named_variables": 3}
-		TYPE_RECT2, TYPE_RECT2I, TYPE_TRANSFORM2D:
+		TYPE_PLANE, TYPE_TRANSFORM3D:
+			return {"indexed_variables": 0, "named_variables": 2}
+		TYPE_TRANSFORM2D:
 			return {"indexed_variables": 0, "named_variables": 3}
-		TYPE_VECTOR4, TYPE_COLOR:
+		TYPE_VECTOR4, TYPE_COLOR, TYPE_QUATERNION:
 			return {"indexed_variables": 0, "named_variables": 4}
 		TYPE_PACKED_BYTE_ARRAY, TYPE_PACKED_INT32_ARRAY, TYPE_PACKED_INT64_ARRAY, TYPE_PACKED_FLOAT32_ARRAY, TYPE_PACKED_FLOAT64_ARRAY, TYPE_PACKED_STRING_ARRAY, TYPE_PACKED_VECTOR2_ARRAY, TYPE_PACKED_VECTOR3_ARRAY, TYPE_PACKED_COLOR_ARRAY, TYPE_PACKED_VECTOR4_ARRAY:
 			return {"indexed_variables": value.size() + 1, "named_variables": 0}
@@ -556,6 +587,11 @@ func _serialize_debug_value(value: Variant) -> Variant:
 			return {"x": value.x, "y": value.y, "z": value.z}
 		TYPE_VECTOR4:
 			return {"x": value.x, "y": value.y, "z": value.z, "w": value.w}
+		TYPE_PLANE:
+			return {
+				"normal": _serialize_debug_value(value.normal),
+				"d": value.d
+			}
 		TYPE_RECT2:
 			return {
 				"position": _serialize_debug_value(value.position),
@@ -568,12 +604,31 @@ func _serialize_debug_value(value: Variant) -> Variant:
 				"size": _serialize_debug_value(value.size),
 				"end": _serialize_debug_value(value.end)
 			}
+		TYPE_AABB:
+			return {
+				"position": _serialize_debug_value(value.position),
+				"size": _serialize_debug_value(value.size),
+				"end": _serialize_debug_value(value.end)
+			}
+		TYPE_BASIS:
+			return {
+				"x": _serialize_debug_value(value.x),
+				"y": _serialize_debug_value(value.y),
+				"z": _serialize_debug_value(value.z)
+			}
 		TYPE_COLOR:
 			return {"r": value.r, "g": value.g, "b": value.b, "a": value.a}
+		TYPE_QUATERNION:
+			return {"x": value.x, "y": value.y, "z": value.z, "w": value.w}
 		TYPE_TRANSFORM2D:
 			return {
 				"x": _serialize_debug_value(value.x),
 				"y": _serialize_debug_value(value.y),
+				"origin": _serialize_debug_value(value.origin)
+			}
+		TYPE_TRANSFORM3D:
+			return {
+				"basis": _serialize_debug_value(value.basis),
 				"origin": _serialize_debug_value(value.origin)
 			}
 		TYPE_ARRAY:

@@ -755,11 +755,13 @@ func _debug_named_variable_count(value: Variant) -> int:
 			return value.size()
 		TYPE_VECTOR2, TYPE_VECTOR2I:
 			return 2
-		TYPE_VECTOR3, TYPE_VECTOR3I:
+		TYPE_VECTOR3, TYPE_VECTOR3I, TYPE_RECT2, TYPE_RECT2I, TYPE_AABB, TYPE_BASIS:
 			return 3
-		TYPE_RECT2, TYPE_RECT2I, TYPE_TRANSFORM2D:
+		TYPE_PLANE, TYPE_TRANSFORM3D:
+			return 2
+		TYPE_TRANSFORM2D:
 			return 3
-		TYPE_VECTOR4, TYPE_COLOR:
+		TYPE_VECTOR4, TYPE_COLOR, TYPE_QUATERNION:
 			return 4
 		_:
 			return 0
@@ -831,6 +833,11 @@ func _expand_debug_struct_fields(value: Variant, parent_path: Array) -> Array:
 				{"name": "z", "path": parent_path + ["z"], "type": "float", "value": value.z, "has_children": false},
 				{"name": "w", "path": parent_path + ["w"], "type": "float", "value": value.w, "has_children": false}
 			])
+		TYPE_PLANE:
+			entries.append_array([
+				{"name": "normal", "path": parent_path + ["normal"], "type": "Vector3", "value": _serialize_runtime_value(value.normal), "has_children": true},
+				{"name": "d", "path": parent_path + ["d"], "type": "float", "value": value.d, "has_children": false}
+			])
 		TYPE_RECT2:
 			entries.append_array([
 				{"name": "position", "path": parent_path + ["position"], "type": "Vector2", "value": _serialize_runtime_value(value.position), "has_children": true},
@@ -843,6 +850,18 @@ func _expand_debug_struct_fields(value: Variant, parent_path: Array) -> Array:
 				{"name": "size", "path": parent_path + ["size"], "type": "Vector2i", "value": _serialize_runtime_value(value.size), "has_children": true},
 				{"name": "end", "path": parent_path + ["end"], "type": "Vector2i", "value": _serialize_runtime_value(value.end), "has_children": true}
 			])
+		TYPE_AABB:
+			entries.append_array([
+				{"name": "position", "path": parent_path + ["position"], "type": "Vector3", "value": _serialize_runtime_value(value.position), "has_children": true},
+				{"name": "size", "path": parent_path + ["size"], "type": "Vector3", "value": _serialize_runtime_value(value.size), "has_children": true},
+				{"name": "end", "path": parent_path + ["end"], "type": "Vector3", "value": _serialize_runtime_value(value.end), "has_children": true}
+			])
+		TYPE_BASIS:
+			entries.append_array([
+				{"name": "x", "path": parent_path + ["x"], "type": "Vector3", "value": _serialize_runtime_value(value.x), "has_children": true},
+				{"name": "y", "path": parent_path + ["y"], "type": "Vector3", "value": _serialize_runtime_value(value.y), "has_children": true},
+				{"name": "z", "path": parent_path + ["z"], "type": "Vector3", "value": _serialize_runtime_value(value.z), "has_children": true}
+			])
 		TYPE_COLOR:
 			entries.append_array([
 				{"name": "r", "path": parent_path + ["r"], "type": "float", "value": value.r, "has_children": false},
@@ -850,17 +869,29 @@ func _expand_debug_struct_fields(value: Variant, parent_path: Array) -> Array:
 				{"name": "b", "path": parent_path + ["b"], "type": "float", "value": value.b, "has_children": false},
 				{"name": "a", "path": parent_path + ["a"], "type": "float", "value": value.a, "has_children": false}
 			])
+		TYPE_QUATERNION:
+			entries.append_array([
+				{"name": "x", "path": parent_path + ["x"], "type": "float", "value": value.x, "has_children": false},
+				{"name": "y", "path": parent_path + ["y"], "type": "float", "value": value.y, "has_children": false},
+				{"name": "z", "path": parent_path + ["z"], "type": "float", "value": value.z, "has_children": false},
+				{"name": "w", "path": parent_path + ["w"], "type": "float", "value": value.w, "has_children": false}
+			])
 		TYPE_TRANSFORM2D:
 			entries.append_array([
 				{"name": "x", "path": parent_path + ["x"], "type": "Vector2", "value": _serialize_runtime_value(value.x), "has_children": true},
 				{"name": "y", "path": parent_path + ["y"], "type": "Vector2", "value": _serialize_runtime_value(value.y), "has_children": true},
 				{"name": "origin", "path": parent_path + ["origin"], "type": "Vector2", "value": _serialize_runtime_value(value.origin), "has_children": true}
 			])
+		TYPE_TRANSFORM3D:
+			entries.append_array([
+				{"name": "basis", "path": parent_path + ["basis"], "type": "Basis", "value": _serialize_runtime_value(value.basis), "has_children": true},
+				{"name": "origin", "path": parent_path + ["origin"], "type": "Vector3", "value": _serialize_runtime_value(value.origin), "has_children": true}
+			])
 	return entries
 
 func _debug_value_has_children(value: Variant) -> bool:
 	match typeof(value):
-		TYPE_ARRAY, TYPE_DICTIONARY, TYPE_VECTOR2, TYPE_VECTOR2I, TYPE_VECTOR3, TYPE_VECTOR3I, TYPE_VECTOR4, TYPE_RECT2, TYPE_RECT2I, TYPE_COLOR, TYPE_TRANSFORM2D:
+		TYPE_ARRAY, TYPE_DICTIONARY, TYPE_VECTOR2, TYPE_VECTOR2I, TYPE_VECTOR3, TYPE_VECTOR3I, TYPE_VECTOR4, TYPE_PLANE, TYPE_RECT2, TYPE_RECT2I, TYPE_AABB, TYPE_BASIS, TYPE_COLOR, TYPE_QUATERNION, TYPE_TRANSFORM2D, TYPE_TRANSFORM3D:
 			return true
 		_:
 			return false
@@ -881,6 +912,11 @@ func _serialize_runtime_value(value: Variant) -> Variant:
 			return {"x": value.x, "y": value.y, "z": value.z}
 		TYPE_VECTOR4:
 			return {"x": value.x, "y": value.y, "z": value.z, "w": value.w}
+		TYPE_PLANE:
+			return {
+				"normal": _serialize_runtime_value(value.normal),
+				"d": value.d
+			}
 		TYPE_RECT2:
 			return {
 				"position": _serialize_runtime_value(value.position),
@@ -893,12 +929,31 @@ func _serialize_runtime_value(value: Variant) -> Variant:
 				"size": _serialize_runtime_value(value.size),
 				"end": _serialize_runtime_value(value.end)
 			}
+		TYPE_AABB:
+			return {
+				"position": _serialize_runtime_value(value.position),
+				"size": _serialize_runtime_value(value.size),
+				"end": _serialize_runtime_value(value.end)
+			}
+		TYPE_BASIS:
+			return {
+				"x": _serialize_runtime_value(value.x),
+				"y": _serialize_runtime_value(value.y),
+				"z": _serialize_runtime_value(value.z)
+			}
 		TYPE_COLOR:
 			return {"r": value.r, "g": value.g, "b": value.b, "a": value.a}
+		TYPE_QUATERNION:
+			return {"x": value.x, "y": value.y, "z": value.z, "w": value.w}
 		TYPE_TRANSFORM2D:
 			return {
 				"x": _serialize_runtime_value(value.x),
 				"y": _serialize_runtime_value(value.y),
+				"origin": _serialize_runtime_value(value.origin)
+			}
+		TYPE_TRANSFORM3D:
+			return {
+				"basis": _serialize_runtime_value(value.basis),
 				"origin": _serialize_runtime_value(value.origin)
 			}
 		TYPE_ARRAY:

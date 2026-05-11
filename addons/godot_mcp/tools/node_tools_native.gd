@@ -29,6 +29,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_set_node_groups(server_core)
 	_register_find_nodes_in_group(server_core)
 	_register_audit_scene_node_persistence(server_core)
+	_register_audit_scene_inheritance(server_core)
 
 func _register_create_node(server_core: RefCounted) -> void:
 	server_core.register_tool(
@@ -678,6 +679,56 @@ func _tool_audit_scene_node_persistence(params: Dictionary) -> Dictionary:
 		"issues": issues
 	}
 
+func _register_audit_scene_inheritance(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"audit_scene_inheritance",
+		"Audit inherited or instanced scene structure for the current scene. Classifies local nodes, instance roots, inherited instance content, and local additions inside instanced subtrees.",
+		{
+			"type": "object",
+			"properties": {}
+		},
+		Callable(self, "_tool_audit_scene_inheritance"),
+		{
+			"type": "object",
+			"properties": {
+				"scene_path": {"type": "string"},
+				"scene_root_path": {"type": "string"},
+				"node_count": {"type": "integer"},
+				"instance_root_count": {"type": "integer"},
+				"issue_count": {"type": "integer"},
+				"instance_roots": {"type": "array"},
+				"nodes": {"type": "array"},
+				"issues": {"type": "array"}
+			}
+		},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+	)
+
+func _tool_audit_scene_inheritance(params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var scene_root: Node = _get_user_scene_root()
+	if not scene_root:
+		return {"error": "No scene is currently open"}
+
+	var nodes: Array = []
+	var instance_roots: Array = []
+	var issues: Array = []
+	_collect_scene_inheritance_entries(scene_root, scene_root, nodes, instance_roots, issues)
+
+	return {
+		"scene_path": String(scene_root.scene_file_path),
+		"scene_root_path": _make_friendly_path(scene_root, scene_root),
+		"node_count": nodes.size(),
+		"instance_root_count": instance_roots.size(),
+		"issue_count": issues.size(),
+		"instance_roots": instance_roots,
+		"nodes": nodes,
+		"issues": issues
+	}
+
 func _register_get_node_properties(server_core: RefCounted) -> void:
 	server_core.register_tool(
 		"get_node_properties",
@@ -1042,6 +1093,59 @@ func _collect_scene_persistence_entries(node: Node, scene_root: Node, nodes: Arr
 	for child in node.get_children():
 		_collect_scene_persistence_entries(child, scene_root, nodes, issues)
 
+func _collect_scene_inheritance_entries(node: Node, scene_root: Node, nodes: Array, instance_roots: Array, issues: Array) -> void:
+	var node_path: String = _make_friendly_path(node, scene_root)
+	var owner: Node = node.owner
+	var owner_path: String = _make_friendly_path(owner, scene_root) if owner else ""
+	var direct_scene_file_path: String = String(node.scene_file_path)
+	var nearest_instance_root: Node = _find_nearest_instance_root(node, scene_root)
+	var nearest_instance_root_path: String = _make_friendly_path(nearest_instance_root, scene_root) if nearest_instance_root else ""
+	var source_scene_path: String = String(nearest_instance_root.scene_file_path) if nearest_instance_root else direct_scene_file_path
+
+	var relationship: String = "local"
+	if node == scene_root:
+		relationship = "scene_root"
+	elif not direct_scene_file_path.is_empty():
+		relationship = "instance_root"
+	elif nearest_instance_root:
+		if owner == scene_root or owner == null:
+			relationship = "local_override"
+		else:
+			relationship = "inherited_content"
+
+	var node_entry: Dictionary = {
+		"node_path": node_path,
+		"node_name": String(node.name),
+		"node_type": node.get_class(),
+		"owner_path": owner_path,
+		"scene_file_path": direct_scene_file_path,
+		"relationship": relationship,
+		"instance_root_path": nearest_instance_root_path,
+		"source_scene_path": source_scene_path
+	}
+	nodes.append(node_entry)
+
+	if relationship == "instance_root":
+		instance_roots.append({
+			"node_path": node_path,
+			"node_name": String(node.name),
+			"node_type": node.get_class(),
+			"source_scene_path": direct_scene_file_path
+		})
+
+	if nearest_instance_root and relationship == "inherited_content":
+		if owner == scene_root or (owner and not nearest_instance_root.is_ancestor_of(owner) and owner != nearest_instance_root):
+			issues.append({
+				"node_path": node_path,
+				"issue_code": "unexpected_instance_owner",
+				"owner_path": owner_path,
+				"instance_root_path": nearest_instance_root_path,
+				"message": "Inherited instance content should be owned by the instance root or one of its ancestors."
+			})
+
+	for child in node.get_children():
+		_collect_scene_inheritance_entries(child, scene_root, nodes, instance_roots, issues)
+
 func _is_owner_chain_valid(node: Node, owner: Node) -> bool:
 	var current: Node = node.get_parent()
 	while current:
@@ -1049,6 +1153,14 @@ func _is_owner_chain_valid(node: Node, owner: Node) -> bool:
 			return true
 		current = current.get_parent()
 	return false
+
+func _find_nearest_instance_root(node: Node, scene_root: Node) -> Node:
+	var current: Node = node
+	while current and current != scene_root:
+		if not String(current.scene_file_path).is_empty():
+			return current
+		current = current.get_parent()
+	return null
 
 static func _build_scene_tree_node(node: Node, current_depth: int, max_depth: int, scene_root: Node = null) -> Dictionary:
 	var node_info: Dictionary = {

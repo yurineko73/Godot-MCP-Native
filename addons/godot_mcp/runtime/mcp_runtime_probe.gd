@@ -1275,6 +1275,19 @@ func _build_input_event(payload: Dictionary) -> InputEvent:
 			screen_drag_event.pressure = float(payload.get("pressure", 0.0))
 			screen_drag_event.pen_inverted = bool(payload.get("pen_inverted", false))
 			return screen_drag_event
+		"joypad_button":
+			var joypad_button_event := InputEventJoypadButton.new()
+			joypad_button_event.device = int(payload.get("device", 0))
+			joypad_button_event.button_index = int(payload.get("button_index", 0))
+			joypad_button_event.pressed = bool(payload.get("pressed", true))
+			joypad_button_event.pressure = float(payload.get("pressure", 0.0))
+			return joypad_button_event
+		"joypad_motion":
+			var joypad_motion_event := InputEventJoypadMotion.new()
+			joypad_motion_event.device = int(payload.get("device", 0))
+			joypad_motion_event.axis = int(payload.get("axis", 0))
+			joypad_motion_event.axis_value = float(payload.get("axis_value", 0.0))
+			return joypad_motion_event
 		_:
 			return null
 
@@ -1341,6 +1354,21 @@ func _serialize_input_event(event: InputEvent) -> Dictionary:
 			"velocity": {"x": event.velocity.x, "y": event.velocity.y},
 			"pressure": event.pressure,
 			"pen_inverted": event.pen_inverted
+		}
+	if event is InputEventJoypadButton:
+		return {
+			"type": "joypad_button",
+			"device": event.device,
+			"button_index": event.button_index,
+			"pressed": event.pressed,
+			"pressure": event.pressure
+		}
+	if event is InputEventJoypadMotion:
+		return {
+			"type": "joypad_motion",
+			"device": event.device,
+			"axis": event.axis,
+			"axis_value": event.axis_value
 		}
 	return {"type": "unknown", "class": event.get_class()}
 

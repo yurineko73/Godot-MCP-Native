@@ -120,6 +120,9 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_set_runtime_animation_tree_active(server_core)
 	_register_travel_runtime_animation_tree(server_core)
 	_register_get_runtime_material_state(server_core)
+	_register_get_runtime_theme_item(server_core)
+	_register_set_runtime_theme_override(server_core)
+	_register_clear_runtime_theme_override(server_core)
 	_register_get_runtime_shader_parameters(server_core)
 	_register_set_runtime_shader_parameter(server_core)
 	_register_list_runtime_tilemap_layers(server_core)
@@ -1597,6 +1600,94 @@ func _tool_get_runtime_material_state(params: Dictionary) -> Dictionary:
 	if node_path.is_empty():
 		return {"error": "Missing required parameter: node_path"}
 	return _request_runtime_probe("get_material_state", [node_path, str(params.get("material_target", "auto")), int(params.get("surface_index", 0))], ["mcp:material_state"], params, {"node_path": node_path})
+
+func _register_get_runtime_theme_item(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"get_runtime_theme_item",
+		"Resolve one runtime Control theme item and report its current value and override status.",
+		{
+			"type": "object",
+			"properties": {
+				"node_path": {"type": "string"},
+				"item_type": {"type": "string", "enum": ["color", "constant", "font", "font_size", "stylebox", "icon"]},
+				"item_name": {"type": "string"},
+				"theme_type": {"type": "string"},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["node_path", "item_type", "item_name"]
+		},
+		Callable(self, "_tool_get_runtime_theme_item"),
+		{"type": "object", "properties": {"node_path": {"type": "string"}, "item_type": {"type": "string"}, "item_name": {"type": "string"}, "has_override": {"type": "boolean"}, "has_item": {"type": "boolean"}, "value": {}}},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
+	)
+
+func _tool_get_runtime_theme_item(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("node_path", "")
+	var item_type: String = params.get("item_type", "")
+	var item_name: String = params.get("item_name", "")
+	if node_path.is_empty() or item_type.is_empty() or item_name.is_empty():
+		return {"error": "node_path, item_type, and item_name are required"}
+	return _request_runtime_probe("get_theme_item", [node_path, item_type, item_name, str(params.get("theme_type", ""))], ["mcp:theme_item"], params, {"node_path": node_path, "item_type": item_type, "item_name": item_name})
+
+func _register_set_runtime_theme_override(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"set_runtime_theme_override",
+		"Apply one runtime Control theme override for a color, constant, font, font_size, stylebox, or icon item.",
+		{
+			"type": "object",
+			"properties": {
+				"node_path": {"type": "string"},
+				"item_type": {"type": "string", "enum": ["color", "constant", "font", "font_size", "stylebox", "icon"]},
+				"item_name": {"type": "string"},
+				"value": {},
+				"theme_type": {"type": "string"},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["node_path", "item_type", "item_name", "value"]
+		},
+		Callable(self, "_tool_set_runtime_theme_override"),
+		{"type": "object", "properties": {"node_path": {"type": "string"}, "item_type": {"type": "string"}, "item_name": {"type": "string"}, "has_override": {"type": "boolean"}, "value": {}}},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
+	)
+
+func _tool_set_runtime_theme_override(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("node_path", "")
+	var item_type: String = params.get("item_type", "")
+	var item_name: String = params.get("item_name", "")
+	if node_path.is_empty() or item_type.is_empty() or item_name.is_empty() or not params.has("value"):
+		return {"error": "node_path, item_type, item_name, and value are required"}
+	return _request_runtime_probe("set_theme_override", [node_path, item_type, item_name, params.get("value"), str(params.get("theme_type", ""))], ["mcp:theme_override_updated"], params, {"node_path": node_path, "item_type": item_type, "item_name": item_name})
+
+func _register_clear_runtime_theme_override(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"clear_runtime_theme_override",
+		"Remove one runtime Control theme override and return the resolved post-clear value.",
+		{
+			"type": "object",
+			"properties": {
+				"node_path": {"type": "string"},
+				"item_type": {"type": "string", "enum": ["color", "constant", "font", "font_size", "stylebox", "icon"]},
+				"item_name": {"type": "string"},
+				"theme_type": {"type": "string"},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["node_path", "item_type", "item_name"]
+		},
+		Callable(self, "_tool_clear_runtime_theme_override"),
+		{"type": "object", "properties": {"node_path": {"type": "string"}, "item_type": {"type": "string"}, "item_name": {"type": "string"}, "has_override": {"type": "boolean"}, "value": {}}},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
+	)
+
+func _tool_clear_runtime_theme_override(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("node_path", "")
+	var item_type: String = params.get("item_type", "")
+	var item_name: String = params.get("item_name", "")
+	if node_path.is_empty() or item_type.is_empty() or item_name.is_empty():
+		return {"error": "node_path, item_type, and item_name are required"}
+	return _request_runtime_probe("clear_theme_override", [node_path, item_type, item_name, str(params.get("theme_type", ""))], ["mcp:theme_override_cleared"], params, {"node_path": node_path, "item_type": item_type, "item_name": item_name})
 
 func _register_get_runtime_shader_parameters(server_core: RefCounted) -> void:
 	server_core.register_tool(

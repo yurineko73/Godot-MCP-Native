@@ -101,6 +101,12 @@ func _capture_mcp_message(message: String, data: Array) -> bool:
 			return _handle_travel_animation_tree(data)
 		"get_material_state":
 			return _handle_get_material_state(data)
+		"get_theme_item":
+			return _handle_get_theme_item(data)
+		"set_theme_override":
+			return _handle_set_theme_override(data)
+		"clear_theme_override":
+			return _handle_clear_theme_override(data)
 		"get_shader_parameters":
 			return _handle_get_shader_parameters(data)
 		"set_shader_parameter":
@@ -588,6 +594,69 @@ func _handle_get_material_state(data: Array) -> bool:
 	EngineDebugger.send_message("mcp:material_state", [_serialize_material_state(resolution)])
 	return true
 
+func _handle_get_theme_item(data: Array) -> bool:
+	if data.size() < 3:
+		EngineDebugger.send_message("mcp:error", [{"message": "get_theme_item requires node_path, item_type, and item_name"}])
+		return true
+	var control: Control = _resolve_control_node(str(data[0]))
+	if not control:
+		return true
+	var item_type: String = str(data[1]).strip_edges().to_lower()
+	var item_name: String = str(data[2]).strip_edges()
+	var theme_type: String = str(data[3]) if data.size() >= 4 else ""
+	var result: Dictionary = _resolve_theme_item(control, item_type, item_name, theme_type)
+	if result.has("error"):
+		EngineDebugger.send_message("mcp:error", [result])
+		return true
+	EngineDebugger.send_message("mcp:theme_item", [result])
+	return true
+
+func _handle_set_theme_override(data: Array) -> bool:
+	if data.size() < 4:
+		EngineDebugger.send_message("mcp:error", [{"message": "set_theme_override requires node_path, item_type, item_name, and value"}])
+		return true
+	var control: Control = _resolve_control_node(str(data[0]))
+	if not control:
+		return true
+	var item_type: String = str(data[1]).strip_edges().to_lower()
+	var item_name: String = str(data[2]).strip_edges()
+	var override_value: Variant = _convert_theme_override_value(item_type, data[3])
+	if override_value == null and item_type in ["font", "stylebox", "icon"]:
+		EngineDebugger.send_message("mcp:error", [{"message": "Failed to resolve resource override value", "item_type": item_type, "item_name": item_name}])
+		return true
+	var apply_error: String = _apply_theme_override(control, item_type, item_name, override_value)
+	if not apply_error.is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": apply_error, "item_type": item_type, "item_name": item_name}])
+		return true
+	var theme_type: String = str(data[4]) if data.size() >= 5 else ""
+	var result: Dictionary = _resolve_theme_item(control, item_type, item_name, theme_type)
+	if result.has("error"):
+		EngineDebugger.send_message("mcp:error", [result])
+		return true
+	EngineDebugger.send_message("mcp:theme_override_updated", [result])
+	return true
+
+func _handle_clear_theme_override(data: Array) -> bool:
+	if data.size() < 3:
+		EngineDebugger.send_message("mcp:error", [{"message": "clear_theme_override requires node_path, item_type, and item_name"}])
+		return true
+	var control: Control = _resolve_control_node(str(data[0]))
+	if not control:
+		return true
+	var item_type: String = str(data[1]).strip_edges().to_lower()
+	var item_name: String = str(data[2]).strip_edges()
+	var clear_error: String = _remove_theme_override(control, item_type, item_name)
+	if not clear_error.is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": clear_error, "item_type": item_type, "item_name": item_name}])
+		return true
+	var theme_type: String = str(data[3]) if data.size() >= 4 else ""
+	var result: Dictionary = _resolve_theme_item(control, item_type, item_name, theme_type)
+	if result.has("error"):
+		EngineDebugger.send_message("mcp:error", [result])
+		return true
+	EngineDebugger.send_message("mcp:theme_override_cleared", [result])
+	return true
+
 func _handle_get_shader_parameters(data: Array) -> bool:
 	if data.is_empty():
 		EngineDebugger.send_message("mcp:error", [{"message": "get_shader_parameters requires node_path"}])
@@ -822,6 +891,16 @@ func _resolve_material_binding(node_path: String, material_target: String = "aut
 		"surface_index": surface_index
 	}
 
+func _resolve_control_node(node_path: String) -> Control:
+	var node: Node = _resolve_target_node(node_path)
+	if not node:
+		EngineDebugger.send_message("mcp:error", [{"message": "Node not found: " + node_path}])
+		return null
+	if not (node is Control):
+		EngineDebugger.send_message("mcp:error", [{"message": "Node is not a Control: " + node_path, "node_type": node.get_class()}])
+		return null
+	return node
+
 func _resolve_tilemap(node_path: String) -> TileMap:
 	var node: Node = _resolve_target_node(node_path)
 	if not node:
@@ -922,6 +1001,124 @@ func _serialize_material_state(resolution: Dictionary) -> Dictionary:
 		result["shader_resource_path"] = shader_material.shader.resource_path if shader_material.shader else ""
 		result["shader_uniform_count"] = shader_material.shader.get_shader_uniform_list().size() if shader_material.shader else 0
 	return result
+
+func _resolve_theme_item(control: Control, item_type: String, item_name: String, theme_type: String = "") -> Dictionary:
+	if item_name.is_empty():
+		return {"error": "item_name cannot be empty", "node_path": str(control.get_path())}
+	var result: Dictionary = {
+		"node_path": str(control.get_path()),
+		"node_type": control.get_class(),
+		"item_type": item_type,
+		"item_name": item_name,
+		"theme_type": theme_type,
+		"theme_type_variation": str(control.theme_type_variation),
+		"has_override": false,
+		"has_item": false,
+		"value": null
+	}
+	match item_type:
+		"color":
+			result["has_override"] = control.has_theme_color_override(item_name)
+			result["has_item"] = control.has_theme_color(item_name, theme_type)
+			if result["has_item"]:
+				result["value"] = _serialize_value(control.get_theme_color(item_name, theme_type))
+		"constant":
+			result["has_override"] = control.has_theme_constant_override(item_name)
+			result["has_item"] = control.has_theme_constant(item_name, theme_type)
+			if result["has_item"]:
+				result["value"] = control.get_theme_constant(item_name, theme_type)
+		"font":
+			result["has_override"] = control.has_theme_font_override(item_name)
+			result["has_item"] = control.has_theme_font(item_name, theme_type)
+			if result["has_item"]:
+				result["value"] = _serialize_theme_resource(control.get_theme_font(item_name, theme_type))
+		"font_size":
+			result["has_override"] = control.has_theme_font_size_override(item_name)
+			result["has_item"] = control.has_theme_font_size(item_name, theme_type)
+			if result["has_item"]:
+				result["value"] = control.get_theme_font_size(item_name, theme_type)
+		"stylebox":
+			result["has_override"] = control.has_theme_stylebox_override(item_name)
+			result["has_item"] = control.has_theme_stylebox(item_name, theme_type)
+			if result["has_item"]:
+				result["value"] = _serialize_theme_resource(control.get_theme_stylebox(item_name, theme_type))
+		"icon":
+			result["has_override"] = control.has_theme_icon_override(item_name)
+			result["has_item"] = control.has_theme_icon(item_name, theme_type)
+			if result["has_item"]:
+				result["value"] = _serialize_theme_resource(control.get_theme_icon(item_name, theme_type))
+		_:
+			return {"error": "Unsupported theme item type: " + item_type, "node_path": str(control.get_path())}
+	return result
+
+func _serialize_theme_resource(resource: Resource) -> Dictionary:
+	if not resource:
+		return {}
+	return {
+		"resource_class": resource.get_class(),
+		"resource_path": resource.resource_path
+	}
+
+func _convert_theme_override_value(item_type: String, value: Variant) -> Variant:
+	match item_type:
+		"color":
+			if value is Dictionary:
+				return Color(float(value.get("r", 0.0)), float(value.get("g", 0.0)), float(value.get("b", 0.0)), float(value.get("a", 1.0)))
+			return value
+		"constant", "font_size":
+			return int(value)
+		"font", "stylebox", "icon":
+			if value is String and not String(value).is_empty():
+				return load(String(value))
+			if value is Resource:
+				return value
+	return value
+
+func _apply_theme_override(control: Control, item_type: String, item_name: String, override_value: Variant) -> String:
+	if item_name.is_empty():
+		return "item_name cannot be empty"
+	match item_type:
+		"color":
+			control.add_theme_color_override(item_name, override_value)
+		"constant":
+			control.add_theme_constant_override(item_name, int(override_value))
+		"font":
+			if not (override_value is Font):
+				return "font override requires a Font resource path"
+			control.add_theme_font_override(item_name, override_value)
+		"font_size":
+			control.add_theme_font_size_override(item_name, int(override_value))
+		"stylebox":
+			if not (override_value is StyleBox):
+				return "stylebox override requires a StyleBox resource path"
+			control.add_theme_stylebox_override(item_name, override_value)
+		"icon":
+			if not (override_value is Texture2D):
+				return "icon override requires a Texture2D resource path"
+			control.add_theme_icon_override(item_name, override_value)
+		_:
+			return "Unsupported theme item type: " + item_type
+	return ""
+
+func _remove_theme_override(control: Control, item_type: String, item_name: String) -> String:
+	if item_name.is_empty():
+		return "item_name cannot be empty"
+	match item_type:
+		"color":
+			control.remove_theme_color_override(item_name)
+		"constant":
+			control.remove_theme_constant_override(item_name)
+		"font":
+			control.remove_theme_font_override(item_name)
+		"font_size":
+			control.remove_theme_font_size_override(item_name)
+		"stylebox":
+			control.remove_theme_stylebox_override(item_name)
+		"icon":
+			control.remove_theme_icon_override(item_name)
+		_:
+			return "Unsupported theme item type: " + item_type
+	return ""
 
 func _serialize_shader_parameters(resolution: Dictionary, material: ShaderMaterial) -> Dictionary:
 	var uniforms: Array = material.shader.get_shader_uniform_list() if material.shader else []

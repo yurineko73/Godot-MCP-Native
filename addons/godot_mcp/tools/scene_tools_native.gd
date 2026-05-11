@@ -30,10 +30,11 @@ func _get_user_scene_root() -> Node:
 	if scene_root and not scene_root.name.begins_with("@") and scene_root.get_class() != "PanelContainer":
 		return scene_root
 	
-	var open_scenes: Array = editor_interface.get_open_scenes()
-	for scene in open_scenes:
-		if scene and not scene.name.begins_with("@") and scene.get_class() != "PanelContainer":
-			return scene
+	var open_scene_roots: Array = editor_interface.get_open_scene_roots()
+	for root in open_scene_roots:
+		var node_root: Node = root
+		if node_root and not node_root.name.begins_with("@") and node_root.get_class() != "PanelContainer":
+			return node_root
 	
 	return scene_root
 

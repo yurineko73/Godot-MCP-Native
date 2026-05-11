@@ -30,10 +30,11 @@ func _get_user_scene_root() -> Node:
 	var scene_root: Node = editor_interface.get_edited_scene_root()
 	if scene_root and not scene_root.name.begins_with("@") and scene_root.get_class() != "PanelContainer":
 		return scene_root
-	var open_scenes: Array = editor_interface.get_open_scenes()
-	for scene in open_scenes:
-		if scene and not scene.name.begins_with("@") and scene.get_class() != "PanelContainer":
-			return scene
+	var open_scene_roots: Array = editor_interface.get_open_scene_roots()
+	for root in open_scene_roots:
+		var node_root: Node = root
+		if node_root and not node_root.name.begins_with("@") and node_root.get_class() != "PanelContainer":
+			return node_root
 	return scene_root
 
 # ============================================================================
@@ -59,6 +60,9 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_add_debugger_capture_prefix(server_core)
 	_register_get_debug_stack_frames(server_core)
 	_register_get_debug_stack_variables(server_core)
+	_register_get_debug_scopes(server_core)
+	_register_expand_debug_variable(server_core)
+	_register_evaluate_debug_expression(server_core)
 	_register_install_runtime_probe(server_core)
 	_register_remove_runtime_probe(server_core)
 	_register_request_debug_break(server_core)
@@ -379,6 +383,274 @@ func _tool_get_debug_stack_variables(params: Dictionary) -> Dictionary:
 	var variables: Array = bridge.get_latest_stack_variables(frame)
 	return {"frame": frame, "variables": variables, "count": variables.size(), "refresh_result": refresh_result}
 
+func _register_get_debug_scopes(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"get_debug_scopes",
+		"Group latest captured stack variables into DAP-like scopes for a frame.",
+		{
+			"type": "object",
+			"properties": {
+				"frame": {"type": "integer", "default": 0},
+				"refresh": {"type": "boolean", "default": true},
+				"session_id": {"type": "integer", "description": "Optional debugger session id. Omit or use -1 for all active sessions."}
+			}
+		},
+		Callable(self, "_tool_get_debug_scopes"),
+		{"type": "object", "properties": {"frame": {"type": "integer"}, "scopes": {"type": "array"}, "count": {"type": "integer"}, "refresh_result": {"type": "object"}}},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+	)
+
+func _tool_get_debug_scopes(params: Dictionary) -> Dictionary:
+	var variables_result: Dictionary = _tool_get_debug_stack_variables(params)
+	if variables_result.has("error"):
+		return variables_result
+	var frame: int = int(variables_result.get("frame", 0))
+	var grouped: Dictionary = {}
+	for variable_entry in variables_result.get("variables", []):
+		var scope_name: String = str(variable_entry.get("scope", "unknown"))
+		if not grouped.has(scope_name):
+			grouped[scope_name] = []
+		grouped[scope_name].append(variable_entry)
+
+	var scopes: Array = []
+	for scope_name in ["local", "member", "global", "constant", "unknown"]:
+		if not grouped.has(scope_name):
+			continue
+		scopes.append({
+			"name": scope_name,
+			"frame": frame,
+			"variables_reference": "%d:%s" % [frame, scope_name],
+			"named_variables": grouped[scope_name].size(),
+			"expensive": false
+		})
+
+	return {
+		"frame": frame,
+		"scopes": scopes,
+		"count": scopes.size(),
+		"refresh_result": variables_result.get("refresh_result", {})
+	}
+
+func _register_expand_debug_variable(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"expand_debug_variable",
+		"Expand a captured debug variable or evaluated expression value by scope and path, with pagination for arrays and dictionaries.",
+		{
+			"type": "object",
+			"properties": {
+				"frame": {"type": "integer", "default": 0},
+				"scope": {"type": "string", "description": "Scope name such as local, member, global, constant, or evaluation."},
+				"variable_path": {"type": "array", "items": {"type": "string"}, "description": "Path segments starting with the top-level variable name or expression text, then child keys or indices."},
+				"offset": {"type": "integer", "default": 0},
+				"count": {"type": "integer", "default": 100}
+			},
+			"required": ["scope", "variable_path"]
+		},
+		Callable(self, "_tool_expand_debug_variable"),
+		{"type": "object", "properties": {"frame": {"type": "integer"}, "scope": {"type": "string"}, "variable_path": {"type": "array"}, "entries": {"type": "array"}, "count": {"type": "integer"}, "total_available": {"type": "integer"}}},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+	)
+
+func _tool_expand_debug_variable(params: Dictionary) -> Dictionary:
+	var bridge: RefCounted = _get_debugger_bridge()
+	if not bridge:
+		return {"error": "Debugger bridge is not available"}
+	var frame: int = int(params.get("frame", 0))
+	var scope: String = str(params.get("scope", "")).strip_edges().to_lower()
+	var variable_path: Array = params.get("variable_path", [])
+	if scope.is_empty():
+		return {"error": "Missing required parameter: scope"}
+	if variable_path.is_empty():
+		return {"error": "Missing required parameter: variable_path"}
+
+	var variables: Array = bridge.get_latest_stack_variables(frame)
+	var current_value: Variant = null
+	var current_type: String = ""
+	if scope == "evaluation":
+		var evaluation_entry: Variant = bridge.get_latest_evaluation(str(variable_path[0]))
+		if evaluation_entry is Dictionary:
+			current_value = evaluation_entry.get("value", null)
+			current_type = str(evaluation_entry.get("type", ""))
+	else:
+		for variable_entry in variables:
+			if str(variable_entry.get("scope", "")).to_lower() == scope and str(variable_entry.get("name", "")) == str(variable_path[0]):
+				current_value = variable_entry.get("value", null)
+				current_type = str(variable_entry.get("type", ""))
+				break
+	if current_type.is_empty():
+		return {"error": "Debug variable not found in scope: " + str(variable_path[0])}
+
+	for i in range(1, variable_path.size()):
+		var step: String = str(variable_path[i])
+		if current_value is Array:
+			if not step.is_valid_int():
+				return {"error": "Array step must be an integer index: " + step}
+			var index: int = int(step)
+			if index < 0 or index >= current_value.size():
+				return {"error": "Array index out of range: " + step}
+			current_value = current_value[index]
+		elif current_value is Dictionary:
+			if not current_value.has(step):
+				return {"error": "Dictionary key not found: " + step}
+			current_value = current_value[step]
+		else:
+			return {"error": "Value at path is not expandable: " + JSON.stringify(variable_path.slice(0, i))}
+
+	var entries: Array = _expand_debug_value_entries(current_value, variable_path)
+	var offset: int = max(0, int(params.get("offset", 0)))
+	var count: int = max(0, int(params.get("count", 100)))
+	var start: int = mini(offset, entries.size())
+	var end: int = mini(start + count, entries.size())
+
+	return {
+		"frame": frame,
+		"scope": scope,
+		"variable_path": variable_path,
+		"entries": entries.slice(start, end),
+		"count": end - start,
+		"total_available": entries.size()
+	}
+
+func _register_evaluate_debug_expression(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"evaluate_debug_expression",
+		"Evaluate an expression in the paused script debugger context for a given frame.",
+		{
+			"type": "object",
+			"properties": {
+				"expression": {"type": "string"},
+				"frame": {"type": "integer", "default": 0},
+				"session_id": {"type": "integer", "description": "Optional debugger session id. Omit or use -1 for all active sessions."}
+			},
+			"required": ["expression"]
+		},
+		Callable(self, "_tool_evaluate_debug_expression"),
+		{"type": "object", "properties": {"status": {"type": "string"}, "expression": {"type": "string"}, "frame": {"type": "integer"}, "type": {"type": "string"}, "value": {}, "has_children": {"type": "boolean"}, "refresh_result": {"type": "object"}}},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
+	)
+
+func _tool_evaluate_debug_expression(params: Dictionary) -> Dictionary:
+	var expression: String = str(params.get("expression", "")).strip_edges()
+	if expression.is_empty():
+		return {"error": "Missing required parameter: expression"}
+	var frame: int = max(0, int(params.get("frame", 0)))
+	var bridge: RefCounted = _get_debugger_bridge()
+	if not bridge:
+		return {"error": "Debugger bridge is not available"}
+	var refresh_result: Dictionary = bridge.request_evaluate(expression, frame, int(params.get("session_id", -1)))
+	if refresh_result.has("error"):
+		return refresh_result
+	var evaluation: Variant = bridge.get_latest_evaluation(expression)
+	if evaluation == null:
+		return {
+			"status": "pending",
+			"expression": expression,
+			"frame": frame,
+			"refresh_result": refresh_result
+		}
+	var value: Variant = evaluation.get("value", null) if evaluation is Dictionary else evaluation
+	return {
+		"status": "success",
+		"expression": expression,
+		"frame": frame,
+		"type": str(evaluation.get("type", "")),
+		"value": _serialize_runtime_value(value),
+		"has_children": _debug_value_has_children(value),
+		"refresh_result": refresh_result
+	}
+
+func _expand_debug_value_entries(value: Variant, parent_path: Array) -> Array:
+	var entries: Array = []
+	if value is Array:
+		for index in range(value.size()):
+			var item: Variant = value[index]
+			entries.append({
+				"name": str(index),
+				"path": parent_path + [str(index)],
+				"type": type_string(typeof(item)),
+				"value": _serialize_runtime_value(item),
+				"has_children": _debug_value_has_children(item)
+			})
+	elif value is Dictionary:
+		for key in value.keys():
+			var item: Variant = value[key]
+			entries.append({
+				"name": str(key),
+				"path": parent_path + [str(key)],
+				"type": type_string(typeof(item)),
+				"value": _serialize_runtime_value(item),
+				"has_children": _debug_value_has_children(item)
+			})
+	else:
+		var vector_entries: Array = _expand_debug_struct_fields(value, parent_path)
+		if not vector_entries.is_empty():
+			return vector_entries
+	return entries
+
+func _expand_debug_struct_fields(value: Variant, parent_path: Array) -> Array:
+	var entries: Array = []
+	match typeof(value):
+		TYPE_VECTOR2:
+			entries.append_array([
+				{"name": "x", "path": parent_path + ["x"], "type": "float", "value": value.x, "has_children": false},
+				{"name": "y", "path": parent_path + ["y"], "type": "float", "value": value.y, "has_children": false}
+			])
+		TYPE_VECTOR3:
+			entries.append_array([
+				{"name": "x", "path": parent_path + ["x"], "type": "float", "value": value.x, "has_children": false},
+				{"name": "y", "path": parent_path + ["y"], "type": "float", "value": value.y, "has_children": false},
+				{"name": "z", "path": parent_path + ["z"], "type": "float", "value": value.z, "has_children": false}
+			])
+		TYPE_VECTOR4:
+			entries.append_array([
+				{"name": "x", "path": parent_path + ["x"], "type": "float", "value": value.x, "has_children": false},
+				{"name": "y", "path": parent_path + ["y"], "type": "float", "value": value.y, "has_children": false},
+				{"name": "z", "path": parent_path + ["z"], "type": "float", "value": value.z, "has_children": false},
+				{"name": "w", "path": parent_path + ["w"], "type": "float", "value": value.w, "has_children": false}
+			])
+		TYPE_COLOR:
+			entries.append_array([
+				{"name": "r", "path": parent_path + ["r"], "type": "float", "value": value.r, "has_children": false},
+				{"name": "g", "path": parent_path + ["g"], "type": "float", "value": value.g, "has_children": false},
+				{"name": "b", "path": parent_path + ["b"], "type": "float", "value": value.b, "has_children": false},
+				{"name": "a", "path": parent_path + ["a"], "type": "float", "value": value.a, "has_children": false}
+			])
+	return entries
+
+func _debug_value_has_children(value: Variant) -> bool:
+	match typeof(value):
+		TYPE_ARRAY, TYPE_DICTIONARY, TYPE_VECTOR2, TYPE_VECTOR3, TYPE_VECTOR4, TYPE_COLOR:
+			return true
+		_:
+			return false
+
+func _serialize_runtime_value(value: Variant) -> Variant:
+	if value == null:
+		return null
+	match typeof(value):
+		TYPE_BOOL, TYPE_INT, TYPE_FLOAT, TYPE_STRING:
+			return value
+		TYPE_VECTOR2:
+			return {"x": value.x, "y": value.y}
+		TYPE_VECTOR3:
+			return {"x": value.x, "y": value.y, "z": value.z}
+		TYPE_VECTOR4:
+			return {"x": value.x, "y": value.y, "z": value.z, "w": value.w}
+		TYPE_COLOR:
+			return {"r": value.r, "g": value.g, "b": value.b, "a": value.a}
+		TYPE_ARRAY:
+			var array_result: Array = []
+			for item in value:
+				array_result.append(_serialize_runtime_value(item))
+			return array_result
+		TYPE_DICTIONARY:
+			var dict_result: Dictionary = {}
+			for key in value:
+				dict_result[str(key)] = _serialize_runtime_value(value[key])
+			return dict_result
+		_:
+			return str(value)
+
 func _register_install_runtime_probe(server_core: RefCounted) -> void:
 	server_core.register_tool(
 		"install_runtime_probe",
@@ -520,6 +792,12 @@ func _tool_get_runtime_info(params: Dictionary) -> Dictionary:
 	if result.get("status", "") == "pending":
 		var bridge: RefCounted = _get_debugger_bridge()
 		if bridge:
+			var latest_runtime_info: Variant = bridge.get_latest_message_payload("mcp:runtime_info")
+			if latest_runtime_info is Dictionary:
+				var stale_runtime: Dictionary = latest_runtime_info.duplicate(true)
+				stale_runtime["status"] = "stale"
+				stale_runtime["refresh_result"] = result.get("refresh_result", {})
+				return stale_runtime
 			var probe_ready: Variant = bridge.get_latest_message_payload("mcp:probe_ready")
 			if probe_ready is Dictionary:
 				var fallback: Dictionary = probe_ready.duplicate(true)

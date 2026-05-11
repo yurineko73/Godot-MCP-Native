@@ -29,10 +29,11 @@ func _get_user_scene_root() -> Node:
 	if scene_root and not scene_root.name.begins_with("@") and scene_root.get_class() != "PanelContainer":
 		return scene_root
 	
-	var open_scenes: Array = editor_interface.get_open_scenes()
-	for scene in open_scenes:
-		if scene and not scene.name.begins_with("@") and scene.get_class() != "PanelContainer":
-			return scene
+	var open_scene_roots: Array = editor_interface.get_open_scene_roots()
+	for root in open_scene_roots:
+		var node_root: Node = root
+		if node_root and not node_root.name.begins_with("@") and node_root.get_class() != "PanelContainer":
+			return node_root
 	
 	return scene_root
 
@@ -199,11 +200,10 @@ func _tool_run_project(params: Dictionary) -> Dictionary:
 		editor_interface.play_custom_scene(scene_path)
 	else:
 		var scene_root: Node = _get_user_scene_root()
-		var current_scene_path: String = scene_root.scene_file_path if scene_root else ""
-		if not current_scene_path.is_empty():
-			editor_interface.play_custom_scene(current_scene_path)
-		else:
+		if scene_root:
 			editor_interface.play_current_scene()
+		else:
+			editor_interface.play_main_scene()
 	
 	return {
 		"status": "success",

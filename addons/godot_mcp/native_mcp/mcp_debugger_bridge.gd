@@ -17,6 +17,7 @@ var _max_messages: int = 500
 var _connected_script_debuggers: Array[Object] = []
 var _latest_stack_dump: Array = []
 var _latest_stack_variables: Dictionary = {}
+var _latest_evaluations: Dictionary = {}
 var _pending_stack_vars_frame: int = 0
 var _message_sequence: int = 0
 
@@ -71,6 +72,10 @@ func request_stack_frame_vars(frame: int = 0, session_id: int = -1) -> Dictionar
 	_pending_stack_vars_frame = frame
 	return send_debugger_message("get_stack_frame_vars", [frame], session_id)
 
+func request_evaluate(expression: String, frame: int = 0, session_id: int = -1) -> Dictionary:
+	_refresh_script_debugger_connections()
+	return send_debugger_message("evaluate", [expression, frame], session_id)
+
 func get_latest_stack_dump() -> Array:
 	return _latest_stack_dump.duplicate(true)
 
@@ -86,6 +91,15 @@ func get_latest_stack_variables(frame: int = -1) -> Array:
 			"variables": _latest_stack_variables[frame_id].duplicate(true)
 		})
 	return result
+
+func get_latest_evaluation(expression: String = "") -> Variant:
+	if not expression.is_empty():
+		return _latest_evaluations.get(expression, null)
+	if _latest_evaluations.is_empty():
+		return null
+	var keys: Array = _latest_evaluations.keys()
+	keys.sort()
+	return _latest_evaluations[keys[keys.size() - 1]]
 
 func toggle_profiler(profiler: String, enabled: bool, data: Array, session_id: int = -1) -> Dictionary:
 	var action: Callable = func(session: EditorDebuggerSession) -> void:
@@ -180,6 +194,8 @@ func _connect_script_debugger(debugger: Object) -> void:
 		debugger.connect("stack_frame_vars", Callable(self, "_on_stack_frame_vars"))
 	if debugger.has_signal("stack_frame_var"):
 		debugger.connect("stack_frame_var", Callable(self, "_on_stack_frame_var"))
+	if debugger.has_signal("debug_data"):
+		debugger.connect("debug_data", Callable(self, "_on_debug_data"))
 	_connected_script_debuggers.append(debugger)
 
 func _on_stack_dump(stack: Array) -> void:
@@ -197,6 +213,14 @@ func _on_stack_frame_var(data: Array) -> void:
 		_latest_stack_variables[_pending_stack_vars_frame] = []
 	_latest_stack_variables[_pending_stack_vars_frame].append(variable)
 	_append_captured_message(-1, "stack_frame_var", [variable])
+
+func _on_debug_data(message: String, data: Array) -> void:
+	if message == "evaluation_return":
+		var variable: Dictionary = _decode_stack_variable(data)
+		var expression_name: String = str(variable.get("name", ""))
+		if not expression_name.is_empty():
+			_latest_evaluations[expression_name] = variable.duplicate(true)
+		_append_captured_message(-1, "evaluation_return", [variable])
 
 func _decode_stack_variable(data: Array) -> Dictionary:
 	var scope_names: Array[String] = ["local", "member", "global", "constant"]

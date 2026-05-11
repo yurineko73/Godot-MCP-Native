@@ -13,6 +13,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_create_node(server_core)
 	_register_delete_node(server_core)
 	_register_update_node_property(server_core)
+	_register_batch_update_node_properties(server_core)
 	_register_get_node_properties(server_core)
 	_register_list_nodes(server_core)
 	_register_get_scene_tree(server_core)
@@ -262,6 +263,115 @@ func _tool_update_node_property(params: Dictionary) -> Dictionary:
 		"property_name": property_name,
 		"old_value": str(old_value),
 		"new_value": str(new_value)
+	}
+
+func _register_batch_update_node_properties(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"batch_update_node_properties",
+		"Update multiple node properties inside one editor UndoRedo action. Useful for transaction-style scene edits that should undo in a single step.",
+		{
+			"type": "object",
+			"properties": {
+				"label": {
+					"type": "string",
+					"description": "Optional UndoRedo action label. Default is 'Batch Update Node Properties'."
+				},
+				"changes": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"properties": {
+							"node_path": {"type": "string"},
+							"property_name": {"type": "string"},
+							"property_value": {}
+						},
+						"required": ["node_path", "property_name", "property_value"]
+					},
+					"description": "Property updates to apply in one action."
+				}
+			},
+			"required": ["changes"]
+		},
+		Callable(self, "_tool_batch_update_node_properties"),
+		{
+			"type": "object",
+			"properties": {
+				"status": {"type": "string"},
+				"label": {"type": "string"},
+				"change_count": {"type": "integer"},
+				"changes": {"type": "array"}
+			}
+		},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}
+	)
+
+func _tool_batch_update_node_properties(params: Dictionary) -> Dictionary:
+	var changes: Array = params.get("changes", [])
+	if changes.is_empty():
+		return {"error": "Missing required parameter: changes"}
+
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var prepared_changes: Array = []
+	for change in changes:
+		if not (change is Dictionary):
+			return {"error": "Each change entry must be an object"}
+		var node_path: String = str(change.get("node_path", ""))
+		var property_name: String = str(change.get("property_name", ""))
+		if node_path.is_empty() or property_name.is_empty() or not change.has("property_value"):
+			return {"error": "Each change requires node_path, property_name, and property_value"}
+		var target_node: Node = _resolve_node_path(node_path)
+		if not target_node:
+			return {"error": "Node not found: " + node_path}
+		if not property_name in target_node:
+			return {"error": "Property '" + property_name + "' not found on node " + node_path}
+		var actual_value: Variant = change.get("property_value")
+		if actual_value is String:
+			var parsed: Variant = JSON.parse_string(actual_value)
+			if parsed != null:
+				actual_value = parsed
+		var converted_value: Variant = _convert_value_for_property(target_node, property_name, actual_value)
+		prepared_changes.append({
+			"node": target_node,
+			"node_path": node_path,
+			"property_name": property_name,
+			"old_value": target_node.get(property_name),
+			"new_value": converted_value
+		})
+
+	var label: String = str(params.get("label", "Batch Update Node Properties")).strip_edges()
+	if label.is_empty():
+		label = "Batch Update Node Properties"
+
+	var undo_redo: EditorUndoRedoManager = editor_interface.get_editor_undo_redo()
+	if undo_redo:
+		undo_redo.create_action(label)
+		for prepared in prepared_changes:
+			undo_redo.add_do_property(prepared["node"], prepared["property_name"], prepared["new_value"])
+			undo_redo.add_undo_property(prepared["node"], prepared["property_name"], prepared["old_value"])
+		undo_redo.commit_action()
+	else:
+		for prepared in prepared_changes:
+			prepared["node"].set(prepared["property_name"], prepared["new_value"])
+
+	editor_interface.mark_scene_as_unsaved()
+
+	var results: Array = []
+	for prepared in prepared_changes:
+		results.append({
+			"node_path": prepared["node_path"],
+			"property_name": prepared["property_name"],
+			"old_value": _serialize_value(prepared["old_value"]),
+			"new_value": _serialize_value(prepared["node"].get(prepared["property_name"]))
+		})
+
+	return {
+		"status": "success",
+		"label": label,
+		"change_count": results.size(),
+		"changes": results
 	}
 
 func _register_get_node_properties(server_core: RefCounted) -> void:

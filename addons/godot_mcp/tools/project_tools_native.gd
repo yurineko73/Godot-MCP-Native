@@ -27,6 +27,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_get_project_settings(server_core)
 	_register_list_project_tests(server_core)
 	_register_run_project_test(server_core)
+	_register_run_project_tests(server_core)
 	_register_list_project_input_actions(server_core)
 	_register_upsert_project_input_action(server_core)
 	_register_remove_project_input_action(server_core)
@@ -685,6 +686,87 @@ func _tool_run_project_test(params: Dictionary) -> Dictionary:
 			return _run_gut_project_test(test_path)
 		_:
 			return {"error": "Unsupported project test type: " + extension}
+
+func _register_run_project_tests(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"run_project_tests",
+		"Discover and run multiple project tests from a directory. Reuses the same framework filters as list_project_tests and aggregates pass/fail counts.",
+		{
+			"type": "object",
+			"properties": {
+				"search_path": {"type": "string", "description": "Optional res:// path to limit discovery. Default is res://test."},
+				"framework": {"type": "string", "description": "Optional framework filter: python or gut."},
+				"only_runnable": {"type": "boolean", "description": "Whether to skip discovered tests that are not currently runnable. Default is true."}
+			}
+		},
+		Callable(self, "_tool_run_project_tests"),
+		{
+			"type": "object",
+			"properties": {
+				"status": {"type": "string"},
+				"search_path": {"type": "string"},
+				"framework": {"type": "string"},
+				"total_count": {"type": "integer"},
+				"passed_count": {"type": "integer"},
+				"failed_count": {"type": "integer"},
+				"skipped_count": {"type": "integer"},
+				"results": {"type": "array"}
+			}
+		},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}
+	)
+
+func _tool_run_project_tests(params: Dictionary) -> Dictionary:
+	var list_result: Dictionary = _tool_list_project_tests({
+		"search_path": params.get("search_path", "res://test"),
+		"framework": params.get("framework", "")
+	})
+	if list_result.has("error"):
+		return list_result
+
+	var only_runnable: bool = bool(params.get("only_runnable", true))
+	var discovered_tests: Array = list_result.get("tests", [])
+	var results: Array = []
+	var passed_count: int = 0
+	var failed_count: int = 0
+	var skipped_count: int = 0
+
+	for entry in discovered_tests:
+		if not (entry is Dictionary):
+			continue
+		var test_entry: Dictionary = entry
+		if only_runnable and not bool(test_entry.get("runnable", false)):
+			skipped_count += 1
+			results.append({
+				"status": "skipped",
+				"test_path": String(test_entry.get("test_path", "")),
+				"framework": String(test_entry.get("framework", "")),
+				"reason": "No available runner"
+			})
+			continue
+		var test_result: Dictionary = _tool_run_project_test({"test_path": String(test_entry.get("test_path", ""))})
+		results.append(test_result)
+		if test_result.get("status", "") == "passed":
+			passed_count += 1
+		else:
+			failed_count += 1
+
+	var aggregate_status: String = "passed"
+	if failed_count > 0:
+		aggregate_status = "failed"
+	elif passed_count == 0 and skipped_count > 0:
+		aggregate_status = "skipped"
+
+	return {
+		"status": aggregate_status,
+		"search_path": list_result.get("search_path", ""),
+		"framework": str(params.get("framework", "")).strip_edges().to_lower(),
+		"total_count": results.size(),
+		"passed_count": passed_count,
+		"failed_count": failed_count,
+		"skipped_count": skipped_count,
+		"results": results
+	}
 
 func _validate_test_path(path: String, expect_directory: bool) -> Dictionary:
 	if path.is_empty():

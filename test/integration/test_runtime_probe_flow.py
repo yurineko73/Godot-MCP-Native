@@ -43,7 +43,14 @@ def tool_call(name: str, arguments: dict | None = None, request_id: int = 100) -
     return json.loads(result["content"][0]["text"])
 
 
-def poll_tool(name: str, arguments: dict, predicate, timeout_seconds: float = 10.0, start_request_id: int = 1000) -> dict:
+def poll_tool(
+    name: str,
+    arguments: dict,
+    predicate,
+    timeout_seconds: float = 10.0,
+    start_request_id: int = 1000,
+    poll_interval_seconds: float = 0.5,
+) -> dict:
     deadline = time.time() + timeout_seconds
     request_id = start_request_id
     last_result = None
@@ -51,7 +58,7 @@ def poll_tool(name: str, arguments: dict, predicate, timeout_seconds: float = 10
         last_result = tool_call(name, arguments, request_id=request_id)
         if predicate(last_result):
             return last_result
-        time.sleep(0.25)
+        time.sleep(poll_interval_seconds)
         request_id += 1
     raise AssertionError(f"{name} did not reach expected state. Last result: {last_result}")
 

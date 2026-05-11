@@ -2,17 +2,41 @@ class_name MCPRuntimeProbe
 extends Node
 
 const CAPTURE_PREFIX: StringName = &"mcp"
+var _capture_registered: bool = false
+var _probe_ready_sent: bool = false
 
 func _ready() -> void:
-	if EngineDebugger.is_active():
-		if EngineDebugger.has_capture(CAPTURE_PREFIX):
-			EngineDebugger.unregister_message_capture(CAPTURE_PREFIX)
-		EngineDebugger.register_message_capture(CAPTURE_PREFIX, Callable(self, "_capture_mcp_message"))
-		EngineDebugger.send_message("mcp:probe_ready", [_get_runtime_info()])
+	_ensure_debugger_capture_registered()
+	set_process(not _capture_registered)
+
+func _process(_delta: float) -> void:
+	if _capture_registered:
+		set_process(false)
+		return
+	_ensure_debugger_capture_registered()
+	if _capture_registered:
+		set_process(false)
 
 func _exit_tree() -> void:
 	if EngineDebugger.is_active() and EngineDebugger.has_capture(CAPTURE_PREFIX):
 		EngineDebugger.unregister_message_capture(CAPTURE_PREFIX)
+	_capture_registered = false
+
+func _ensure_debugger_capture_registered() -> void:
+	if _capture_registered:
+		if EngineDebugger.is_active() and not _probe_ready_sent:
+			EngineDebugger.send_message("mcp:probe_ready", [_get_runtime_info()])
+			_probe_ready_sent = true
+		return
+	if not EngineDebugger.is_active():
+		return
+	if EngineDebugger.has_capture(CAPTURE_PREFIX):
+		EngineDebugger.unregister_message_capture(CAPTURE_PREFIX)
+	EngineDebugger.register_message_capture(CAPTURE_PREFIX, Callable(self, "_capture_mcp_message"))
+	_capture_registered = true
+	if not _probe_ready_sent:
+		EngineDebugger.send_message("mcp:probe_ready", [_get_runtime_info()])
+		_probe_ready_sent = true
 
 func _capture_mcp_message(message: String, data: Array) -> bool:
 	match message:

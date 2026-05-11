@@ -14,6 +14,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_delete_node(server_core)
 	_register_update_node_property(server_core)
 	_register_batch_update_node_properties(server_core)
+	_register_batch_scene_node_edits(server_core)
 	_register_get_node_properties(server_core)
 	_register_list_nodes(server_core)
 	_register_get_scene_tree(server_core)
@@ -373,6 +374,164 @@ func _tool_batch_update_node_properties(params: Dictionary) -> Dictionary:
 		"label": label,
 		"change_count": results.size(),
 		"changes": results
+	}
+
+func _register_batch_scene_node_edits(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"batch_scene_node_edits",
+		"Apply multiple create/delete scene node edits inside one editor UndoRedo action so the full structure change undoes in a single step.",
+		{
+			"type": "object",
+			"properties": {
+				"label": {
+					"type": "string",
+					"description": "Optional UndoRedo action label. Default is 'Batch Scene Node Edits'."
+				},
+				"operations": {
+					"type": "array",
+					"description": "Ordered create/delete operations to apply in one transaction.",
+					"items": {
+						"type": "object",
+						"properties": {
+							"type": {"type": "string"},
+							"parent_path": {"type": "string"},
+							"node_type": {"type": "string"},
+							"node_name": {"type": "string"},
+							"node_path": {"type": "string"}
+						},
+						"required": ["type"]
+					}
+				}
+			},
+			"required": ["operations"]
+		},
+		Callable(self, "_tool_batch_scene_node_edits"),
+		{
+			"type": "object",
+			"properties": {
+				"status": {"type": "string"},
+				"label": {"type": "string"},
+				"operation_count": {"type": "integer"},
+				"operations": {"type": "array"}
+			}
+		},
+		{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}
+	)
+
+func _tool_batch_scene_node_edits(params: Dictionary) -> Dictionary:
+	var operations: Array = params.get("operations", [])
+	if operations.is_empty():
+		return {"error": "Missing required parameter: operations"}
+
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var scene_root: Node = _get_user_scene_root()
+	if not scene_root:
+		return {"error": "No scene is currently open"}
+
+	var prepared_operations: Array = []
+	for operation in operations:
+		if not (operation is Dictionary):
+			return {"error": "Each operation entry must be an object"}
+		var operation_type: String = str(operation.get("type", "")).strip_edges().to_lower()
+		match operation_type:
+			"create":
+				var parent_path: String = str(operation.get("parent_path", ""))
+				var node_type: String = str(operation.get("node_type", "Node"))
+				var node_name: String = str(operation.get("node_name", "NewNode"))
+				if parent_path.is_empty() or node_name.is_empty():
+					return {"error": "Create operations require parent_path and node_name"}
+				var parent_node: Node = _resolve_node_path(parent_path)
+				if not parent_node:
+					if parent_path == "/root":
+						parent_node = scene_root
+					else:
+						return {"error": "Parent node not found: " + parent_path}
+				if not ClassDB.class_exists(node_type):
+					return {"error": "Invalid node type: " + node_type}
+				var new_node: Node = ClassDB.instantiate(node_type)
+				new_node.name = node_name
+				new_node.owner = scene_root
+				prepared_operations.append({
+					"type": "create",
+					"parent": parent_node,
+					"parent_path": parent_path,
+					"node": new_node,
+					"node_type": node_type,
+					"node_name": node_name
+				})
+			"delete":
+				var node_path: String = str(operation.get("node_path", ""))
+				if node_path.is_empty():
+					return {"error": "Delete operations require node_path"}
+				var target_node: Node = _resolve_node_path(node_path)
+				if not target_node:
+					return {"error": "Node not found: " + node_path}
+				var parent: Node = target_node.get_parent()
+				if not parent:
+					return {"error": "Cannot delete scene root"}
+				var node_index: int = target_node.get_index()
+				var duplicated: Node = target_node.duplicate()
+				if duplicated:
+					duplicated.owner = target_node.owner
+				prepared_operations.append({
+					"type": "delete",
+					"node_path": node_path,
+					"parent": parent,
+					"node": target_node,
+					"node_snapshot": duplicated,
+					"node_name": String(target_node.name),
+					"node_type": target_node.get_class(),
+					"node_index": node_index
+				})
+			_:
+				return {"error": "Unsupported operation type: " + operation_type}
+
+	var label: String = str(params.get("label", "Batch Scene Node Edits")).strip_edges()
+	if label.is_empty():
+		label = "Batch Scene Node Edits"
+
+	var undo_redo: EditorUndoRedoManager = editor_interface.get_editor_undo_redo()
+	if not undo_redo:
+		return {"error": "Editor UndoRedo is not available"}
+
+	undo_redo.create_action(label)
+	var result_operations: Array = []
+	for prepared in prepared_operations:
+		if prepared["type"] == "create":
+			var created_parent: Node = prepared["parent"]
+			var created_node: Node = prepared["node"]
+			undo_redo.add_do_method(created_parent, "add_child", created_node)
+			undo_redo.add_do_method(created_node, "set_owner", scene_root)
+			undo_redo.add_undo_method(created_parent, "remove_child", created_node)
+			result_operations.append({
+				"type": "create",
+				"node_path": _make_friendly_path(created_node, scene_root),
+				"node_type": prepared["node_type"]
+			})
+		else:
+			var deleted_parent: Node = prepared["parent"]
+			var deleted_node: Node = prepared["node"]
+			var deleted_snapshot: Node = prepared["node_snapshot"]
+			undo_redo.add_do_method(deleted_parent, "remove_child", deleted_node)
+			undo_redo.add_undo_method(deleted_parent, "add_child", deleted_snapshot)
+			undo_redo.add_undo_method(deleted_snapshot, "set_owner", scene_root)
+			undo_redo.add_undo_method(deleted_parent, "move_child", deleted_snapshot, prepared["node_index"])
+			result_operations.append({
+				"type": "delete",
+				"node_path": prepared["node_path"],
+				"node_type": prepared["node_type"]
+			})
+	undo_redo.commit_action()
+	editor_interface.mark_scene_as_unsaved()
+
+	return {
+		"status": "success",
+		"label": label,
+		"operation_count": result_operations.size(),
+		"operations": result_operations
 	}
 
 func _register_audit_scene_node_persistence(server_core: RefCounted) -> void:

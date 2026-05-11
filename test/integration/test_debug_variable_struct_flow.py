@@ -99,6 +99,7 @@ def main() -> int:
                     'bridge._latest_evaluations["transform3d_value"] = {"type": "Transform3D", "value": Transform3D(Basis(Vector3(1, 2, 3), Vector3(4, 5, 6), Vector3(7, 8, 9)), Vector3(10, 11, 12))}\n'
                     'bridge._latest_evaluations["vector4i_value"] = {"type": "Vector4i", "value": Vector4i(11, 12, 13, 14)}\n'
                     'bridge._latest_evaluations["projection_value"] = {"type": "Projection", "value": Projection(Vector4(1, 2, 3, 4), Vector4(5, 6, 7, 8), Vector4(9, 10, 11, 12), Vector4(13, 14, 15, 16))}\n'
+                    'bridge._latest_evaluations["dict_value"] = {"type": "Dictionary", "value": {7: "lucky", &"tag": Vector2i(4, 6)}}\n'
                     'var object_script := GDScript.new()\n'
                     'object_script.source_code = "extends RefCounted\\nvar display_name := \\"Probe\\"\\nvar hit_points := 42\\nvar grid := Vector2i(2, 3)\\n"\n'
                     'object_script.reload()\n'
@@ -120,6 +121,7 @@ def main() -> int:
                     '\t"transform3d_reference": bridge.get_evaluation_variables_reference("transform3d_value"),\n'
                     '\t"vector4i_reference": bridge.get_evaluation_variables_reference("vector4i_value"),\n'
                     '\t"projection_reference": bridge.get_evaluation_variables_reference("projection_value"),\n'
+                    '\t"dict_reference": bridge.get_evaluation_variables_reference("dict_value"),\n'
                     '\t"object_reference": bridge.get_evaluation_variables_reference("object_value")\n'
                     '}))\n'
                 ),
@@ -141,6 +143,7 @@ def main() -> int:
             "transform3d_reference",
             "vector4i_reference",
             "projection_reference",
+            "dict_reference",
             "object_reference",
         ):
             if references.get(key, 0) <= 0:
@@ -272,6 +275,17 @@ def main() -> int:
         if projection_children["x"]["variables_reference"] <= 0 or projection_children["w"]["variables_reference"] <= 0:
             raise AssertionError(f"Expected Projection columns to be expandable: {projection_variables}")
 
+        dict_variables = tool_call(
+            "get_debug_variables",
+            {"variables_reference": references["dict_reference"]},
+            request_id=11_3,
+        )
+        dict_children = {entry["name"]: entry for entry in dict_variables.get("variables", [])}
+        if not {"7", "tag"}.issubset(dict_children):
+            raise AssertionError(f"Unexpected Dictionary children: {dict_variables}")
+        if dict_children["7"]["value"] != "lucky" or dict_children["tag"]["variables_reference"] <= 0:
+            raise AssertionError(f"Unexpected Dictionary values: {dict_variables}")
+
         transform3d_variables = tool_call(
             "get_debug_variables",
             {"variables_reference": references["transform3d_reference"]},
@@ -334,6 +348,23 @@ def main() -> int:
         expanded_projection_entries = {entry["name"]: entry for entry in expanded_projection_column.get("entries", [])}
         if expanded_projection_entries.get("x", {}).get("value") != 1.0 or expanded_projection_entries.get("w", {}).get("value") != 4.0:
             raise AssertionError(f"Unexpected expanded projection entries: {expanded_projection_column}")
+
+        expanded_dict_int_key = tool_call(
+            "expand_debug_variable",
+            {"scope": "evaluation", "variable_path": ["dict_value", "7"]},
+            request_id=14_4,
+        )
+        if expanded_dict_int_key.get("total_available") != 0:
+            raise AssertionError(f"Expected scalar dictionary int-key value to have no child entries: {expanded_dict_int_key}")
+
+        expanded_dict_string_name_key = tool_call(
+            "expand_debug_variable",
+            {"scope": "evaluation", "variable_path": ["dict_value", "tag"]},
+            request_id=14_5,
+        )
+        expanded_dict_string_name_entries = {entry["name"]: entry for entry in expanded_dict_string_name_key.get("entries", [])}
+        if expanded_dict_string_name_entries.get("x", {}).get("value") != 4 or expanded_dict_string_name_entries.get("y", {}).get("value") != 6:
+            raise AssertionError(f"Unexpected expanded dictionary StringName-key entries: {expanded_dict_string_name_key}")
 
         inspect_helpers = tool_call(
             "execute_editor_script",

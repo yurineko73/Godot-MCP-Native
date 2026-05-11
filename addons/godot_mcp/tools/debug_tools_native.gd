@@ -685,9 +685,10 @@ func _resolve_debug_path_step(current_value: Variant, step: String) -> Dictionar
 			return {"ok": false}
 		return {"ok": true, "value": current_value[index]}
 	if current_value is Dictionary:
-		if not current_value.has(step):
-			return {"ok": false}
-		return {"ok": true, "value": current_value[step]}
+		for key in current_value.keys():
+			if str(key) == step:
+				return {"ok": true, "value": current_value[key]}
+		return {"ok": false}
 	match typeof(current_value):
 		TYPE_VECTOR2, TYPE_VECTOR2I:
 			if step == "x" or step == "y":

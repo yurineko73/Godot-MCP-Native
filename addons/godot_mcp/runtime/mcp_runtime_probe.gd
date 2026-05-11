@@ -46,6 +46,9 @@ func _capture_mcp_message(message: String, data: Array) -> bool:
 		"get_runtime_info":
 			EngineDebugger.send_message("mcp:runtime_info", [_get_runtime_info()])
 			return true
+		"get_performance_snapshot":
+			EngineDebugger.send_message("mcp:performance_snapshot", [_get_performance_snapshot()])
+			return true
 		"get_scene_tree":
 			var max_depth: int = 6
 			if not data.is_empty() and data[0] is int:
@@ -137,6 +140,21 @@ func _get_runtime_info() -> Dictionary:
 		"physics_frames": Engine.get_physics_frames(),
 		"process_frames": Engine.get_process_frames(),
 		"debugger_active": EngineDebugger.is_active(),
+		"current_scene": str(get_tree().current_scene.get_path()) if get_tree().current_scene else "",
+		"node_count": _count_nodes(get_tree().root)
+	}
+
+func _get_performance_snapshot() -> Dictionary:
+	var memory_static: float = float(Performance.get_monitor(Performance.MEMORY_STATIC))
+	return {
+		"fps": float(Performance.get_monitor(Performance.TIME_FPS)),
+		"frame_time_sec": float(Performance.get_monitor(Performance.TIME_PROCESS)),
+		"physics_frame_time_sec": float(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)),
+		"object_count": int(Performance.get_monitor(Performance.OBJECT_COUNT)),
+		"resource_count": int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT)),
+		"rendered_objects_in_frame": int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)),
+		"memory_static_bytes": int(memory_static),
+		"memory_static_mb": memory_static / 1024.0 / 1024.0,
 		"current_scene": str(get_tree().current_scene.get_path()) if get_tree().current_scene else "",
 		"node_count": _count_nodes(get_tree().root)
 	}

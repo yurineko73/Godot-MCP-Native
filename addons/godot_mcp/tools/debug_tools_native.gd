@@ -100,6 +100,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_send_debug_command(server_core)
 	_register_await_debugger_state(server_core)
 	_register_get_runtime_info(server_core)
+	_register_get_runtime_performance_snapshot(server_core)
 	_register_get_runtime_scene_tree(server_core)
 	_register_inspect_runtime_node(server_core)
 	_register_create_runtime_node(server_core)
@@ -1091,6 +1092,29 @@ func _tool_get_runtime_info(params: Dictionary) -> Dictionary:
 				fallback["status"] = "stale"
 				fallback["refresh_result"] = result.get("refresh_result", {})
 				return fallback
+	return result
+
+func _register_get_runtime_performance_snapshot(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"get_runtime_performance_snapshot",
+		"Capture a runtime performance snapshot from the running game, including frame timing, object counts, and memory usage.",
+		{"type": "object", "properties": {"session_id": {"type": "integer"}, "timeout_ms": {"type": "integer", "default": 1500}}},
+		Callable(self, "_tool_get_runtime_performance_snapshot"),
+		{"type": "object", "properties": {"fps": {"type": "number"}, "frame_time_sec": {"type": "number"}, "physics_frame_time_sec": {"type": "number"}, "object_count": {"type": "integer"}, "resource_count": {"type": "integer"}, "rendered_objects_in_frame": {"type": "integer"}, "memory_static_bytes": {"type": "integer"}, "memory_static_mb": {"type": "number"}, "current_scene": {"type": "string"}, "node_count": {"type": "integer"}}},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
+	)
+
+func _tool_get_runtime_performance_snapshot(params: Dictionary) -> Dictionary:
+	var result: Dictionary = _request_runtime_probe("get_performance_snapshot", [], ["mcp:performance_snapshot"], params)
+	if result.get("status", "") == "pending":
+		var bridge: RefCounted = _get_debugger_bridge()
+		if bridge:
+			var latest_snapshot: Variant = bridge.get_latest_message_payload("mcp:performance_snapshot")
+			if latest_snapshot is Dictionary:
+				var stale_snapshot: Dictionary = latest_snapshot.duplicate(true)
+				stale_snapshot["status"] = "stale"
+				stale_snapshot["refresh_result"] = result.get("refresh_result", {})
+				return stale_snapshot
 	return result
 
 func _register_get_runtime_scene_tree(server_core: RefCounted) -> void:

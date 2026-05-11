@@ -22,6 +22,10 @@ var _state_events: Array[Dictionary] = []
 var _output_events: Array[Dictionary] = []
 var _max_state_events: int = 200
 var _max_output_events: int = 500
+var _next_variables_reference: int = 1
+var _variable_references: Dictionary = {}
+var _scope_variables_references: Dictionary = {}
+var _evaluation_variables_references: Dictionary = {}
 var _pending_stack_vars_frame: int = 0
 var _message_sequence: int = 0
 
@@ -132,6 +136,66 @@ func get_output_events(count: int = 100, offset: int = 0, order: String = "desc"
 		"total_available": events.size()
 	}
 
+func get_threads() -> Array[Dictionary]:
+	var threads: Array[Dictionary] = []
+	for session in get_sessions_info():
+		if not session.get("active", false):
+			continue
+		threads.append({
+			"thread_id": 1,
+			"name": "Main",
+			"session_id": int(session.get("session_id", -1)),
+			"active": bool(session.get("active", false)),
+			"breaked": bool(session.get("breaked", false)),
+			"debuggable": bool(session.get("debuggable", false))
+		})
+	return threads
+
+func get_scope_variables_reference(frame: int, scope: String) -> int:
+	var scope_name: String = scope.strip_edges().to_lower()
+	var key: String = "%d:%s" % [frame, scope_name]
+	if _scope_variables_references.has(key):
+		return int(_scope_variables_references[key])
+	var entries: Array = []
+	for variable_entry in get_latest_stack_variables(frame):
+		if str(variable_entry.get("scope", "")).to_lower() != scope_name:
+			continue
+		entries.append(_build_variable_entry(
+			str(variable_entry.get("name", "")),
+			variable_entry.get("value", null),
+			str(variable_entry.get("type", ""))
+		))
+	if entries.is_empty():
+		return 0
+	var reference: int = _store_variable_reference(entries)
+	_scope_variables_references[key] = reference
+	return reference
+
+func get_evaluation_variables_reference(expression: String) -> int:
+	var key: String = expression.strip_edges()
+	if key.is_empty():
+		return 0
+	if _evaluation_variables_references.has(key):
+		return int(_evaluation_variables_references[key])
+	var evaluation: Variant = get_latest_evaluation(key)
+	if not (evaluation is Dictionary):
+		return 0
+	var reference: int = _build_nested_variables_reference(evaluation.get("value", null))
+	if reference > 0:
+		_evaluation_variables_references[key] = reference
+	return reference
+
+func get_variables_by_reference(variables_reference: int, count: int = 100, offset: int = 0) -> Dictionary:
+	var entries: Array = _variable_references.get(variables_reference, []).duplicate(true)
+	var start: int = clampi(offset, 0, entries.size())
+	var end: int = clampi(start + max(count, 0), start, entries.size())
+	return {
+		"variables_reference": variables_reference,
+		"variables": entries.slice(start, end),
+		"count": end - start,
+		"total_available": entries.size()
+	}
+
 func toggle_profiler(profiler: String, enabled: bool, data: Array, session_id: int = -1) -> Dictionary:
 	var action: Callable = func(session: EditorDebuggerSession) -> void:
 		session.toggle_profiler(profiler, enabled, data)
@@ -238,10 +302,15 @@ func _connect_script_debugger(debugger: Object) -> void:
 func _on_stack_dump(stack: Array) -> void:
 	_latest_stack_dump = stack.duplicate(true)
 	_latest_stack_variables.clear()
+	_reset_variables_references()
 	_append_captured_message(-1, "stack_dump", [stack])
 
 func _on_stack_frame_vars(size: Variant) -> void:
 	_latest_stack_variables[_pending_stack_vars_frame] = []
+	_scope_variables_references.erase("%d:local" % _pending_stack_vars_frame)
+	_scope_variables_references.erase("%d:member" % _pending_stack_vars_frame)
+	_scope_variables_references.erase("%d:global" % _pending_stack_vars_frame)
+	_scope_variables_references.erase("%d:constant" % _pending_stack_vars_frame)
 	_append_captured_message(-1, "stack_frame_vars", [size])
 
 func _on_stack_frame_var(data: Array) -> void:
@@ -257,6 +326,7 @@ func _on_debug_data(message: String, data: Array) -> void:
 		var expression_name: String = str(variable.get("name", ""))
 		if not expression_name.is_empty():
 			_latest_evaluations[expression_name] = variable.duplicate(true)
+			_evaluation_variables_references.erase(expression_name)
 		_append_captured_message(-1, "evaluation_return", [variable])
 
 func _on_breaked(reallydid: bool, can_debug: bool, reason: String, has_stackdump: bool) -> void:
@@ -335,6 +405,124 @@ func _map_output_category(type: int) -> String:
 			return "stdout_rich"
 		_:
 			return "stdout"
+
+func _reset_variables_references() -> void:
+	_next_variables_reference = 1
+	_variable_references.clear()
+	_scope_variables_references.clear()
+	_evaluation_variables_references.clear()
+
+func _store_variable_reference(entries: Array) -> int:
+	var reference: int = _next_variables_reference
+	_next_variables_reference += 1
+	_variable_references[reference] = entries.duplicate(true)
+	return reference
+
+func _build_variable_entry(name: String, value: Variant, value_type: String = "") -> Dictionary:
+	var variables_reference: int = _build_nested_variables_reference(value)
+	var resolved_type: String = value_type if not value_type.is_empty() else type_string(typeof(value))
+	var counts: Dictionary = _describe_child_counts(value)
+	return {
+		"name": name,
+		"type": resolved_type,
+		"value": _serialize_debug_value(value),
+		"variables_reference": variables_reference,
+		"indexed_variables": int(counts.get("indexed_variables", 0)),
+		"named_variables": int(counts.get("named_variables", 0)),
+		"has_children": variables_reference > 0
+	}
+
+func _build_nested_variables_reference(value: Variant) -> int:
+	var entries: Array = []
+	match typeof(value):
+		TYPE_ARRAY:
+			entries.append(_build_variable_entry("size", value.size(), "int"))
+			for index in range(value.size()):
+				entries.append(_build_variable_entry(str(index), value[index]))
+		TYPE_DICTIONARY:
+			for key in value.keys():
+				entries.append(_build_variable_entry(str(key), value[key]))
+		TYPE_VECTOR2:
+			entries.append_array([
+				_build_variable_entry("x", value.x, "float"),
+				_build_variable_entry("y", value.y, "float")
+			])
+		TYPE_VECTOR3:
+			entries.append_array([
+				_build_variable_entry("x", value.x, "float"),
+				_build_variable_entry("y", value.y, "float"),
+				_build_variable_entry("z", value.z, "float")
+			])
+		TYPE_VECTOR4:
+			entries.append_array([
+				_build_variable_entry("x", value.x, "float"),
+				_build_variable_entry("y", value.y, "float"),
+				_build_variable_entry("z", value.z, "float"),
+				_build_variable_entry("w", value.w, "float")
+			])
+		TYPE_COLOR:
+			entries.append_array([
+				_build_variable_entry("r", value.r, "float"),
+				_build_variable_entry("g", value.g, "float"),
+				_build_variable_entry("b", value.b, "float"),
+				_build_variable_entry("a", value.a, "float")
+			])
+		TYPE_PACKED_BYTE_ARRAY, TYPE_PACKED_INT32_ARRAY, TYPE_PACKED_INT64_ARRAY, TYPE_PACKED_FLOAT32_ARRAY, TYPE_PACKED_FLOAT64_ARRAY, TYPE_PACKED_STRING_ARRAY, TYPE_PACKED_VECTOR2_ARRAY, TYPE_PACKED_VECTOR3_ARRAY, TYPE_PACKED_COLOR_ARRAY, TYPE_PACKED_VECTOR4_ARRAY:
+			entries.append(_build_variable_entry("size", value.size(), "int"))
+			for index in range(value.size()):
+				entries.append(_build_variable_entry(str(index), value[index]))
+	if entries.is_empty():
+		return 0
+	return _store_variable_reference(entries)
+
+func _describe_child_counts(value: Variant) -> Dictionary:
+	match typeof(value):
+		TYPE_ARRAY:
+			return {"indexed_variables": value.size() + 1, "named_variables": 0}
+		TYPE_DICTIONARY:
+			return {"indexed_variables": 0, "named_variables": value.size()}
+		TYPE_VECTOR2:
+			return {"indexed_variables": 0, "named_variables": 2}
+		TYPE_VECTOR3:
+			return {"indexed_variables": 0, "named_variables": 3}
+		TYPE_VECTOR4, TYPE_COLOR:
+			return {"indexed_variables": 0, "named_variables": 4}
+		TYPE_PACKED_BYTE_ARRAY, TYPE_PACKED_INT32_ARRAY, TYPE_PACKED_INT64_ARRAY, TYPE_PACKED_FLOAT32_ARRAY, TYPE_PACKED_FLOAT64_ARRAY, TYPE_PACKED_STRING_ARRAY, TYPE_PACKED_VECTOR2_ARRAY, TYPE_PACKED_VECTOR3_ARRAY, TYPE_PACKED_COLOR_ARRAY, TYPE_PACKED_VECTOR4_ARRAY:
+			return {"indexed_variables": value.size() + 1, "named_variables": 0}
+		_:
+			return {"indexed_variables": 0, "named_variables": 0}
+
+func _serialize_debug_value(value: Variant) -> Variant:
+	if value == null:
+		return null
+	match typeof(value):
+		TYPE_BOOL, TYPE_INT, TYPE_FLOAT, TYPE_STRING:
+			return value
+		TYPE_VECTOR2:
+			return {"x": value.x, "y": value.y}
+		TYPE_VECTOR3:
+			return {"x": value.x, "y": value.y, "z": value.z}
+		TYPE_VECTOR4:
+			return {"x": value.x, "y": value.y, "z": value.z, "w": value.w}
+		TYPE_COLOR:
+			return {"r": value.r, "g": value.g, "b": value.b, "a": value.a}
+		TYPE_ARRAY:
+			var serialized_array: Array = []
+			for item in value:
+				serialized_array.append(_serialize_debug_value(item))
+			return serialized_array
+		TYPE_DICTIONARY:
+			var serialized_dict: Dictionary = {}
+			for key in value.keys():
+				serialized_dict[str(key)] = _serialize_debug_value(value[key])
+			return serialized_dict
+		TYPE_PACKED_BYTE_ARRAY, TYPE_PACKED_INT32_ARRAY, TYPE_PACKED_INT64_ARRAY, TYPE_PACKED_FLOAT32_ARRAY, TYPE_PACKED_FLOAT64_ARRAY, TYPE_PACKED_STRING_ARRAY, TYPE_PACKED_VECTOR2_ARRAY, TYPE_PACKED_VECTOR3_ARRAY, TYPE_PACKED_COLOR_ARRAY, TYPE_PACKED_VECTOR4_ARRAY:
+			var packed_array: Array = []
+			for item in value:
+				packed_array.append(_serialize_debug_value(item))
+			return packed_array
+		_:
+			return str(value)
 
 func _find_captured_message_after_sequence(sequence: int, response_messages: Array, error_messages: Array) -> Dictionary:
 	for entry in _captured_messages:

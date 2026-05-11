@@ -53,6 +53,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_execute_editor_script(server_core)
 	_register_clear_output(server_core)
 	_register_get_debugger_sessions(server_core)
+	_register_get_debug_threads(server_core)
 	_register_set_debugger_breakpoint(server_core)
 	_register_send_debugger_message(server_core)
 	_register_toggle_debugger_profiler(server_core)
@@ -63,6 +64,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_get_debug_stack_frames(server_core)
 	_register_get_debug_stack_variables(server_core)
 	_register_get_debug_scopes(server_core)
+	_register_get_debug_variables(server_core)
 	_register_expand_debug_variable(server_core)
 	_register_evaluate_debug_expression(server_core)
 	_register_install_runtime_probe(server_core)
@@ -220,6 +222,23 @@ func _tool_set_debugger_breakpoint(params: Dictionary) -> Dictionary:
 	if not bridge:
 		return {"error": "Debugger bridge is not available"}
 	return bridge.set_breakpoint(path, line, enabled, session_id)
+
+func _register_get_debug_threads(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"get_debug_threads",
+		"Return DAP-style debugger threads visible from the active Godot debug session.",
+		{"type": "object", "properties": {}},
+		Callable(self, "_tool_get_debug_threads"),
+		{"type": "object", "properties": {"threads": {"type": "array"}, "count": {"type": "integer"}}},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+	)
+
+func _tool_get_debug_threads(params: Dictionary) -> Dictionary:
+	var bridge: RefCounted = _get_debugger_bridge()
+	if not bridge:
+		return {"error": "Debugger bridge is not available"}
+	var threads: Array = bridge.get_threads()
+	return {"threads": threads, "count": threads.size()}
 
 func _register_send_debugger_message(server_core: RefCounted) -> void:
 	server_core.register_tool(
@@ -454,6 +473,9 @@ func _tool_get_debug_scopes(params: Dictionary) -> Dictionary:
 	var variables_result: Dictionary = _tool_get_debug_stack_variables(params)
 	if variables_result.has("error"):
 		return variables_result
+	var bridge: RefCounted = _get_debugger_bridge()
+	if not bridge:
+		return {"error": "Debugger bridge is not available"}
 	var frame: int = int(variables_result.get("frame", 0))
 	var grouped: Dictionary = {}
 	for variable_entry in variables_result.get("variables", []):
@@ -466,11 +488,15 @@ func _tool_get_debug_scopes(params: Dictionary) -> Dictionary:
 	for scope_name in ["local", "member", "global", "constant", "unknown"]:
 		if not grouped.has(scope_name):
 			continue
+		var dap_variables_reference: int = bridge.get_scope_variables_reference(frame, scope_name)
 		scopes.append({
 			"name": scope_name,
 			"frame": frame,
 			"variables_reference": "%d:%s" % [frame, scope_name],
+			"dap_variables_reference": dap_variables_reference,
 			"named_variables": grouped[scope_name].size(),
+			"indexed_variables": 0,
+			"presentation_hint": _debug_scope_presentation_hint(scope_name),
 			"expensive": false
 		})
 
@@ -480,6 +506,40 @@ func _tool_get_debug_scopes(params: Dictionary) -> Dictionary:
 		"count": scopes.size(),
 		"refresh_result": variables_result.get("refresh_result", {})
 	}
+
+func _register_get_debug_variables(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"get_debug_variables",
+		"Resolve a DAP-style variablesReference into child variables, with optional pagination for large arrays and dictionaries.",
+		{
+			"type": "object",
+			"properties": {
+				"variables_reference": {"type": "integer"},
+				"offset": {"type": "integer", "default": 0},
+				"count": {"type": "integer", "default": 100}
+			},
+			"required": ["variables_reference"]
+		},
+		Callable(self, "_tool_get_debug_variables"),
+		{"type": "object", "properties": {"variables_reference": {"type": "integer"}, "variables": {"type": "array"}, "count": {"type": "integer"}, "total_available": {"type": "integer"}}},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+	)
+
+func _tool_get_debug_variables(params: Dictionary) -> Dictionary:
+	var variables_reference: int = int(params.get("variables_reference", 0))
+	if variables_reference <= 0:
+		return {"error": "variables_reference must be > 0"}
+	var bridge: RefCounted = _get_debugger_bridge()
+	if not bridge:
+		return {"error": "Debugger bridge is not available"}
+	var result: Dictionary = bridge.get_variables_by_reference(
+		variables_reference,
+		int(params.get("count", 100)),
+		int(params.get("offset", 0))
+	)
+	if result.get("total_available", 0) == 0:
+		return {"error": "Unknown debug variables reference: " + str(variables_reference)}
+	return result
 
 func _register_expand_debug_variable(server_core: RefCounted) -> void:
 	server_core.register_tool(
@@ -605,9 +665,45 @@ func _tool_evaluate_debug_expression(params: Dictionary) -> Dictionary:
 		"frame": frame,
 		"type": str(evaluation.get("type", "")),
 		"value": _serialize_runtime_value(value),
+		"variables_reference": bridge.get_evaluation_variables_reference(expression),
+		"named_variables": _debug_named_variable_count(value),
+		"indexed_variables": _debug_indexed_variable_count(value),
 		"has_children": _debug_value_has_children(value),
 		"refresh_result": refresh_result
 	}
+
+func _debug_scope_presentation_hint(scope_name: String) -> String:
+	match scope_name:
+		"local":
+			return "locals"
+		"member":
+			return "members"
+		"global":
+			return "globals"
+		"constant":
+			return "constants"
+		_:
+			return "unknown"
+
+func _debug_named_variable_count(value: Variant) -> int:
+	match typeof(value):
+		TYPE_DICTIONARY:
+			return value.size()
+		TYPE_VECTOR2:
+			return 2
+		TYPE_VECTOR3:
+			return 3
+		TYPE_VECTOR4, TYPE_COLOR:
+			return 4
+		_:
+			return 0
+
+func _debug_indexed_variable_count(value: Variant) -> int:
+	match typeof(value):
+		TYPE_ARRAY, TYPE_PACKED_BYTE_ARRAY, TYPE_PACKED_INT32_ARRAY, TYPE_PACKED_INT64_ARRAY, TYPE_PACKED_FLOAT32_ARRAY, TYPE_PACKED_FLOAT64_ARRAY, TYPE_PACKED_STRING_ARRAY, TYPE_PACKED_VECTOR2_ARRAY, TYPE_PACKED_VECTOR3_ARRAY, TYPE_PACKED_COLOR_ARRAY, TYPE_PACKED_VECTOR4_ARRAY:
+			return value.size() + 1
+		_:
+			return 0
 
 func _expand_debug_value_entries(value: Variant, parent_path: Array) -> Array:
 	var entries: Array = []

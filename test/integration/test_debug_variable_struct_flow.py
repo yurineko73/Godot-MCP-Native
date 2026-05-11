@@ -279,6 +279,9 @@ def main() -> int:
                 "code": (
                     'var tools := DebugToolsNative.new()\n'
                     'var bridge := MCPDebuggerBridge.new()\n'
+                    'var helper_node := Node.new()\n'
+                    'var helper_callable := Callable(helper_node, "queue_free")\n'
+                    'var helper_signal := helper_node.tree_entered\n'
                     'var result := {\n'
                     '\t"vector2i_named_count": tools._debug_named_variable_count(Vector2i(8, 9)),\n'
                     '\t"basis_named_count": tools._debug_named_variable_count(Basis(Vector3(1, 2, 3), Vector3(4, 5, 6), Vector3(7, 8, 9))),\n'
@@ -289,12 +292,16 @@ def main() -> int:
                     '\t"node_path_serialized": tools._serialize_runtime_value(NodePath("/root/TestNode")),\n'
                     '\t"string_name_serialized": tools._serialize_runtime_value(&"EnemyTag"),\n'
                     '\t"rid_serialized": tools._serialize_runtime_value(RID()),\n'
+                    '\t"callable_serialized": tools._serialize_runtime_value(helper_callable),\n'
+                    '\t"signal_serialized": tools._serialize_runtime_value(helper_signal),\n'
                     '\t"rect2i_entries": tools._expand_debug_struct_fields(Rect2i(Vector2i(1, 2), Vector2i(5, 6)), ["rect2i_value"]),\n'
                     '\t"plane_entries": tools._expand_debug_struct_fields(Plane(Vector3(0, 1, 0), 2.5), ["plane_value"]),\n'
                     '\t"object_script_source": "extends RefCounted\\nvar display_name := \\"Probe\\"\\nvar hit_points := 42\\nvar grid := Vector2i(2, 3)\\n",\n'
                     '\t"bridge_node_path_serialized": bridge._serialize_debug_value(NodePath("/root/TestNode")),\n'
                     '\t"bridge_string_name_serialized": bridge._serialize_debug_value(&"EnemyTag"),\n'
-                    '\t"bridge_rid_serialized": bridge._serialize_debug_value(RID())\n'
+                    '\t"bridge_rid_serialized": bridge._serialize_debug_value(RID()),\n'
+                    '\t"bridge_callable_serialized": bridge._serialize_debug_value(helper_callable),\n'
+                    '\t"bridge_signal_serialized": bridge._serialize_debug_value(helper_signal)\n'
                     '}\n'
                     '_custom_print(JSON.stringify(result))\n'
                 ),
@@ -324,6 +331,12 @@ def main() -> int:
             raise AssertionError(f"Unexpected StringName serialization: {helper_result}")
         if helper_result.get("rid_serialized") != {"id": 0, "valid": False}:
             raise AssertionError(f"Unexpected RID serialization: {helper_result}")
+        callable_serialized = helper_result.get("callable_serialized", {})
+        if callable_serialized.get("method") != "queue_free" or callable_serialized.get("object_class") != "Node":
+            raise AssertionError(f"Unexpected Callable serialization: {helper_result}")
+        signal_serialized = helper_result.get("signal_serialized", {})
+        if signal_serialized.get("name") != "tree_entered" or signal_serialized.get("object_class") != "Node":
+            raise AssertionError(f"Unexpected Signal serialization: {helper_result}")
         rect2i_entries = helper_result.get("rect2i_entries", [])
         if [entry.get("name") for entry in rect2i_entries] != ["position", "size", "end"]:
             raise AssertionError(f"Unexpected Rect2i helper entries: {helper_result}")
@@ -336,6 +349,12 @@ def main() -> int:
             raise AssertionError(f"Unexpected bridge StringName serialization: {helper_result}")
         if helper_result.get("bridge_rid_serialized") != {"id": 0, "valid": False}:
             raise AssertionError(f"Unexpected bridge RID serialization: {helper_result}")
+        bridge_callable_serialized = helper_result.get("bridge_callable_serialized", {})
+        if bridge_callable_serialized.get("method") != "queue_free" or bridge_callable_serialized.get("object_class") != "Node":
+            raise AssertionError(f"Unexpected bridge Callable serialization: {helper_result}")
+        bridge_signal_serialized = helper_result.get("bridge_signal_serialized", {})
+        if bridge_signal_serialized.get("name") != "tree_entered" or bridge_signal_serialized.get("object_class") != "Node":
+            raise AssertionError(f"Unexpected bridge Signal serialization: {helper_result}")
 
         print("debug variable struct flow verified")
         return 0

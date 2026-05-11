@@ -590,6 +590,10 @@ func _serialize_debug_value(value: Variant) -> Variant:
 				"id": value.get_id(),
 				"valid": value.is_valid()
 			}
+		TYPE_CALLABLE:
+			return _serialize_debug_callable(value)
+		TYPE_SIGNAL:
+			return _serialize_debug_signal(value)
 		TYPE_VECTOR2:
 			return {"x": value.x, "y": value.y}
 		TYPE_VECTOR2I:
@@ -698,6 +702,34 @@ func _serialize_debug_object(value: Variant) -> Dictionary:
 	return {
 		"class_name": object_value.get_class(),
 		"properties": properties
+	}
+
+func _serialize_debug_callable(value: Variant) -> Dictionary:
+	if typeof(value) != TYPE_CALLABLE:
+		return {}
+	var callable_value: Callable = value
+	var target: Object = callable_value.get_object()
+	return {
+		"method": callable_value.get_method(),
+		"object_id": callable_value.get_object_id(),
+		"object_class": target.get_class() if is_instance_valid(target) else "",
+		"is_custom": callable_value.is_custom(),
+		"is_standard": callable_value.is_standard(),
+		"is_null": callable_value.is_null(),
+		"is_valid": callable_value.is_valid(),
+		"bound_argument_count": callable_value.get_bound_arguments_count()
+	}
+
+func _serialize_debug_signal(value: Variant) -> Dictionary:
+	if typeof(value) != TYPE_SIGNAL:
+		return {}
+	var signal_value: Signal = value
+	var target: Object = signal_value.get_object()
+	return {
+		"name": signal_value.get_name(),
+		"object_id": target.get_instance_id() if is_instance_valid(target) else 0,
+		"object_class": target.get_class() if is_instance_valid(target) else "",
+		"is_null": signal_value.is_null()
 	}
 
 func _find_captured_message_after_sequence(sequence: int, response_messages: Array, error_messages: Array) -> Dictionary:

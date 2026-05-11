@@ -656,19 +656,10 @@ func _tool_expand_debug_variable(params: Dictionary) -> Dictionary:
 
 	for i in range(1, variable_path.size()):
 		var step: String = str(variable_path[i])
-		if current_value is Array:
-			if not step.is_valid_int():
-				return {"error": "Array step must be an integer index: " + step}
-			var index: int = int(step)
-			if index < 0 or index >= current_value.size():
-				return {"error": "Array index out of range: " + step}
-			current_value = current_value[index]
-		elif current_value is Dictionary:
-			if not current_value.has(step):
-				return {"error": "Dictionary key not found: " + step}
-			current_value = current_value[step]
-		else:
+		var resolved: Dictionary = _resolve_debug_path_step(current_value, step)
+		if not resolved.get("ok", false):
 			return {"error": "Value at path is not expandable: " + JSON.stringify(variable_path.slice(0, i))}
+		current_value = resolved.get("value", null)
 
 	var entries: Array = _expand_debug_value_entries(current_value, variable_path)
 	var offset: int = max(0, int(params.get("offset", 0)))
@@ -684,6 +675,89 @@ func _tool_expand_debug_variable(params: Dictionary) -> Dictionary:
 		"count": end - start,
 		"total_available": entries.size()
 	}
+
+func _resolve_debug_path_step(current_value: Variant, step: String) -> Dictionary:
+	if current_value is Array:
+		if not step.is_valid_int():
+			return {"ok": false}
+		var index: int = int(step)
+		if index < 0 or index >= current_value.size():
+			return {"ok": false}
+		return {"ok": true, "value": current_value[index]}
+	if current_value is Dictionary:
+		if not current_value.has(step):
+			return {"ok": false}
+		return {"ok": true, "value": current_value[step]}
+	match typeof(current_value):
+		TYPE_VECTOR2, TYPE_VECTOR2I:
+			if step == "x" or step == "y":
+				return {"ok": true, "value": current_value[step]}
+		TYPE_VECTOR3, TYPE_VECTOR3I:
+			if step == "x" or step == "y" or step == "z":
+				return {"ok": true, "value": current_value[step]}
+		TYPE_VECTOR4, TYPE_VECTOR4I, TYPE_QUATERNION:
+			if step == "x" or step == "y" or step == "z" or step == "w":
+				return {"ok": true, "value": current_value[step]}
+		TYPE_COLOR:
+			if step == "r" or step == "g" or step == "b" or step == "a":
+				return {"ok": true, "value": current_value[step]}
+		TYPE_PLANE:
+			if step == "normal":
+				return {"ok": true, "value": current_value.normal}
+			if step == "d":
+				return {"ok": true, "value": current_value.d}
+		TYPE_RECT2, TYPE_RECT2I, TYPE_AABB:
+			if step == "position" or step == "size" or step == "end":
+				return {"ok": true, "value": current_value[step]}
+		TYPE_BASIS:
+			if step == "x" or step == "y" or step == "z":
+				return {"ok": true, "value": current_value[step]}
+		TYPE_TRANSFORM2D:
+			if step == "x" or step == "y" or step == "origin":
+				return {"ok": true, "value": current_value[step]}
+		TYPE_TRANSFORM3D:
+			if step == "basis" or step == "origin":
+				return {"ok": true, "value": current_value[step]}
+		TYPE_PROJECTION:
+			if step == "x" or step == "y" or step == "z" or step == "w":
+				return {"ok": true, "value": current_value[step]}
+		TYPE_OBJECT:
+			return _resolve_debug_object_path_step(current_value, step)
+	return {"ok": false}
+
+func _resolve_debug_object_path_step(current_value: Variant, step: String) -> Dictionary:
+	if typeof(current_value) != TYPE_OBJECT or current_value == null:
+		return {"ok": false}
+	var object_value: Object = current_value
+	if not is_instance_valid(object_value):
+		return {"ok": false}
+	if step == "@class_name":
+		return {"ok": true, "value": object_value.get_class()}
+	if step == "@instance_id":
+		return {"ok": true, "value": object_value.get_instance_id()}
+	if step == "@script_path":
+		var script: Script = object_value.get_script() as Script
+		return {"ok": true, "value": String(script.resource_path) if script else ""}
+	if step == "@node_path" and object_value is Node:
+		var node_value: Node = object_value as Node
+		var node_path: String = str(node_value.get_path())
+		if node_path.is_empty() and not String(node_value.name).is_empty():
+			node_path = "/" + String(node_value.name)
+		return {"ok": true, "value": node_path}
+	if step == "@resource_path" and object_value is Resource:
+		return {"ok": true, "value": String((object_value as Resource).resource_path)}
+	for property_info in object_value.get_property_list():
+		var property_name: String = str(property_info.get("name", ""))
+		if property_name != step:
+			continue
+		if property_name == "script" or property_name.begins_with("_") or property_name.contains("/"):
+			return {"ok": false}
+		var usage: int = int(property_info.get("usage", 0))
+		var include_property: bool = (usage & PROPERTY_USAGE_SCRIPT_VARIABLE) != 0 or (usage & PROPERTY_USAGE_STORAGE) != 0
+		if not include_property:
+			return {"ok": false}
+		return {"ok": true, "value": object_value.get(property_name)}
+	return {"ok": false}
 
 func _register_evaluate_debug_expression(server_core: RefCounted) -> void:
 	server_core.register_tool(

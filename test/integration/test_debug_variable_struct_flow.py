@@ -308,6 +308,33 @@ def main() -> int:
         if object_grid_children.get("x", {}).get("value") != 2 or object_grid_children.get("y", {}).get("value") != 3:
             raise AssertionError(f"Unexpected object grid values: {object_grid_variables}")
 
+        expanded_object = tool_call(
+            "expand_debug_variable",
+            {"scope": "evaluation", "variable_path": ["object_value"]},
+            request_id=14_1,
+        )
+        expanded_object_entries = {entry["name"]: entry for entry in expanded_object.get("entries", [])}
+        if not {"@class_name", "display_name", "grid", "hit_points"}.issubset(expanded_object_entries):
+            raise AssertionError(f"Unexpected expanded object entries: {expanded_object}")
+
+        expanded_object_grid = tool_call(
+            "expand_debug_variable",
+            {"scope": "evaluation", "variable_path": ["object_value", "grid"]},
+            request_id=14_2,
+        )
+        expanded_object_grid_entries = {entry["name"]: entry for entry in expanded_object_grid.get("entries", [])}
+        if expanded_object_grid_entries.get("x", {}).get("value") != 2 or expanded_object_grid_entries.get("y", {}).get("value") != 3:
+            raise AssertionError(f"Unexpected expanded object grid entries: {expanded_object_grid}")
+
+        expanded_projection_column = tool_call(
+            "expand_debug_variable",
+            {"scope": "evaluation", "variable_path": ["projection_value", "x"]},
+            request_id=14_3,
+        )
+        expanded_projection_entries = {entry["name"]: entry for entry in expanded_projection_column.get("entries", [])}
+        if expanded_projection_entries.get("x", {}).get("value") != 1.0 or expanded_projection_entries.get("w", {}).get("value") != 4.0:
+            raise AssertionError(f"Unexpected expanded projection entries: {expanded_projection_column}")
+
         inspect_helpers = tool_call(
             "execute_editor_script",
             {

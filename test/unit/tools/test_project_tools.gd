@@ -55,3 +55,48 @@ func test_create_resource_types():
 func test_resource_uri_format():
 	var uri: String = "godot://scene/list"
 	assert_true(uri.begins_with("godot://"), "Resource URI should start with godot://")
+
+func test_collect_project_autoloads_from_properties_marks_singletons_and_sorts():
+	var project_tools: RefCounted = load("res://addons/godot_mcp/tools/project_tools_native.gd").new()
+	var properties: Array = [
+		{"name": "autoload/GameState"},
+		{"name": "autoload/Bootstrap"},
+		{"name": "display/window/size/viewport_width"}
+	]
+	var values: Dictionary = {
+		"autoload/GameState": "*res://autoload/game_state.gd",
+		"autoload/Bootstrap": "res://autoload/bootstrap.gd"
+	}
+	var orders: Dictionary = {
+		"autoload/GameState": 40,
+		"autoload/Bootstrap": 12
+	}
+	var autoloads: Array = project_tools._collect_project_autoloads_from_properties(properties, values, orders)
+	assert_eq(autoloads.size(), 2, "Should collect two autoload entries")
+	assert_eq(autoloads[0].name, "Bootstrap", "Should sort autoloads by project setting order")
+	assert_eq(autoloads[0].path, "res://autoload/bootstrap.gd", "Should preserve non-singleton autoload path")
+	assert_false(autoloads[0].is_singleton, "Non-prefixed autoload should not be marked singleton")
+	assert_eq(autoloads[1].name, "GameState", "Should include singleton autoload name")
+	assert_eq(autoloads[1].path, "res://autoload/game_state.gd", "Singleton autoload should strip the * prefix")
+	assert_true(autoloads[1].is_singleton, "Prefixed autoload should be marked singleton")
+
+func test_normalize_global_class_entries_preserves_metadata():
+	var project_tools: RefCounted = load("res://addons/godot_mcp/tools/project_tools_native.gd").new()
+	var classes: Array = [
+		{
+			"class": "MyRuntimeNode",
+			"path": "res://scripts/my_runtime_node.gd",
+			"base": "Node",
+			"language": "GDScript",
+			"is_tool": false,
+			"is_abstract": false,
+			"icon": ""
+		}
+	]
+	var normalized: Array = project_tools._normalize_global_class_entries(classes)
+	assert_eq(normalized.size(), 1, "Should normalize one global class entry")
+	assert_eq(normalized[0].name, "MyRuntimeNode", "Should expose class name as name")
+	assert_eq(normalized[0].path, "res://scripts/my_runtime_node.gd", "Should preserve script path")
+	assert_eq(normalized[0].base, "Node", "Should preserve base type")
+	assert_eq(normalized[0].language, "GDScript", "Should preserve language")
+	assert_false(normalized[0].is_tool, "Should preserve tool flag")

@@ -25,6 +25,8 @@ func _get_editor_interface() -> EditorInterface:
 func register_tools(server_core: RefCounted) -> void:
 	_register_get_project_info(server_core)
 	_register_get_project_settings(server_core)
+	_register_list_project_autoloads(server_core)
+	_register_list_project_global_classes(server_core)
 	_register_list_project_resources(server_core)
 	_register_create_resource(server_core)
 	_register_get_project_structure(server_core)
@@ -163,6 +165,125 @@ func _tool_get_project_settings(params: Dictionary) -> Dictionary:
 	return {
 		"settings": settings,
 		"count": setting_count
+	}
+
+# ============================================================================
+# list_project_autoloads - 列出项目 Autoload
+# ============================================================================
+
+func _register_list_project_autoloads(server_core: RefCounted) -> void:
+	var tool_name: String = "list_project_autoloads"
+	var description: String = "List project autoload entries with resolved path, singleton flag, and project setting order."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"filter": {
+				"type": "string",
+				"description": "Optional case-insensitive filter that matches autoload name or path."
+			}
+		}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"autoloads": {"type": "array", "items": {"type": "object"}},
+			"count": {"type": "integer"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_list_project_autoloads"),
+						  output_schema, annotations)
+
+func _tool_list_project_autoloads(params: Dictionary) -> Dictionary:
+	var filter: String = str(params.get("filter", "")).strip_edges().to_lower()
+	var values_by_name: Dictionary = {}
+	var orders_by_name: Dictionary = {}
+	for property_info in ProjectSettings.get_property_list():
+		var property_name: String = str(property_info.get("name", ""))
+		if not property_name.begins_with("autoload/"):
+			continue
+		values_by_name[property_name] = ProjectSettings.get_setting(property_name)
+		orders_by_name[property_name] = ProjectSettings.get_order(property_name)
+
+	var autoloads: Array = _collect_project_autoloads_from_properties(ProjectSettings.get_property_list(), values_by_name, orders_by_name)
+	if not filter.is_empty():
+		var filtered_autoloads: Array = []
+		for entry in autoloads:
+			var entry_name: String = str(entry.get("name", "")).to_lower()
+			var entry_path: String = str(entry.get("path", "")).to_lower()
+			if entry_name.contains(filter) or entry_path.contains(filter):
+				filtered_autoloads.append(entry)
+		autoloads = filtered_autoloads
+
+	return {
+		"autoloads": autoloads,
+		"count": autoloads.size()
+	}
+
+# ============================================================================
+# list_project_global_classes - 列出项目全局脚本类
+# ============================================================================
+
+func _register_list_project_global_classes(server_core: RefCounted) -> void:
+	var tool_name: String = "list_project_global_classes"
+	var description: String = "List project global script classes registered through class_name metadata."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"filter": {
+				"type": "string",
+				"description": "Optional case-insensitive filter that matches class name, base type, or script path."
+			}
+		}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"classes": {"type": "array", "items": {"type": "object"}},
+			"count": {"type": "integer"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_list_project_global_classes"),
+						  output_schema, annotations)
+
+func _tool_list_project_global_classes(params: Dictionary) -> Dictionary:
+	var filter: String = str(params.get("filter", "")).strip_edges().to_lower()
+	var class_entries: Array = []
+	if ProjectSettings.has_method("get_global_class_list"):
+		class_entries = _normalize_global_class_entries(ProjectSettings.get_global_class_list())
+	if not filter.is_empty():
+		var filtered_entries: Array = []
+		for entry in class_entries:
+			var entry_name: String = str(entry.get("name", "")).to_lower()
+			var base_name: String = str(entry.get("base", "")).to_lower()
+			var path: String = str(entry.get("path", "")).to_lower()
+			if entry_name.contains(filter) or base_name.contains(filter) or path.contains(filter):
+				filtered_entries.append(entry)
+		class_entries = filtered_entries
+	return {
+		"classes": class_entries,
+		"count": class_entries.size()
 	}
 
 # ============================================================================
@@ -1314,3 +1435,50 @@ func _is_likely_script_error_line(line: String) -> bool:
 	if line.ends_with("(") or line.ends_with(",") or line.count("\"") % 2 == 1:
 		return true
 	return false
+
+func _collect_project_autoloads_from_properties(properties: Array, values_by_name: Dictionary, orders_by_name: Dictionary) -> Array:
+	var autoloads: Array = []
+	for property_info in properties:
+		var property_name: String = str(property_info.get("name", ""))
+		if not property_name.begins_with("autoload/"):
+			continue
+		var raw_value: String = str(values_by_name.get(property_name, ""))
+		var is_singleton: bool = raw_value.begins_with("*")
+		var resolved_path: String = raw_value.substr(1) if is_singleton else raw_value
+		autoloads.append({
+			"name": property_name.get_slice("/", 1),
+			"path": resolved_path.simplify_path(),
+			"is_singleton": is_singleton,
+			"order": int(orders_by_name.get(property_name, 0)),
+			"setting_name": property_name,
+			"raw_value": raw_value
+		})
+	autoloads.sort_custom(Callable(self, "_compare_autoload_entries"))
+	return autoloads
+
+func _normalize_global_class_entries(entries: Array) -> Array:
+	var classes: Array = []
+	for entry in entries:
+		if not (entry is Dictionary):
+			continue
+		classes.append({
+			"name": str(entry.get("class", "")),
+			"path": str(entry.get("path", "")),
+			"base": str(entry.get("base", "")),
+			"language": str(entry.get("language", "")),
+			"is_tool": bool(entry.get("is_tool", false)),
+			"is_abstract": bool(entry.get("is_abstract", false)),
+			"icon": str(entry.get("icon", ""))
+		})
+	classes.sort_custom(Callable(self, "_compare_global_class_entries"))
+	return classes
+
+func _compare_autoload_entries(left: Dictionary, right: Dictionary) -> bool:
+	var left_order: int = int(left.get("order", 0))
+	var right_order: int = int(right.get("order", 0))
+	if left_order == right_order:
+		return str(left.get("name", "")) < str(right.get("name", ""))
+	return left_order < right_order
+
+func _compare_global_class_entries(left: Dictionary, right: Dictionary) -> bool:
+	return str(left.get("name", "")) < str(right.get("name", ""))

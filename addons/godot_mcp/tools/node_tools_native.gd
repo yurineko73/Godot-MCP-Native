@@ -397,7 +397,10 @@ func _register_batch_scene_node_edits(server_core: RefCounted) -> void:
 							"parent_path": {"type": "string"},
 							"node_type": {"type": "string"},
 							"node_name": {"type": "string"},
-							"node_path": {"type": "string"}
+							"node_path": {"type": "string"},
+							"new_name": {"type": "string"},
+							"new_parent_path": {"type": "string"},
+							"keep_global_transform": {"type": "boolean"}
 						},
 						"required": ["type"]
 					}
@@ -482,9 +485,65 @@ func _tool_batch_scene_node_edits(params: Dictionary) -> Dictionary:
 					"parent": parent,
 					"node": target_node,
 					"node_snapshot": duplicated,
+					"node_owner": target_node.owner,
 					"node_name": String(target_node.name),
 					"node_type": target_node.get_class(),
 					"node_index": node_index
+				})
+			"rename":
+				var rename_node_path: String = str(operation.get("node_path", ""))
+				var new_name: String = str(operation.get("new_name", "")).strip_edges()
+				if rename_node_path.is_empty() or new_name.is_empty():
+					return {"error": "Rename operations require node_path and new_name"}
+				var rename_target: Node = _resolve_node_path(rename_node_path)
+				if not rename_target:
+					return {"error": "Node not found: " + rename_node_path}
+				var old_name: String = str(rename_target.name)
+				var rename_parent: Node = rename_target.get_parent()
+				if rename_parent and old_name != new_name and rename_parent.has_node(new_name):
+					return {"error": "Name '" + new_name + "' already exists in parent"}
+				prepared_operations.append({
+					"type": "rename",
+					"node_path": rename_node_path,
+					"node": rename_target,
+					"old_name": old_name,
+					"new_name": new_name,
+					"node_type": rename_target.get_class()
+				})
+			"move":
+				var move_node_path: String = str(operation.get("node_path", ""))
+				var new_parent_path: String = str(operation.get("new_parent_path", ""))
+				var keep_global_transform: bool = bool(operation.get("keep_global_transform", true))
+				if move_node_path.is_empty() or new_parent_path.is_empty():
+					return {"error": "Move operations require node_path and new_parent_path"}
+				var move_target: Node = _resolve_node_path(move_node_path)
+				if not move_target:
+					return {"error": "Node not found: " + move_node_path}
+				var old_parent: Node = move_target.get_parent()
+				if not old_parent:
+					return {"error": "Cannot move scene root"}
+				var move_parent: Node = _resolve_node_path(new_parent_path)
+				if not move_parent:
+					if new_parent_path == "/root":
+						move_parent = scene_root
+					else:
+						return {"error": "New parent not found: " + new_parent_path}
+				if move_target == move_parent:
+					return {"error": "Cannot move node to itself"}
+				if move_target.is_ancestor_of(move_parent):
+					return {"error": "Cannot move node to its own descendant"}
+				prepared_operations.append({
+					"type": "move",
+					"node_path": move_node_path,
+					"node": move_target,
+					"old_parent": old_parent,
+					"new_parent": move_parent,
+					"new_parent_path": new_parent_path,
+					"keep_global_transform": keep_global_transform,
+					"node_owner": move_target.owner,
+					"node_name": String(move_target.name),
+					"node_type": move_target.get_class(),
+					"old_index": move_target.get_index()
 				})
 			_:
 				return {"error": "Unsupported operation type: " + operation_type}
@@ -512,18 +571,51 @@ func _tool_batch_scene_node_edits(params: Dictionary) -> Dictionary:
 				"node_type": prepared["node_type"]
 			})
 		else:
-			var deleted_parent: Node = prepared["parent"]
-			var deleted_node: Node = prepared["node"]
-			var deleted_snapshot: Node = prepared["node_snapshot"]
-			undo_redo.add_do_method(deleted_parent, "remove_child", deleted_node)
-			undo_redo.add_undo_method(deleted_parent, "add_child", deleted_snapshot)
-			undo_redo.add_undo_method(deleted_snapshot, "set_owner", scene_root)
-			undo_redo.add_undo_method(deleted_parent, "move_child", deleted_snapshot, prepared["node_index"])
-			result_operations.append({
-				"type": "delete",
-				"node_path": prepared["node_path"],
-				"node_type": prepared["node_type"]
-			})
+			match String(prepared["type"]):
+				"delete":
+					var deleted_parent: Node = prepared["parent"]
+					var deleted_node: Node = prepared["node"]
+					var deleted_snapshot: Node = prepared["node_snapshot"]
+					undo_redo.add_do_method(deleted_parent, "remove_child", deleted_node)
+					undo_redo.add_undo_method(deleted_parent, "add_child", deleted_snapshot)
+					undo_redo.add_undo_method(deleted_snapshot, "set_owner", prepared["node_owner"])
+					undo_redo.add_undo_method(deleted_parent, "move_child", deleted_snapshot, prepared["node_index"])
+					result_operations.append({
+						"type": "delete",
+						"node_path": prepared["node_path"],
+						"node_type": prepared["node_type"]
+					})
+				"rename":
+					var renamed_node: Node = prepared["node"]
+					undo_redo.add_do_property(renamed_node, "name", prepared["new_name"])
+					undo_redo.add_undo_property(renamed_node, "name", prepared["old_name"])
+					var renamed_parent_path: String = _make_friendly_path(renamed_node.get_parent(), scene_root)
+					result_operations.append({
+						"type": "rename",
+						"old_node_path": prepared["node_path"],
+						"node_path": _append_child_path(renamed_parent_path, prepared["new_name"]),
+						"old_name": prepared["old_name"],
+						"new_name": prepared["new_name"],
+						"node_type": prepared["node_type"]
+					})
+				"move":
+					var moved_node: Node = prepared["node"]
+					var old_parent_ref: Node = prepared["old_parent"]
+					var new_parent_ref: Node = prepared["new_parent"]
+					var preserve_global: bool = bool(prepared["keep_global_transform"])
+					undo_redo.add_do_method(moved_node, "reparent", new_parent_ref, preserve_global)
+					undo_redo.add_do_method(moved_node, "set_owner", prepared["node_owner"])
+					undo_redo.add_undo_method(moved_node, "reparent", old_parent_ref, preserve_global)
+					undo_redo.add_undo_method(moved_node, "set_owner", prepared["node_owner"])
+					undo_redo.add_undo_method(old_parent_ref, "move_child", moved_node, prepared["old_index"])
+					var friendly_new_parent_path: String = _make_friendly_path(new_parent_ref, scene_root)
+					result_operations.append({
+						"type": "move",
+						"old_node_path": prepared["node_path"],
+						"node_path": _append_child_path(friendly_new_parent_path, prepared["node_name"]),
+						"new_parent_path": friendly_new_parent_path,
+						"node_type": prepared["node_type"]
+					})
 	undo_redo.commit_action()
 	editor_interface.mark_scene_as_unsaved()
 
@@ -784,6 +876,13 @@ static func _make_friendly_path(node: Node, scene_root: Node) -> String:
 	if node_path.begins_with(root_path + "/"):
 		return "/root/" + scene_root.name + node_path.substr(root_path.length())
 	return node_path
+
+static func _append_child_path(parent_path: String, child_name: String) -> String:
+	if parent_path.is_empty() or parent_path == "/":
+		return "/" + child_name
+	if parent_path.ends_with("/"):
+		return parent_path + child_name
+	return parent_path + "/" + child_name
 
 static func _collect_nodes(node: Node, path: String, recursive: bool, result: Array[String], scene_root: Node = null) -> void:
 	var node_path: String = _make_friendly_path(node, scene_root)

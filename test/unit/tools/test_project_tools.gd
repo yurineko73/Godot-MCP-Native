@@ -100,3 +100,43 @@ func test_normalize_global_class_entries_preserves_metadata():
 	assert_eq(normalized[0].base, "Node", "Should preserve base type")
 	assert_eq(normalized[0].language, "GDScript", "Should preserve language")
 	assert_false(normalized[0].is_tool, "Should preserve tool flag")
+
+func test_get_class_api_metadata_returns_classdb_metadata():
+	var project_tools: RefCounted = load("res://addons/godot_mcp/tools/project_tools_native.gd").new()
+	var result: Dictionary = project_tools._tool_get_class_api_metadata({
+		"class_name": "Node",
+		"filter": "process"
+	})
+	assert_eq(result.source, "classdb", "Engine classes should be sourced from ClassDB")
+	assert_eq(result.class_name, "Node", "Should report requested class name")
+	assert_eq(result.base_class, "Object", "Should report Node base class")
+	assert_gt(result.methods.size(), 0, "Filtered ClassDB methods should be returned")
+	assert_gt(result.properties.size(), 0, "Filtered ClassDB properties should be returned")
+	assert_true(result.signals.is_empty(), "Process filter should exclude unrelated signals")
+	for method in result.methods:
+		assert_true(str(method.get("name", "")).to_lower().contains("process"), "Filtered methods should match filter text")
+
+func test_get_class_api_metadata_returns_global_class_metadata_with_base_api():
+	var project_tools: RefCounted = load("res://addons/godot_mcp/tools/project_tools_native.gd").new()
+	var result: Dictionary = project_tools._tool_get_class_api_metadata({
+		"class_name": "ProjectToolsNative",
+		"include_base_api": true
+	})
+	var has_initialize: bool = false
+	for method in result.methods:
+		if method.get("name", "") == "initialize":
+			has_initialize = true
+			break
+	assert_eq(result.source, "global_class", "Project class should be sourced from global_class metadata")
+	assert_eq(result.class_name, "ProjectToolsNative", "Should report requested global class name")
+	assert_eq(result.script_path, "res://addons/godot_mcp/tools/project_tools_native.gd", "Should preserve global class script path")
+	assert_eq(result.base_class, "RefCounted", "Should preserve global class base type")
+	assert_gt(result.methods.size(), 0, "Global class script methods should be returned")
+	assert_true(has_initialize, "Should include script-defined methods")
+	assert_true(result.has("base_api"), "Should include base API metadata when requested")
+	assert_eq(result.base_api.get("class_name", ""), "RefCounted", "Base API should be resolved from ClassDB")
+
+func test_get_class_api_metadata_reports_missing_class():
+	var project_tools: RefCounted = load("res://addons/godot_mcp/tools/project_tools_native.gd").new()
+	var result: Dictionary = project_tools._tool_get_class_api_metadata({"class_name": "DefinitelyMissingClass123"})
+	assert_has(result, "error", "Missing classes should return an error payload")

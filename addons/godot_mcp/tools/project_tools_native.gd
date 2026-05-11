@@ -27,6 +27,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_get_project_settings(server_core)
 	_register_list_project_autoloads(server_core)
 	_register_list_project_global_classes(server_core)
+	_register_get_class_api_metadata(server_core)
 	_register_list_project_resources(server_core)
 	_register_create_resource(server_core)
 	_register_get_project_structure(server_core)
@@ -285,6 +286,98 @@ func _tool_list_project_global_classes(params: Dictionary) -> Dictionary:
 		"classes": class_entries,
 		"count": class_entries.size()
 	}
+
+# ============================================================================
+# get_class_api_metadata - 获取类型化 API 元数据
+# ============================================================================
+
+func _register_get_class_api_metadata(server_core: RefCounted) -> void:
+	var tool_name: String = "get_class_api_metadata"
+	var description: String = "Get typed API metadata for an engine ClassDB class or a project global script class."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"class_name": {
+				"type": "string",
+				"description": "Class name to inspect, such as 'Node' or a project global class_name."
+			},
+			"filter": {
+				"type": "string",
+				"description": "Optional case-insensitive filter applied to method/property/signal/constant names."
+			},
+			"include_base_api": {
+				"type": "boolean",
+				"description": "For project global classes, whether to include base ClassDB metadata. Default is true.",
+				"default": true
+			}
+		},
+		"required": ["class_name"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"class_name": {"type": "string"},
+			"source": {"type": "string"},
+			"base_class": {"type": "string"},
+			"methods": {"type": "array"},
+			"properties": {"type": "array"},
+			"signals": {"type": "array"},
+			"constants": {"type": "array"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_class_api_metadata"),
+						  output_schema, annotations)
+
+func _tool_get_class_api_metadata(params: Dictionary) -> Dictionary:
+	var target_class_name: String = str(params.get("class_name", "")).strip_edges()
+	if target_class_name.is_empty():
+		return {"error": "Missing required parameter: class_name"}
+	var filter: String = str(params.get("filter", "")).strip_edges().to_lower()
+	var include_base_api: bool = params.get("include_base_api", true)
+
+	if ClassDB.class_exists(target_class_name):
+		return _build_classdb_api_metadata(target_class_name, filter)
+
+	var global_class: Dictionary = _find_project_global_class_entry(target_class_name)
+	if global_class.is_empty():
+		return {"error": "Class not found: " + target_class_name}
+
+	var script_path: String = str(global_class.get("path", ""))
+	var script: Script = load(script_path)
+	if not script:
+		return {"error": "Failed to load global class script: " + script_path}
+
+	var result: Dictionary = {
+		"class_name": target_class_name,
+		"source": "global_class",
+		"base_class": str(global_class.get("base", "")),
+		"script_path": script_path,
+		"language": str(global_class.get("language", "")),
+		"is_tool": bool(global_class.get("is_tool", false)),
+		"is_abstract": bool(global_class.get("is_abstract", false)),
+		"methods": _normalize_method_entries(script.get_script_method_list(), filter),
+		"properties": _normalize_property_entries(script.get_script_property_list(), filter),
+		"signals": _normalize_signal_entries(script.get_script_signal_list(), filter),
+		"constants": []
+	}
+
+	if include_base_api:
+		var base_class: String = str(global_class.get("base", ""))
+		if not base_class.is_empty() and ClassDB.class_exists(base_class):
+			result["base_api"] = _build_classdb_api_metadata(base_class, filter)
+
+	return result
 
 # ============================================================================
 # list_project_resources - 列出项目资源
@@ -1473,6 +1566,123 @@ func _normalize_global_class_entries(entries: Array) -> Array:
 	classes.sort_custom(Callable(self, "_compare_global_class_entries"))
 	return classes
 
+func _find_project_global_class_entry(target_class_name: String) -> Dictionary:
+	if not ProjectSettings.has_method("get_global_class_list"):
+		return {}
+	for entry in ProjectSettings.get_global_class_list():
+		if not (entry is Dictionary):
+			continue
+		if str(entry.get("class", "")) == target_class_name:
+			return entry
+	return {}
+
+func _build_classdb_api_metadata(target_class_name: String, filter: String = "") -> Dictionary:
+	return {
+		"class_name": target_class_name,
+		"source": "classdb",
+		"base_class": ClassDB.get_parent_class(target_class_name),
+		"api_type": ClassDB.class_get_api_type(target_class_name),
+		"methods": _normalize_method_entries(ClassDB.class_get_method_list(target_class_name), filter),
+		"properties": _normalize_property_entries(ClassDB.class_get_property_list(target_class_name), filter),
+		"signals": _normalize_signal_entries(ClassDB.class_get_signal_list(target_class_name), filter),
+		"constants": _normalize_constant_entries(target_class_name, filter)
+	}
+
+func _normalize_method_entries(entries: Array, filter: String = "") -> Array:
+	var methods: Array = []
+	for entry in entries:
+		if not (entry is Dictionary):
+			continue
+		var method_name: String = str(entry.get("name", ""))
+		if method_name.is_empty():
+			continue
+		if not filter.is_empty() and not method_name.to_lower().contains(filter):
+			continue
+		methods.append({
+			"name": method_name,
+			"flags": int(entry.get("flags", 0)),
+			"id": int(entry.get("id", 0)),
+			"return": _normalize_typed_value_info(entry.get("return", {})),
+			"arguments": _normalize_typed_value_info_array(entry.get("args", [])),
+			"default_argument_count": entry.get("default_args", []).size()
+		})
+	methods.sort_custom(Callable(self, "_compare_named_entries"))
+	return methods
+
+func _normalize_property_entries(entries: Array, filter: String = "") -> Array:
+	var properties: Array = []
+	for entry in entries:
+		if not (entry is Dictionary):
+			continue
+		var property_name: String = str(entry.get("name", ""))
+		if property_name.is_empty():
+			continue
+		if not filter.is_empty() and not property_name.to_lower().contains(filter):
+			continue
+		properties.append({
+			"name": property_name,
+			"type": int(entry.get("type", TYPE_NIL)),
+			"class_name": str(entry.get("class_name", "")),
+			"hint": int(entry.get("hint", PROPERTY_HINT_NONE)),
+			"hint_string": str(entry.get("hint_string", "")),
+			"usage": int(entry.get("usage", 0)),
+			"setter": str(entry.get("setter", "")),
+			"getter": str(entry.get("getter", ""))
+		})
+	properties.sort_custom(Callable(self, "_compare_named_entries"))
+	return properties
+
+func _normalize_signal_entries(entries: Array, filter: String = "") -> Array:
+	var signals: Array = []
+	for entry in entries:
+		if not (entry is Dictionary):
+			continue
+		var signal_name: String = str(entry.get("name", ""))
+		if signal_name.is_empty():
+			continue
+		if not filter.is_empty() and not signal_name.to_lower().contains(filter):
+			continue
+		signals.append({
+			"name": signal_name,
+			"flags": int(entry.get("flags", 0)),
+			"id": int(entry.get("id", 0)),
+			"arguments": _normalize_typed_value_info_array(entry.get("args", []))
+		})
+	signals.sort_custom(Callable(self, "_compare_named_entries"))
+	return signals
+
+func _normalize_constant_entries(target_class_name: String, filter: String = "") -> Array:
+	var constants: Array = []
+	for constant_name in ClassDB.class_get_integer_constant_list(target_class_name):
+		var constant_name_text: String = str(constant_name)
+		if not filter.is_empty() and not constant_name_text.to_lower().contains(filter):
+			continue
+		constants.append({
+			"name": constant_name_text,
+			"value": ClassDB.class_get_integer_constant(target_class_name, constant_name_text),
+			"enum": str(ClassDB.class_get_integer_constant_enum(target_class_name, constant_name_text))
+		})
+	constants.sort_custom(Callable(self, "_compare_named_entries"))
+	return constants
+
+func _normalize_typed_value_info_array(entries: Array) -> Array:
+	var normalized: Array = []
+	for entry in entries:
+		normalized.append(_normalize_typed_value_info(entry))
+	return normalized
+
+func _normalize_typed_value_info(entry: Variant) -> Dictionary:
+	if not (entry is Dictionary):
+		return {}
+	return {
+		"name": str(entry.get("name", "")),
+		"type": int(entry.get("type", TYPE_NIL)),
+		"class_name": str(entry.get("class_name", "")),
+		"hint": int(entry.get("hint", PROPERTY_HINT_NONE)),
+		"hint_string": str(entry.get("hint_string", "")),
+		"usage": int(entry.get("usage", 0))
+	}
+
 func _compare_autoload_entries(left: Dictionary, right: Dictionary) -> bool:
 	var left_order: int = int(left.get("order", 0))
 	var right_order: int = int(right.get("order", 0))
@@ -1481,4 +1691,7 @@ func _compare_autoload_entries(left: Dictionary, right: Dictionary) -> bool:
 	return left_order < right_order
 
 func _compare_global_class_entries(left: Dictionary, right: Dictionary) -> bool:
+	return str(left.get("name", "")) < str(right.get("name", ""))
+
+func _compare_named_entries(left: Dictionary, right: Dictionary) -> bool:
 	return str(left.get("name", "")) < str(right.get("name", ""))

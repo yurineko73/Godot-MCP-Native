@@ -31,6 +31,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_list_project_autoloads(server_core)
 	_register_list_project_global_classes(server_core)
 	_register_get_class_api_metadata(server_core)
+	_register_inspect_csharp_project_support(server_core)
 	_register_inspect_tileset_resource(server_core)
 	_register_list_project_resources(server_core)
 	_register_create_resource(server_core)
@@ -571,6 +572,77 @@ func _tool_get_class_api_metadata(params: Dictionary) -> Dictionary:
 			result["base_api"] = _build_classdb_api_metadata(base_class, filter)
 
 	return result
+
+# ============================================================================
+# inspect_csharp_project_support - 检查 C# / Mono 项目支持元数据
+# ============================================================================
+
+func _register_inspect_csharp_project_support(server_core: RefCounted) -> void:
+	var tool_name: String = "inspect_csharp_project_support"
+	var description: String = "Inspect C# / Mono project support files such as .csproj and .sln, including target frameworks, assembly metadata, and references."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"search_path": {
+				"type": "string",
+				"description": "Directory to scan. Default is res://.",
+				"default": "res://"
+			}
+		}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"search_path": {"type": "string"},
+			"project_count": {"type": "integer"},
+			"solution_count": {"type": "integer"},
+			"projects": {"type": "array"},
+			"solutions": {"type": "array"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_inspect_csharp_project_support"),
+						  output_schema, annotations)
+
+func _tool_inspect_csharp_project_support(params: Dictionary) -> Dictionary:
+	var search_path: String = str(params.get("search_path", "res://")).strip_edges()
+	var validation: Dictionary = PathValidator.validate_directory_path(search_path)
+	if not validation["valid"]:
+		return {"error": "Invalid path: " + validation["error"]}
+	search_path = validation["sanitized"]
+
+	var project_paths: Array[String] = []
+	var solution_paths: Array[String] = []
+	_collect_resources(search_path, [".csproj"], project_paths)
+	_collect_resources(search_path, [".sln"], solution_paths)
+	project_paths.sort()
+	solution_paths.sort()
+
+	var projects: Array = []
+	for project_path in project_paths:
+		projects.append(_inspect_csproj_file(project_path))
+
+	var solutions: Array = []
+	for solution_path in solution_paths:
+		solutions.append(_inspect_solution_file(solution_path))
+
+	return {
+		"search_path": search_path,
+		"project_count": projects.size(),
+		"solution_count": solutions.size(),
+		"projects": projects,
+		"solutions": solutions
+	}
 
 # ============================================================================
 # inspect_tileset_resource - 检查 TileSet 资源
@@ -2237,6 +2309,114 @@ func _serialize_project_input_event(event: InputEvent) -> Dictionary:
 			"velocity": {"x": event.velocity.x, "y": event.velocity.y}
 		}
 	return {"type": "unknown", "class": event.get_class()}
+
+func _inspect_csproj_file(project_path: String) -> Dictionary:
+	var parser := XMLParser.new()
+	var open_error: Error = parser.open(project_path)
+	if open_error != OK:
+		return {"path": project_path, "error": "Failed to open csproj: " + str(open_error)}
+
+	var result: Dictionary = {
+		"path": project_path,
+		"sdk": "",
+		"target_frameworks": [],
+		"assembly_name": "",
+		"root_namespace": "",
+		"nullable": "",
+		"lang_version": "",
+		"package_references": [],
+		"project_references": []
+	}
+	var current_text_field: String = ""
+
+	while true:
+		var read_error: Error = parser.read()
+		if read_error == ERR_FILE_EOF:
+			break
+		if read_error != OK:
+			result["error"] = "Failed to parse csproj: " + str(read_error)
+			break
+
+		match parser.get_node_type():
+			XMLParser.NODE_ELEMENT:
+				var node_name: String = parser.get_node_name()
+				match node_name:
+					"Project":
+						result["sdk"] = parser.get_named_attribute_value_safe("Sdk")
+					"TargetFramework", "TargetFrameworks", "AssemblyName", "RootNamespace", "Nullable", "LangVersion":
+						current_text_field = node_name
+					"PackageReference":
+						result["package_references"].append({
+							"include": parser.get_named_attribute_value_safe("Include"),
+							"version": parser.get_named_attribute_value_safe("Version"),
+							"condition": parser.get_named_attribute_value_safe("Condition")
+						})
+					"ProjectReference":
+						result["project_references"].append({
+							"include": parser.get_named_attribute_value_safe("Include"),
+							"name": parser.get_named_attribute_value_safe("Name")
+						})
+			XMLParser.NODE_TEXT:
+				if current_text_field.is_empty():
+					continue
+				var text_value: String = parser.get_node_data().strip_edges()
+				if text_value.is_empty():
+					continue
+				match current_text_field:
+					"TargetFramework":
+						result["target_frameworks"] = [text_value]
+					"TargetFrameworks":
+						result["target_frameworks"] = _split_semicolon_values(text_value)
+					"AssemblyName":
+						result["assembly_name"] = text_value
+					"RootNamespace":
+						result["root_namespace"] = text_value
+					"Nullable":
+						result["nullable"] = text_value
+					"LangVersion":
+						result["lang_version"] = text_value
+			XMLParser.NODE_ELEMENT_END:
+				current_text_field = ""
+
+	return result
+
+func _inspect_solution_file(solution_path: String) -> Dictionary:
+	var file: FileAccess = FileAccess.open(solution_path, FileAccess.READ)
+	if not file:
+		return {"path": solution_path, "error": "Failed to open solution file"}
+
+	var entries: Array = []
+	while not file.eof_reached():
+		var raw_line: String = file.get_line()
+		var line: String = raw_line.strip_edges()
+		if not line.begins_with("Project("):
+			continue
+		var marker_index: int = line.find(" = ")
+		if marker_index == -1:
+			continue
+		var tail: String = line.substr(marker_index + 3)
+		var segments: PackedStringArray = tail.split(",")
+		if segments.size() < 2:
+			continue
+		entries.append({
+			"name": segments[0].strip_edges().trim_prefix("\"").trim_suffix("\""),
+			"path": segments[1].strip_edges().trim_prefix("\"").trim_suffix("\"")
+		})
+	file.close()
+
+	return {
+		"path": solution_path,
+		"project_count": entries.size(),
+		"projects": entries
+	}
+
+func _split_semicolon_values(value: String) -> Array:
+	var values: Array = []
+	for segment in value.split(";"):
+		var trimmed: String = segment.strip_edges()
+		if not trimmed.is_empty():
+			values.append(trimmed)
+	return values
 
 func _serialize_tileset_source(source_id: int, source: TileSetSource, include_tiles: bool) -> Dictionary:
 	var source_entry: Dictionary = {

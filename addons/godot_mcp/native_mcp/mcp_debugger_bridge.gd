@@ -495,6 +495,13 @@ func _build_nested_variables_reference(value: Variant) -> int:
 				_build_variable_entry("z", value.z, "int"),
 				_build_variable_entry("w", value.w, "int")
 			])
+		TYPE_PROJECTION:
+			entries.append_array([
+				_build_variable_entry("x", value.x, "Vector4"),
+				_build_variable_entry("y", value.y, "Vector4"),
+				_build_variable_entry("z", value.z, "Vector4"),
+				_build_variable_entry("w", value.w, "Vector4")
+			])
 		TYPE_PLANE:
 			entries.append_array([
 				_build_variable_entry("normal", value.normal, "Vector3"),
@@ -573,7 +580,7 @@ func _describe_child_counts(value: Variant) -> Dictionary:
 			return {"indexed_variables": 0, "named_variables": 2}
 		TYPE_TRANSFORM2D:
 			return {"indexed_variables": 0, "named_variables": 3}
-		TYPE_VECTOR4, TYPE_VECTOR4I, TYPE_COLOR, TYPE_QUATERNION:
+		TYPE_VECTOR4, TYPE_VECTOR4I, TYPE_PROJECTION, TYPE_COLOR, TYPE_QUATERNION:
 			return {"indexed_variables": 0, "named_variables": 4}
 		TYPE_OBJECT:
 			return {"indexed_variables": 0, "named_variables": _build_object_variable_entries(value).size()}
@@ -613,6 +620,13 @@ func _serialize_debug_value(value: Variant) -> Variant:
 			return {"x": value.x, "y": value.y, "z": value.z, "w": value.w}
 		TYPE_VECTOR4I:
 			return {"x": value.x, "y": value.y, "z": value.z, "w": value.w}
+		TYPE_PROJECTION:
+			return {
+				"x": _serialize_debug_value(value.x),
+				"y": _serialize_debug_value(value.y),
+				"z": _serialize_debug_value(value.z),
+				"w": _serialize_debug_value(value.w)
+			}
 		TYPE_PLANE:
 			return {
 				"normal": _serialize_debug_value(value.normal),

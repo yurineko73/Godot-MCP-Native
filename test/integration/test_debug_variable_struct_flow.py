@@ -98,6 +98,7 @@ def main() -> int:
                     'bridge._latest_evaluations["quaternion_value"] = {"type": "Quaternion", "value": Quaternion(0.1, 0.2, 0.3, 0.9)}\n'
                     'bridge._latest_evaluations["transform3d_value"] = {"type": "Transform3D", "value": Transform3D(Basis(Vector3(1, 2, 3), Vector3(4, 5, 6), Vector3(7, 8, 9)), Vector3(10, 11, 12))}\n'
                     'bridge._latest_evaluations["vector4i_value"] = {"type": "Vector4i", "value": Vector4i(11, 12, 13, 14)}\n'
+                    'bridge._latest_evaluations["projection_value"] = {"type": "Projection", "value": Projection(Vector4(1, 2, 3, 4), Vector4(5, 6, 7, 8), Vector4(9, 10, 11, 12), Vector4(13, 14, 15, 16))}\n'
                     'var object_script := GDScript.new()\n'
                     'object_script.source_code = "extends RefCounted\\nvar display_name := \\"Probe\\"\\nvar hit_points := 42\\nvar grid := Vector2i(2, 3)\\n"\n'
                     'object_script.reload()\n'
@@ -118,6 +119,7 @@ def main() -> int:
                     '\t"quaternion_reference": bridge.get_evaluation_variables_reference("quaternion_value"),\n'
                     '\t"transform3d_reference": bridge.get_evaluation_variables_reference("transform3d_value"),\n'
                     '\t"vector4i_reference": bridge.get_evaluation_variables_reference("vector4i_value"),\n'
+                    '\t"projection_reference": bridge.get_evaluation_variables_reference("projection_value"),\n'
                     '\t"object_reference": bridge.get_evaluation_variables_reference("object_value")\n'
                     '}))\n'
                 ),
@@ -138,6 +140,7 @@ def main() -> int:
             "quaternion_reference",
             "transform3d_reference",
             "vector4i_reference",
+            "projection_reference",
             "object_reference",
         ):
             if references.get(key, 0) <= 0:
@@ -258,6 +261,17 @@ def main() -> int:
         ):
             raise AssertionError(f"Unexpected Vector4i values: {vector4i_variables}")
 
+        projection_variables = tool_call(
+            "get_debug_variables",
+            {"variables_reference": references["projection_reference"]},
+            request_id=11_2,
+        )
+        projection_children = {entry["name"]: entry for entry in projection_variables.get("variables", [])}
+        if sorted(projection_children) != ["w", "x", "y", "z"]:
+            raise AssertionError(f"Unexpected Projection children: {projection_variables}")
+        if projection_children["x"]["variables_reference"] <= 0 or projection_children["w"]["variables_reference"] <= 0:
+            raise AssertionError(f"Expected Projection columns to be expandable: {projection_variables}")
+
         transform3d_variables = tool_call(
             "get_debug_variables",
             {"variables_reference": references["transform3d_reference"]},
@@ -306,12 +320,14 @@ def main() -> int:
                     'var result := {\n'
                     '\t"vector2i_named_count": tools._debug_named_variable_count(Vector2i(8, 9)),\n'
                     '\t"vector4i_named_count": tools._debug_named_variable_count(Vector4i(1, 2, 3, 4)),\n'
+                    '\t"projection_named_count": tools._debug_named_variable_count(Projection(Vector4(1, 2, 3, 4), Vector4(5, 6, 7, 8), Vector4(9, 10, 11, 12), Vector4(13, 14, 15, 16))),\n'
                     '\t"basis_named_count": tools._debug_named_variable_count(Basis(Vector3(1, 2, 3), Vector3(4, 5, 6), Vector3(7, 8, 9))),\n'
                     '\t"rect2i_has_children": tools._debug_value_has_children(Rect2i(Vector2i(1, 2), Vector2i(5, 6))),\n'
                     '\t"transform3d_has_children": tools._debug_value_has_children(Transform3D(Basis(Vector3(1, 2, 3), Vector3(4, 5, 6), Vector3(7, 8, 9)), Vector3(10, 11, 12))),\n'
                     '\t"transform2d_serialized": tools._serialize_runtime_value(Transform2D(0.25, Vector2(10, 20))),\n'
                     '\t"transform3d_serialized": tools._serialize_runtime_value(Transform3D(Basis(Vector3(1, 2, 3), Vector3(4, 5, 6), Vector3(7, 8, 9)), Vector3(10, 11, 12))),\n'
                     '\t"vector4i_serialized": tools._serialize_runtime_value(Vector4i(1, 2, 3, 4)),\n'
+                    '\t"projection_serialized": tools._serialize_runtime_value(Projection(Vector4(1, 2, 3, 4), Vector4(5, 6, 7, 8), Vector4(9, 10, 11, 12), Vector4(13, 14, 15, 16))),\n'
                     '\t"node_path_serialized": tools._serialize_runtime_value(NodePath("/root/TestNode")),\n'
                     '\t"string_name_serialized": tools._serialize_runtime_value(&"EnemyTag"),\n'
                     '\t"rid_serialized": tools._serialize_runtime_value(RID()),\n'
@@ -338,6 +354,8 @@ def main() -> int:
             raise AssertionError(f"Expected Vector2i named count 2: {helper_result}")
         if helper_result.get("vector4i_named_count") != 4:
             raise AssertionError(f"Expected Vector4i named count 4: {helper_result}")
+        if helper_result.get("projection_named_count") != 4:
+            raise AssertionError(f"Expected Projection named count 4: {helper_result}")
         if helper_result.get("basis_named_count") != 3:
             raise AssertionError(f"Expected Basis named count 3: {helper_result}")
         if helper_result.get("rect2i_has_children") is not True:
@@ -353,6 +371,9 @@ def main() -> int:
         serialized_vector4i = helper_result.get("vector4i_serialized", {})
         if sorted(serialized_vector4i) != ["w", "x", "y", "z"]:
             raise AssertionError(f"Unexpected Vector4i serialization: {helper_result}")
+        serialized_projection = helper_result.get("projection_serialized", {})
+        if sorted(serialized_projection) != ["w", "x", "y", "z"]:
+            raise AssertionError(f"Unexpected Projection serialization: {helper_result}")
         if helper_result.get("node_path_serialized") != "/root/TestNode":
             raise AssertionError(f"Unexpected NodePath serialization: {helper_result}")
         if helper_result.get("string_name_serialized") != "EnemyTag":

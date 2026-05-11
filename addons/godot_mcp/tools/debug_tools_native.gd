@@ -57,6 +57,8 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_send_debugger_message(server_core)
 	_register_toggle_debugger_profiler(server_core)
 	_register_get_debugger_messages(server_core)
+	_register_get_debug_state_events(server_core)
+	_register_get_debug_output(server_core)
 	_register_add_debugger_capture_prefix(server_core)
 	_register_get_debug_stack_frames(server_core)
 	_register_get_debug_stack_variables(server_core)
@@ -67,6 +69,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_remove_runtime_probe(server_core)
 	_register_request_debug_break(server_core)
 	_register_send_debug_command(server_core)
+	_register_await_debugger_state(server_core)
 	_register_get_runtime_info(server_core)
 	_register_get_runtime_scene_tree(server_core)
 	_register_inspect_runtime_node(server_core)
@@ -300,6 +303,53 @@ func _tool_get_debugger_messages(params: Dictionary) -> Dictionary:
 	if not bridge:
 		return {"error": "Debugger bridge is not available"}
 	return bridge.get_captured_messages(params.get("count", 100), params.get("offset", 0), params.get("order", "desc"))
+
+func _register_get_debug_state_events(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"get_debug_state_events",
+		"Read recorded debugger break/resume/stop state transitions from the bridge.",
+		{
+			"type": "object",
+			"properties": {
+				"count": {"type": "integer", "default": 100},
+				"offset": {"type": "integer", "default": 0},
+				"order": {"type": "string", "enum": ["asc", "desc"], "default": "desc"}
+			}
+		},
+		Callable(self, "_tool_get_debug_state_events"),
+		{"type": "object", "properties": {"events": {"type": "array"}, "count": {"type": "integer"}, "total_available": {"type": "integer"}}},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+	)
+
+func _tool_get_debug_state_events(params: Dictionary) -> Dictionary:
+	var bridge: RefCounted = _get_debugger_bridge()
+	if not bridge:
+		return {"error": "Debugger bridge is not available"}
+	return bridge.get_state_events(params.get("count", 100), params.get("offset", 0), params.get("order", "desc"))
+
+func _register_get_debug_output(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"get_debug_output",
+		"Read categorized runtime debugger output captured by the editor bridge.",
+		{
+			"type": "object",
+			"properties": {
+				"count": {"type": "integer", "default": 100},
+				"offset": {"type": "integer", "default": 0},
+				"order": {"type": "string", "enum": ["asc", "desc"], "default": "desc"},
+				"category": {"type": "string", "enum": ["", "stdout", "stderr", "stdout_rich"], "default": ""}
+			}
+		},
+		Callable(self, "_tool_get_debug_output"),
+		{"type": "object", "properties": {"events": {"type": "array"}, "count": {"type": "integer"}, "total_available": {"type": "integer"}}},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+	)
+
+func _tool_get_debug_output(params: Dictionary) -> Dictionary:
+	var bridge: RefCounted = _get_debugger_bridge()
+	if not bridge:
+		return {"error": "Debugger bridge is not available"}
+	return bridge.get_output_events(params.get("count", 100), params.get("offset", 0), params.get("order", "desc"), str(params.get("category", "")))
 
 func _register_add_debugger_capture_prefix(server_core: RefCounted) -> void:
 	server_core.register_tool(
@@ -776,6 +826,93 @@ func _tool_send_debug_command(params: Dictionary) -> Dictionary:
 	if command.begins_with("get_stack"):
 		result["note"] = "Godot may route stack responses to the built-in ScriptEditorDebugger UI instead of EditorDebuggerPlugin captures."
 	return result
+
+func _register_await_debugger_state(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"await_debugger_state",
+		"Check whether debugger sessions have reached the target execution state using the latest bridge snapshots. Call repeatedly from the client after continue/step/next/out/break actions.",
+		{
+			"type": "object",
+			"properties": {
+				"target_state": {"type": "string", "enum": ["breaked", "running", "stopped"], "default": "breaked"},
+				"session_id": {"type": "integer", "description": "Optional debugger session id. Omit or use -1 for any session."},
+				"timeout_ms": {"type": "integer", "default": 3000},
+				"poll_interval_ms": {"type": "integer", "default": 100}
+			}
+		},
+		Callable(self, "_tool_await_debugger_state"),
+		{"type": "object", "properties": {"status": {"type": "string"}, "target_state": {"type": "string"}, "matched_state": {"type": "object"}, "sessions": {"type": "array"}, "state_events": {"type": "array"}, "attempts": {"type": "integer"}, "elapsed_ms": {"type": "integer"}}},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}
+	)
+
+func _tool_await_debugger_state(params: Dictionary) -> Dictionary:
+	var bridge: RefCounted = _get_debugger_bridge()
+	if not bridge:
+		return {"error": "Debugger bridge is not available"}
+	var target_state: String = str(params.get("target_state", "breaked"))
+	var timeout_ms: int = max(1, int(params.get("timeout_ms", 3000)))
+	var session_id: int = int(params.get("session_id", -1))
+	var last_sessions: Array = bridge.get_sessions_info()
+	var state_events: Array = bridge.get_state_events(20, 0, "desc").get("events", [])
+	var matched_state: Dictionary = _find_matching_debug_state(target_state, last_sessions, state_events, session_id)
+	if not matched_state.is_empty():
+		return {
+			"status": "success",
+			"target_state": target_state,
+			"matched_state": matched_state,
+			"sessions": last_sessions,
+			"state_events": state_events,
+			"attempts": 1,
+			"elapsed_ms": 0
+		}
+	return {
+		"status": "pending",
+		"target_state": target_state,
+		"matched_state": {},
+		"sessions": last_sessions,
+		"state_events": state_events,
+		"attempts": 1,
+		"elapsed_ms": timeout_ms
+	}
+
+func _find_matching_debug_state(target_state: String, sessions: Array, state_events: Array, session_id: int) -> Dictionary:
+	match target_state:
+		"breaked":
+			for session in sessions:
+				if session_id >= 0 and int(session.get("session_id", -1)) != session_id:
+					continue
+				if session.get("breaked", false):
+					var result: Dictionary = session.duplicate(true)
+					result["state"] = "breaked"
+					for event in state_events:
+						if event.get("state", "") == "breaked":
+							result["reason"] = event.get("reason", "")
+							result["has_stackdump"] = event.get("has_stackdump", false)
+							break
+					return result
+		"running":
+			for session in sessions:
+				if session_id >= 0 and int(session.get("session_id", -1)) != session_id:
+					continue
+				if session.get("active", false) and not session.get("breaked", false):
+					var result: Dictionary = session.duplicate(true)
+					result["state"] = "running"
+					for event in state_events:
+						if event.get("state", "") == "running":
+							result["reason"] = event.get("reason", "")
+							break
+					return result
+		"stopped":
+			if session_id >= 0:
+				for session in sessions:
+					if int(session.get("session_id", -1)) == session_id:
+						return {}
+			if sessions.is_empty():
+				for event in state_events:
+					if event.get("state", "") == "stopped":
+						return event.duplicate(true)
+				return {"state": "stopped"}
+	return {}
 
 func _register_get_runtime_info(server_core: RefCounted) -> void:
 	server_core.register_tool(

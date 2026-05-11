@@ -18,6 +18,10 @@ var _connected_script_debuggers: Array[Object] = []
 var _latest_stack_dump: Array = []
 var _latest_stack_variables: Dictionary = {}
 var _latest_evaluations: Dictionary = {}
+var _state_events: Array[Dictionary] = []
+var _output_events: Array[Dictionary] = []
+var _max_state_events: int = 200
+var _max_output_events: int = 500
 var _pending_stack_vars_frame: int = 0
 var _message_sequence: int = 0
 
@@ -100,6 +104,33 @@ func get_latest_evaluation(expression: String = "") -> Variant:
 	var keys: Array = _latest_evaluations.keys()
 	keys.sort()
 	return _latest_evaluations[keys[keys.size() - 1]]
+
+func get_state_events(count: int = 100, offset: int = 0, order: String = "desc") -> Dictionary:
+	var events: Array = _state_events.duplicate(true)
+	if order == "desc":
+		events.reverse()
+	var start: int = clampi(offset, 0, events.size())
+	var end: int = clampi(start + max(count, 0), start, events.size())
+	return {
+		"events": events.slice(start, end),
+		"count": end - start,
+		"total_available": events.size()
+	}
+
+func get_output_events(count: int = 100, offset: int = 0, order: String = "desc", category: String = "") -> Dictionary:
+	var events: Array = []
+	for entry in _output_events:
+		if category.is_empty() or str(entry.get("category", "")) == category:
+			events.append(entry.duplicate(true))
+	if order == "desc":
+		events.reverse()
+	var start: int = clampi(offset, 0, events.size())
+	var end: int = clampi(start + max(count, 0), start, events.size())
+	return {
+		"events": events.slice(start, end),
+		"count": end - start,
+		"total_available": events.size()
+	}
 
 func toggle_profiler(profiler: String, enabled: bool, data: Array, session_id: int = -1) -> Dictionary:
 	var action: Callable = func(session: EditorDebuggerSession) -> void:
@@ -196,6 +227,12 @@ func _connect_script_debugger(debugger: Object) -> void:
 		debugger.connect("stack_frame_var", Callable(self, "_on_stack_frame_var"))
 	if debugger.has_signal("debug_data"):
 		debugger.connect("debug_data", Callable(self, "_on_debug_data"))
+	if debugger.has_signal("breaked"):
+		debugger.connect("breaked", Callable(self, "_on_breaked"))
+	if debugger.has_signal("output"):
+		debugger.connect("output", Callable(self, "_on_output"))
+	if debugger.has_signal("stopped"):
+		debugger.connect("stopped", Callable(self, "_on_stopped"))
 	_connected_script_debuggers.append(debugger)
 
 func _on_stack_dump(stack: Array) -> void:
@@ -222,6 +259,31 @@ func _on_debug_data(message: String, data: Array) -> void:
 			_latest_evaluations[expression_name] = variable.duplicate(true)
 		_append_captured_message(-1, "evaluation_return", [variable])
 
+func _on_breaked(reallydid: bool, can_debug: bool, reason: String, has_stackdump: bool) -> void:
+	_append_state_event({
+		"state": "breaked" if reallydid else "running",
+		"breaked": reallydid,
+		"can_debug": can_debug,
+		"reason": reason,
+		"has_stackdump": has_stackdump
+	})
+
+func _on_output(message: String, type: int) -> void:
+	_append_output_event({
+		"category": _map_output_category(type),
+		"message": message,
+		"type": type
+	})
+
+func _on_stopped() -> void:
+	_append_state_event({
+		"state": "stopped",
+		"breaked": false,
+		"can_debug": false,
+		"reason": "stopped",
+		"has_stackdump": false
+	})
+
 func _decode_stack_variable(data: Array) -> Dictionary:
 	var scope_names: Array[String] = ["local", "member", "global", "constant"]
 	var scope_id: int = int(data[1]) if data.size() > 1 else -1
@@ -244,6 +306,35 @@ func _append_captured_message(session_id: int, message: String, data: Array) -> 
 	})
 	if _captured_messages.size() > _max_messages:
 		_captured_messages = _captured_messages.slice(_captured_messages.size() - _max_messages)
+
+func _append_state_event(event: Dictionary) -> void:
+	_message_sequence += 1
+	var entry: Dictionary = event.duplicate(true)
+	entry["sequence"] = _message_sequence
+	entry["timestamp"] = Time.get_unix_time_from_system()
+	_state_events.append(entry)
+	if _state_events.size() > _max_state_events:
+		_state_events = _state_events.slice(_state_events.size() - _max_state_events)
+
+func _append_output_event(event: Dictionary) -> void:
+	_message_sequence += 1
+	var entry: Dictionary = event.duplicate(true)
+	entry["sequence"] = _message_sequence
+	entry["timestamp"] = Time.get_unix_time_from_system()
+	_output_events.append(entry)
+	if _output_events.size() > _max_output_events:
+		_output_events = _output_events.slice(_output_events.size() - _max_output_events)
+
+func _map_output_category(type: int) -> String:
+	match type:
+		0:
+			return "stdout"
+		1:
+			return "stderr"
+		2:
+			return "stdout_rich"
+		_:
+			return "stdout"
 
 func _find_captured_message_after_sequence(sequence: int, response_messages: Array, error_messages: Array) -> Dictionary:
 	for entry in _captured_messages:

@@ -28,6 +28,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_list_project_script_symbols(server_core)
 	_register_find_script_symbol_definition(server_core)
 	_register_find_script_symbol_references(server_core)
+	_register_rename_script_symbol(server_core)
 	_register_read_script(server_core)
 	_register_create_script(server_core)
 	_register_modify_script(server_core)
@@ -413,6 +414,127 @@ func _tool_find_script_symbol_references(params: Dictionary) -> Dictionary:
 		"count": references.size()
 	}
 
+# ============================================================================
+# rename_script_symbol - 重命名脚本符号
+# ============================================================================
+
+func _register_rename_script_symbol(server_core: RefCounted) -> void:
+	var tool_name: String = "rename_script_symbol"
+	var description: String = "Rename a script symbol across project files using identifier-boundary text replacements. Supports dry-run previews before applying changes."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"symbol_name": {
+				"type": "string",
+				"description": "Existing symbol name to rename."
+			},
+			"new_name": {
+				"type": "string",
+				"description": "New symbol name to write."
+			},
+			"search_path": {
+				"type": "string",
+				"description": "Optional subpath to search. Default is 'res://'.",
+				"default": "res://"
+			},
+			"include_extensions": {
+				"type": "array",
+				"items": {"type": "string"},
+				"description": "File extensions to update. Supported values are '.gd', '.cs', and '.tscn'. Default is ['.gd', '.cs'].",
+				"default": [".gd", ".cs"]
+			},
+			"case_sensitive": {
+				"type": "boolean",
+				"description": "Whether symbol matching is case-sensitive. Default is true.",
+				"default": true
+			},
+			"dry_run": {
+				"type": "boolean",
+				"description": "When true, preview the impacted files without modifying them. Default is true.",
+				"default": true
+			},
+			"max_results": {
+				"type": "integer",
+				"description": "Maximum number of replacement matches to inspect. Default is 200.",
+				"default": 200
+			}
+		},
+		"required": ["symbol_name", "new_name"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"symbol_name": {"type": "string"},
+			"new_name": {"type": "string"},
+			"dry_run": {"type": "boolean"},
+			"changed_files": {"type": "array", "items": {"type": "object"}},
+			"replacement_count": {"type": "integer"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": true,
+		"idempotentHint": false,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_rename_script_symbol"),
+						  output_schema, annotations)
+
+func _tool_rename_script_symbol(params: Dictionary) -> Dictionary:
+	var symbol_name: String = str(params.get("symbol_name", "")).strip_edges()
+	var new_name: String = str(params.get("new_name", "")).strip_edges()
+	if symbol_name.is_empty():
+		return {"error": "Missing required parameter: symbol_name"}
+	if new_name.is_empty():
+		return {"error": "Missing required parameter: new_name"}
+	if symbol_name == new_name:
+		return {"error": "symbol_name and new_name must differ"}
+	if not _is_valid_identifier_name(new_name):
+		return {"error": "new_name must be a valid identifier"}
+
+	var search_path: String = str(params.get("search_path", "res://")).strip_edges()
+	var path_validation: Dictionary = PathValidator.validate_directory_path(search_path)
+	if not path_validation["valid"]:
+		return {"error": "Invalid path: " + path_validation["error"]}
+	search_path = path_validation["sanitized"]
+
+	var include_extensions: Array = _normalize_reference_extensions(params.get("include_extensions", [".gd", ".cs"]))
+	if include_extensions.is_empty():
+		return {"error": "include_extensions must contain at least one supported file extension"}
+
+	var case_sensitive: bool = bool(params.get("case_sensitive", true))
+	var dry_run: bool = bool(params.get("dry_run", true))
+	var max_results: int = max(1, int(params.get("max_results", 200)))
+
+	var file_paths: Array = []
+	_collect_script_reference_files(search_path, include_extensions, file_paths)
+	file_paths.sort()
+
+	var changed_files: Array = []
+	var replacement_count: int = 0
+	for file_path in file_paths:
+		if replacement_count >= max_results:
+			break
+		var remaining_results: int = max_results - replacement_count
+		var replacement_result: Dictionary = _rename_symbol_in_file(file_path, symbol_name, new_name, case_sensitive, dry_run, remaining_results)
+		if replacement_result.is_empty():
+			continue
+		changed_files.append(replacement_result)
+		replacement_count += int(replacement_result.get("replacement_count", 0))
+
+	return {
+		"symbol_name": symbol_name,
+		"new_name": new_name,
+		"dry_run": dry_run,
+		"changed_files": changed_files,
+		"replacement_count": replacement_count
+	}
+
 # 辅助函数：递归收集脚本文件
 func _collect_scripts(directory_path: String, result: Array) -> void:
 	var dir: DirAccess = DirAccess.open(directory_path)
@@ -513,6 +635,14 @@ func _normalize_reference_extensions(raw_extensions: Variant) -> Array:
 		if extension_text in [".gd", ".cs", ".tscn"] and not normalized.has(extension_text):
 			normalized.append(extension_text)
 	return normalized
+
+func _is_valid_identifier_name(identifier_name: String) -> bool:
+	if identifier_name.is_empty():
+		return false
+	var regex: RegEx = RegEx.new()
+	if regex.compile("^[A-Za-z_][A-Za-z0-9_]*$") != OK:
+		return false
+	return regex.search(identifier_name) != null
 
 func _index_script_symbols(script_path: String) -> Dictionary:
 	var file: FileAccess = FileAccess.open(script_path, FileAccess.READ)
@@ -955,6 +1085,63 @@ func _escape_regex_pattern(text: String) -> String:
 		else:
 			escaped += character_text
 	return escaped
+
+func _rename_symbol_in_file(file_path: String, symbol_name: String, new_name: String, case_sensitive: bool, dry_run: bool, remaining_results: int) -> Dictionary:
+	var file: FileAccess = FileAccess.open(file_path, FileAccess.READ)
+	if not file:
+		return {}
+
+	var lines: PackedStringArray = file.get_as_text().split("\n")
+	file.close()
+
+	var regex: RegEx = RegEx.new()
+	var escaped_symbol_name: String = _escape_regex_pattern(symbol_name)
+	var compile_pattern: String = "(?i)(?<![A-Za-z0-9_])%s(?![A-Za-z0-9_])" % escaped_symbol_name if not case_sensitive else "(?<![A-Za-z0-9_])%s(?![A-Za-z0-9_])" % escaped_symbol_name
+	if regex.compile(compile_pattern) != OK:
+		return {}
+
+	var replacements: Array = []
+	var updated_lines: PackedStringArray = []
+	for i in range(lines.size()):
+		var raw_line: String = lines[i]
+		var matches: Array = regex.search_all(raw_line)
+		var replacement_total: int = min(matches.size(), max(0, remaining_results - replacements.size()))
+		if replacement_total <= 0:
+			updated_lines.append(raw_line)
+			continue
+		var new_line: String = regex.sub(raw_line, new_name, true, replacement_total)
+		if new_line != raw_line:
+			replacements.append({
+				"line": i + 1,
+				"before": raw_line.strip_edges(),
+				"after": new_line.strip_edges(),
+				"replacement_count": replacement_total
+			})
+		updated_lines.append(new_line)
+		if replacements.size() >= remaining_results:
+			for j in range(i + 1, lines.size()):
+				updated_lines.append(lines[j])
+			break
+
+	if replacements.is_empty():
+		return {}
+
+	if not dry_run:
+		var write_file: FileAccess = FileAccess.open(file_path, FileAccess.WRITE)
+		if not write_file:
+			return {}
+		write_file.store_string("\n".join(updated_lines))
+		write_file.close()
+
+	var total_replacements: int = 0
+	for replacement in replacements:
+		total_replacements += int(replacement.get("replacement_count", 0))
+
+	return {
+		"script_path": file_path,
+		"replacement_count": total_replacements,
+		"changes": replacements
+	}
 
 # ============================================================================
 # read_script - 读取脚本内容

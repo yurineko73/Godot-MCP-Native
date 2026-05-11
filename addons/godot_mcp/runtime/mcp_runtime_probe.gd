@@ -61,6 +61,14 @@ func _capture_mcp_message(message: String, data: Array) -> bool:
 			return _handle_upsert_input_action(data)
 		"remove_input_action":
 			return _handle_remove_input_action(data)
+		"list_animations":
+			return _handle_list_animations(data)
+		"play_animation":
+			return _handle_play_animation(data)
+		"stop_animation":
+			return _handle_stop_animation(data)
+		"get_animation_state":
+			return _handle_get_animation_state(data)
 		"get_runtime_screenshot":
 			return _handle_get_runtime_screenshot(data)
 		"debug_break":
@@ -410,6 +418,94 @@ func _handle_remove_input_action(data: Array) -> bool:
 	}])
 	return true
 
+func _handle_list_animations(data: Array) -> bool:
+	if data.is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": "list_animations requires node_path"}])
+		return true
+	var player: AnimationPlayer = _resolve_animation_player(str(data[0]))
+	if not player:
+		return true
+	var animations: PackedStringArray = player.get_animation_list()
+	var entries: Array = []
+	for animation_name in animations:
+		var animation: Animation = player.get_animation(animation_name)
+		entries.append({
+			"name": str(animation_name),
+			"length": animation.length if animation else 0.0,
+			"track_count": animation.get_track_count() if animation else 0
+		})
+	entries.sort_custom(Callable(self, "_sort_animation_entries"))
+	EngineDebugger.send_message("mcp:animation_list", [{
+		"node_path": str(player.get_path()),
+		"animations": entries,
+		"count": entries.size()
+	}])
+	return true
+
+func _handle_play_animation(data: Array) -> bool:
+	if data.size() < 2:
+		EngineDebugger.send_message("mcp:error", [{"message": "play_animation requires node_path and animation_name"}])
+		return true
+	var player: AnimationPlayer = _resolve_animation_player(str(data[0]))
+	if not player:
+		return true
+	var animation_name: String = str(data[1])
+	if animation_name.is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": "animation_name cannot be empty"}])
+		return true
+	if not player.has_animation(animation_name):
+		EngineDebugger.send_message("mcp:error", [{"message": "Animation not found: " + animation_name, "node_path": str(player.get_path())}])
+		return true
+	var custom_blend: float = float(data[2]) if data.size() >= 3 else -1.0
+	var custom_speed: float = float(data[3]) if data.size() >= 4 else 1.0
+	var from_end: bool = bool(data[4]) if data.size() >= 5 else false
+	player.play(StringName(animation_name), custom_blend, custom_speed, from_end)
+	EngineDebugger.send_message("mcp:animation_started", [_serialize_animation_state(player)])
+	return true
+
+func _handle_stop_animation(data: Array) -> bool:
+	if data.is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": "stop_animation requires node_path"}])
+		return true
+	var player: AnimationPlayer = _resolve_animation_player(str(data[0]))
+	if not player:
+		return true
+	var keep_state: bool = bool(data[1]) if data.size() >= 2 else false
+	player.stop(keep_state)
+	EngineDebugger.send_message("mcp:animation_stopped", [_serialize_animation_state(player)])
+	return true
+
+func _handle_get_animation_state(data: Array) -> bool:
+	if data.is_empty():
+		EngineDebugger.send_message("mcp:error", [{"message": "get_animation_state requires node_path"}])
+		return true
+	var player: AnimationPlayer = _resolve_animation_player(str(data[0]))
+	if not player:
+		return true
+	EngineDebugger.send_message("mcp:animation_state", [_serialize_animation_state(player)])
+	return true
+
+func _resolve_animation_player(node_path: String) -> AnimationPlayer:
+	var node: Node = _resolve_target_node(node_path)
+	if not node:
+		EngineDebugger.send_message("mcp:error", [{"message": "Node not found: " + node_path}])
+		return null
+	if not (node is AnimationPlayer):
+		EngineDebugger.send_message("mcp:error", [{"message": "Node is not an AnimationPlayer: " + node_path, "node_type": node.get_class()}])
+		return null
+	return node
+
+func _serialize_animation_state(player: AnimationPlayer) -> Dictionary:
+	return {
+		"node_path": str(player.get_path()),
+		"current_animation": player.current_animation,
+		"is_playing": player.is_playing(),
+		"current_position": player.current_animation_position,
+		"current_length": player.current_animation_length,
+		"speed_scale": player.speed_scale,
+		"playing_speed": player.get_playing_speed()
+	}
+
 func _build_input_event(payload: Dictionary) -> InputEvent:
 	var event_type: String = str(payload.get("type", "")).to_lower()
 	match event_type:
@@ -511,6 +607,9 @@ func _serialize_input_event(event: InputEvent) -> Dictionary:
 
 func _sort_input_action_entries(a: Dictionary, b: Dictionary) -> bool:
 	return str(a.get("action_name", "")) < str(b.get("action_name", ""))
+
+func _sort_animation_entries(a: Dictionary, b: Dictionary) -> bool:
+	return str(a.get("name", "")) < str(b.get("name", ""))
 
 func capture_runtime_screenshot(save_path: String = "user://mcp_runtime_capture.png", format: String = "png") -> Dictionary:
 	if not ["png", "jpg"].has(format):

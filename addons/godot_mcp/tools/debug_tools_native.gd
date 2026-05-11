@@ -111,6 +111,10 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_list_runtime_input_actions(server_core)
 	_register_upsert_runtime_input_action(server_core)
 	_register_remove_runtime_input_action(server_core)
+	_register_list_runtime_animations(server_core)
+	_register_play_runtime_animation(server_core)
+	_register_stop_runtime_animation(server_core)
+	_register_get_runtime_animation_state(server_core)
 	_register_get_runtime_screenshot(server_core)
 	_register_await_runtime_condition(server_core)
 	_register_assert_runtime_condition(server_core)
@@ -1375,6 +1379,108 @@ func _tool_remove_runtime_input_action(params: Dictionary) -> Dictionary:
 	if action_name.is_empty():
 		return {"error": "Missing required parameter: action_name"}
 	return _request_runtime_probe("remove_input_action", [action_name], ["mcp:input_action_removed"], params, {"action_name": action_name})
+
+func _register_list_runtime_animations(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"list_runtime_animations",
+		"List animations available on a runtime AnimationPlayer node.",
+		{
+			"type": "object",
+			"properties": {
+				"node_path": {"type": "string"},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["node_path"]
+		},
+		Callable(self, "_tool_list_runtime_animations"),
+		{"type": "object", "properties": {"node_path": {"type": "string"}, "animations": {"type": "array"}, "count": {"type": "integer"}}},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
+	)
+
+func _tool_list_runtime_animations(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("node_path", "")
+	if node_path.is_empty():
+		return {"error": "Missing required parameter: node_path"}
+	return _request_runtime_probe("list_animations", [node_path], ["mcp:animation_list"], params, {"node_path": node_path})
+
+func _register_play_runtime_animation(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"play_runtime_animation",
+		"Play an animation on a runtime AnimationPlayer node.",
+		{
+			"type": "object",
+			"properties": {
+				"node_path": {"type": "string"},
+				"animation_name": {"type": "string"},
+				"custom_blend": {"type": "number", "default": -1.0},
+				"custom_speed": {"type": "number", "default": 1.0},
+				"from_end": {"type": "boolean", "default": false},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["node_path", "animation_name"]
+		},
+		Callable(self, "_tool_play_runtime_animation"),
+		{"type": "object", "properties": {"node_path": {"type": "string"}, "current_animation": {"type": "string"}, "is_playing": {"type": "boolean"}, "current_position": {"type": "number"}, "current_length": {"type": "number"}, "speed_scale": {"type": "number"}, "playing_speed": {"type": "number"}}},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
+	)
+
+func _tool_play_runtime_animation(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("node_path", "")
+	var animation_name: String = params.get("animation_name", "")
+	if node_path.is_empty() or animation_name.is_empty():
+		return {"error": "node_path and animation_name are required"}
+	return _request_runtime_probe("play_animation", [node_path, animation_name, float(params.get("custom_blend", -1.0)), float(params.get("custom_speed", 1.0)), bool(params.get("from_end", false))], ["mcp:animation_started"], params, {"node_path": node_path, "current_animation": animation_name})
+
+func _register_stop_runtime_animation(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"stop_runtime_animation",
+		"Stop playback on a runtime AnimationPlayer node.",
+		{
+			"type": "object",
+			"properties": {
+				"node_path": {"type": "string"},
+				"keep_state": {"type": "boolean", "default": false},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["node_path"]
+		},
+		Callable(self, "_tool_stop_runtime_animation"),
+		{"type": "object", "properties": {"node_path": {"type": "string"}, "current_animation": {"type": "string"}, "is_playing": {"type": "boolean"}, "current_position": {"type": "number"}}},
+		{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
+	)
+
+func _tool_stop_runtime_animation(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("node_path", "")
+	if node_path.is_empty():
+		return {"error": "Missing required parameter: node_path"}
+	return _request_runtime_probe("stop_animation", [node_path, bool(params.get("keep_state", false))], ["mcp:animation_stopped"], params, {"node_path": node_path})
+
+func _register_get_runtime_animation_state(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"get_runtime_animation_state",
+		"Return the current playback state of a runtime AnimationPlayer node.",
+		{
+			"type": "object",
+			"properties": {
+				"node_path": {"type": "string"},
+				"session_id": {"type": "integer"},
+				"timeout_ms": {"type": "integer", "default": 1500}
+			},
+			"required": ["node_path"]
+		},
+		Callable(self, "_tool_get_runtime_animation_state"),
+		{"type": "object", "properties": {"node_path": {"type": "string"}, "current_animation": {"type": "string"}, "is_playing": {"type": "boolean"}, "current_position": {"type": "number"}, "current_length": {"type": "number"}, "speed_scale": {"type": "number"}, "playing_speed": {"type": "number"}}},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
+	)
+
+func _tool_get_runtime_animation_state(params: Dictionary) -> Dictionary:
+	var node_path: String = params.get("node_path", "")
+	if node_path.is_empty():
+		return {"error": "Missing required parameter: node_path"}
+	return _request_runtime_probe("get_animation_state", [node_path], ["mcp:animation_state"], params, {"node_path": node_path})
 
 func _register_get_runtime_screenshot(server_core: RefCounted) -> void:
 	server_core.register_tool(

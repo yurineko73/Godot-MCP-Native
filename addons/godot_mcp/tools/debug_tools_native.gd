@@ -678,12 +678,24 @@ func _tool_expand_debug_variable(params: Dictionary) -> Dictionary:
 
 func _resolve_debug_path_step(current_value: Variant, step: String) -> Dictionary:
 	if current_value is Array:
+		if step == "size":
+			return {"ok": true, "value": current_value.size()}
 		if not step.is_valid_int():
 			return {"ok": false}
 		var index: int = int(step)
 		if index < 0 or index >= current_value.size():
 			return {"ok": false}
 		return {"ok": true, "value": current_value[index]}
+	match typeof(current_value):
+		TYPE_PACKED_BYTE_ARRAY, TYPE_PACKED_INT32_ARRAY, TYPE_PACKED_INT64_ARRAY, TYPE_PACKED_FLOAT32_ARRAY, TYPE_PACKED_FLOAT64_ARRAY, TYPE_PACKED_STRING_ARRAY, TYPE_PACKED_VECTOR2_ARRAY, TYPE_PACKED_VECTOR3_ARRAY, TYPE_PACKED_COLOR_ARRAY, TYPE_PACKED_VECTOR4_ARRAY:
+			if step == "size":
+				return {"ok": true, "value": current_value.size()}
+			if not step.is_valid_int():
+				return {"ok": false}
+			var packed_index: int = int(step)
+			if packed_index < 0 or packed_index >= current_value.size():
+				return {"ok": false}
+			return {"ok": true, "value": current_value[packed_index]}
 	if current_value is Dictionary:
 		for key in current_value.keys():
 			if str(key) == step:
@@ -853,6 +865,13 @@ func _debug_indexed_variable_count(value: Variant) -> int:
 func _expand_debug_value_entries(value: Variant, parent_path: Array) -> Array:
 	var entries: Array = []
 	if value is Array:
+		entries.append({
+			"name": "size",
+			"path": parent_path + ["size"],
+			"type": "int",
+			"value": value.size(),
+			"has_children": false
+		})
 		for index in range(value.size()):
 			var item: Variant = value[index]
 			entries.append({
@@ -873,6 +892,25 @@ func _expand_debug_value_entries(value: Variant, parent_path: Array) -> Array:
 				"has_children": _debug_value_has_children(item)
 			})
 	else:
+		match typeof(value):
+			TYPE_PACKED_BYTE_ARRAY, TYPE_PACKED_INT32_ARRAY, TYPE_PACKED_INT64_ARRAY, TYPE_PACKED_FLOAT32_ARRAY, TYPE_PACKED_FLOAT64_ARRAY, TYPE_PACKED_STRING_ARRAY, TYPE_PACKED_VECTOR2_ARRAY, TYPE_PACKED_VECTOR3_ARRAY, TYPE_PACKED_COLOR_ARRAY, TYPE_PACKED_VECTOR4_ARRAY:
+				entries.append({
+					"name": "size",
+					"path": parent_path + ["size"],
+					"type": "int",
+					"value": value.size(),
+					"has_children": false
+				})
+				for index in range(value.size()):
+					var packed_item: Variant = value[index]
+					entries.append({
+						"name": str(index),
+						"path": parent_path + [str(index)],
+						"type": type_string(typeof(packed_item)),
+						"value": _serialize_runtime_value(packed_item),
+						"has_children": _debug_value_has_children(packed_item)
+					})
+				return entries
 		var vector_entries: Array = _expand_debug_struct_fields(value, parent_path)
 		if not vector_entries.is_empty():
 			return vector_entries

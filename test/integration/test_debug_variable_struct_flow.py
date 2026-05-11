@@ -100,6 +100,7 @@ def main() -> int:
                     'bridge._latest_evaluations["vector4i_value"] = {"type": "Vector4i", "value": Vector4i(11, 12, 13, 14)}\n'
                     'bridge._latest_evaluations["projection_value"] = {"type": "Projection", "value": Projection(Vector4(1, 2, 3, 4), Vector4(5, 6, 7, 8), Vector4(9, 10, 11, 12), Vector4(13, 14, 15, 16))}\n'
                     'bridge._latest_evaluations["dict_value"] = {"type": "Dictionary", "value": {7: "lucky", &"tag": Vector2i(4, 6)}}\n'
+                    'bridge._latest_evaluations["array_value"] = {"type": "Array", "value": [10, 20, 30]}\n'
                     'var object_script := GDScript.new()\n'
                     'object_script.source_code = "extends RefCounted\\nvar display_name := \\"Probe\\"\\nvar hit_points := 42\\nvar grid := Vector2i(2, 3)\\n"\n'
                     'object_script.reload()\n'
@@ -122,6 +123,7 @@ def main() -> int:
                     '\t"vector4i_reference": bridge.get_evaluation_variables_reference("vector4i_value"),\n'
                     '\t"projection_reference": bridge.get_evaluation_variables_reference("projection_value"),\n'
                     '\t"dict_reference": bridge.get_evaluation_variables_reference("dict_value"),\n'
+                    '\t"array_reference": bridge.get_evaluation_variables_reference("array_value"),\n'
                     '\t"object_reference": bridge.get_evaluation_variables_reference("object_value")\n'
                     '}))\n'
                 ),
@@ -144,6 +146,7 @@ def main() -> int:
             "vector4i_reference",
             "projection_reference",
             "dict_reference",
+            "array_reference",
             "object_reference",
         ):
             if references.get(key, 0) <= 0:
@@ -286,6 +289,17 @@ def main() -> int:
         if dict_children["7"]["value"] != "lucky" or dict_children["tag"]["variables_reference"] <= 0:
             raise AssertionError(f"Unexpected Dictionary values: {dict_variables}")
 
+        array_variables = tool_call(
+            "get_debug_variables",
+            {"variables_reference": references["array_reference"]},
+            request_id=11_4,
+        )
+        array_children = {entry["name"]: entry for entry in array_variables.get("variables", [])}
+        if not {"size", "0", "1", "2"}.issubset(array_children):
+            raise AssertionError(f"Unexpected Array children: {array_variables}")
+        if array_children["size"]["value"] != 3 or array_children["0"]["value"] != 10:
+            raise AssertionError(f"Unexpected Array values: {array_variables}")
+
         transform3d_variables = tool_call(
             "get_debug_variables",
             {"variables_reference": references["transform3d_reference"]},
@@ -365,6 +379,15 @@ def main() -> int:
         expanded_dict_string_name_entries = {entry["name"]: entry for entry in expanded_dict_string_name_key.get("entries", [])}
         if expanded_dict_string_name_entries.get("x", {}).get("value") != 4 or expanded_dict_string_name_entries.get("y", {}).get("value") != 6:
             raise AssertionError(f"Unexpected expanded dictionary StringName-key entries: {expanded_dict_string_name_key}")
+
+        expanded_array = tool_call(
+            "expand_debug_variable",
+            {"scope": "evaluation", "variable_path": ["array_value"]},
+            request_id=14_6,
+        )
+        expanded_array_entries = {entry["name"]: entry for entry in expanded_array.get("entries", [])}
+        if not {"size", "0", "1", "2"}.issubset(expanded_array_entries):
+            raise AssertionError(f"Unexpected expanded array entries: {expanded_array}")
 
         inspect_helpers = tool_call(
             "execute_editor_script",

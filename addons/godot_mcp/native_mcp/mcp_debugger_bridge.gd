@@ -464,11 +464,22 @@ func _build_nested_variables_reference(value: Variant) -> int:
 				_build_variable_entry("x", value.x, "float"),
 				_build_variable_entry("y", value.y, "float")
 			])
+		TYPE_VECTOR2I:
+			entries.append_array([
+				_build_variable_entry("x", value.x, "int"),
+				_build_variable_entry("y", value.y, "int")
+			])
 		TYPE_VECTOR3:
 			entries.append_array([
 				_build_variable_entry("x", value.x, "float"),
 				_build_variable_entry("y", value.y, "float"),
 				_build_variable_entry("z", value.z, "float")
+			])
+		TYPE_VECTOR3I:
+			entries.append_array([
+				_build_variable_entry("x", value.x, "int"),
+				_build_variable_entry("y", value.y, "int"),
+				_build_variable_entry("z", value.z, "int")
 			])
 		TYPE_VECTOR4:
 			entries.append_array([
@@ -477,12 +488,30 @@ func _build_nested_variables_reference(value: Variant) -> int:
 				_build_variable_entry("z", value.z, "float"),
 				_build_variable_entry("w", value.w, "float")
 			])
+		TYPE_RECT2:
+			entries.append_array([
+				_build_variable_entry("position", value.position, "Vector2"),
+				_build_variable_entry("size", value.size, "Vector2"),
+				_build_variable_entry("end", value.end, "Vector2")
+			])
+		TYPE_RECT2I:
+			entries.append_array([
+				_build_variable_entry("position", value.position, "Vector2i"),
+				_build_variable_entry("size", value.size, "Vector2i"),
+				_build_variable_entry("end", value.end, "Vector2i")
+			])
 		TYPE_COLOR:
 			entries.append_array([
 				_build_variable_entry("r", value.r, "float"),
 				_build_variable_entry("g", value.g, "float"),
 				_build_variable_entry("b", value.b, "float"),
 				_build_variable_entry("a", value.a, "float")
+			])
+		TYPE_TRANSFORM2D:
+			entries.append_array([
+				_build_variable_entry("x", value.x, "Vector2"),
+				_build_variable_entry("y", value.y, "Vector2"),
+				_build_variable_entry("origin", value.origin, "Vector2")
 			])
 		TYPE_PACKED_BYTE_ARRAY, TYPE_PACKED_INT32_ARRAY, TYPE_PACKED_INT64_ARRAY, TYPE_PACKED_FLOAT32_ARRAY, TYPE_PACKED_FLOAT64_ARRAY, TYPE_PACKED_STRING_ARRAY, TYPE_PACKED_VECTOR2_ARRAY, TYPE_PACKED_VECTOR3_ARRAY, TYPE_PACKED_COLOR_ARRAY, TYPE_PACKED_VECTOR4_ARRAY:
 			entries.append(_build_variable_entry("size", value.size(), "int"))
@@ -498,9 +527,11 @@ func _describe_child_counts(value: Variant) -> Dictionary:
 			return {"indexed_variables": value.size() + 1, "named_variables": 0}
 		TYPE_DICTIONARY:
 			return {"indexed_variables": 0, "named_variables": value.size()}
-		TYPE_VECTOR2:
+		TYPE_VECTOR2, TYPE_VECTOR2I:
 			return {"indexed_variables": 0, "named_variables": 2}
-		TYPE_VECTOR3:
+		TYPE_VECTOR3, TYPE_VECTOR3I:
+			return {"indexed_variables": 0, "named_variables": 3}
+		TYPE_RECT2, TYPE_RECT2I, TYPE_TRANSFORM2D:
 			return {"indexed_variables": 0, "named_variables": 3}
 		TYPE_VECTOR4, TYPE_COLOR:
 			return {"indexed_variables": 0, "named_variables": 4}
@@ -517,12 +548,34 @@ func _serialize_debug_value(value: Variant) -> Variant:
 			return value
 		TYPE_VECTOR2:
 			return {"x": value.x, "y": value.y}
+		TYPE_VECTOR2I:
+			return {"x": value.x, "y": value.y}
 		TYPE_VECTOR3:
+			return {"x": value.x, "y": value.y, "z": value.z}
+		TYPE_VECTOR3I:
 			return {"x": value.x, "y": value.y, "z": value.z}
 		TYPE_VECTOR4:
 			return {"x": value.x, "y": value.y, "z": value.z, "w": value.w}
+		TYPE_RECT2:
+			return {
+				"position": _serialize_debug_value(value.position),
+				"size": _serialize_debug_value(value.size),
+				"end": _serialize_debug_value(value.end)
+			}
+		TYPE_RECT2I:
+			return {
+				"position": _serialize_debug_value(value.position),
+				"size": _serialize_debug_value(value.size),
+				"end": _serialize_debug_value(value.end)
+			}
 		TYPE_COLOR:
 			return {"r": value.r, "g": value.g, "b": value.b, "a": value.a}
+		TYPE_TRANSFORM2D:
+			return {
+				"x": _serialize_debug_value(value.x),
+				"y": _serialize_debug_value(value.y),
+				"origin": _serialize_debug_value(value.origin)
+			}
 		TYPE_ARRAY:
 			var serialized_array: Array = []
 			for item in value:

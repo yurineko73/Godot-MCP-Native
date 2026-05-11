@@ -753,9 +753,11 @@ func _debug_named_variable_count(value: Variant) -> int:
 	match typeof(value):
 		TYPE_DICTIONARY:
 			return value.size()
-		TYPE_VECTOR2:
+		TYPE_VECTOR2, TYPE_VECTOR2I:
 			return 2
-		TYPE_VECTOR3:
+		TYPE_VECTOR3, TYPE_VECTOR3I:
+			return 3
+		TYPE_RECT2, TYPE_RECT2I, TYPE_TRANSFORM2D:
 			return 3
 		TYPE_VECTOR4, TYPE_COLOR:
 			return 4
@@ -805,11 +807,22 @@ func _expand_debug_struct_fields(value: Variant, parent_path: Array) -> Array:
 				{"name": "x", "path": parent_path + ["x"], "type": "float", "value": value.x, "has_children": false},
 				{"name": "y", "path": parent_path + ["y"], "type": "float", "value": value.y, "has_children": false}
 			])
+		TYPE_VECTOR2I:
+			entries.append_array([
+				{"name": "x", "path": parent_path + ["x"], "type": "int", "value": value.x, "has_children": false},
+				{"name": "y", "path": parent_path + ["y"], "type": "int", "value": value.y, "has_children": false}
+			])
 		TYPE_VECTOR3:
 			entries.append_array([
 				{"name": "x", "path": parent_path + ["x"], "type": "float", "value": value.x, "has_children": false},
 				{"name": "y", "path": parent_path + ["y"], "type": "float", "value": value.y, "has_children": false},
 				{"name": "z", "path": parent_path + ["z"], "type": "float", "value": value.z, "has_children": false}
+			])
+		TYPE_VECTOR3I:
+			entries.append_array([
+				{"name": "x", "path": parent_path + ["x"], "type": "int", "value": value.x, "has_children": false},
+				{"name": "y", "path": parent_path + ["y"], "type": "int", "value": value.y, "has_children": false},
+				{"name": "z", "path": parent_path + ["z"], "type": "int", "value": value.z, "has_children": false}
 			])
 		TYPE_VECTOR4:
 			entries.append_array([
@@ -818,6 +831,18 @@ func _expand_debug_struct_fields(value: Variant, parent_path: Array) -> Array:
 				{"name": "z", "path": parent_path + ["z"], "type": "float", "value": value.z, "has_children": false},
 				{"name": "w", "path": parent_path + ["w"], "type": "float", "value": value.w, "has_children": false}
 			])
+		TYPE_RECT2:
+			entries.append_array([
+				{"name": "position", "path": parent_path + ["position"], "type": "Vector2", "value": _serialize_runtime_value(value.position), "has_children": true},
+				{"name": "size", "path": parent_path + ["size"], "type": "Vector2", "value": _serialize_runtime_value(value.size), "has_children": true},
+				{"name": "end", "path": parent_path + ["end"], "type": "Vector2", "value": _serialize_runtime_value(value.end), "has_children": true}
+			])
+		TYPE_RECT2I:
+			entries.append_array([
+				{"name": "position", "path": parent_path + ["position"], "type": "Vector2i", "value": _serialize_runtime_value(value.position), "has_children": true},
+				{"name": "size", "path": parent_path + ["size"], "type": "Vector2i", "value": _serialize_runtime_value(value.size), "has_children": true},
+				{"name": "end", "path": parent_path + ["end"], "type": "Vector2i", "value": _serialize_runtime_value(value.end), "has_children": true}
+			])
 		TYPE_COLOR:
 			entries.append_array([
 				{"name": "r", "path": parent_path + ["r"], "type": "float", "value": value.r, "has_children": false},
@@ -825,11 +850,17 @@ func _expand_debug_struct_fields(value: Variant, parent_path: Array) -> Array:
 				{"name": "b", "path": parent_path + ["b"], "type": "float", "value": value.b, "has_children": false},
 				{"name": "a", "path": parent_path + ["a"], "type": "float", "value": value.a, "has_children": false}
 			])
+		TYPE_TRANSFORM2D:
+			entries.append_array([
+				{"name": "x", "path": parent_path + ["x"], "type": "Vector2", "value": _serialize_runtime_value(value.x), "has_children": true},
+				{"name": "y", "path": parent_path + ["y"], "type": "Vector2", "value": _serialize_runtime_value(value.y), "has_children": true},
+				{"name": "origin", "path": parent_path + ["origin"], "type": "Vector2", "value": _serialize_runtime_value(value.origin), "has_children": true}
+			])
 	return entries
 
 func _debug_value_has_children(value: Variant) -> bool:
 	match typeof(value):
-		TYPE_ARRAY, TYPE_DICTIONARY, TYPE_VECTOR2, TYPE_VECTOR3, TYPE_VECTOR4, TYPE_COLOR:
+		TYPE_ARRAY, TYPE_DICTIONARY, TYPE_VECTOR2, TYPE_VECTOR2I, TYPE_VECTOR3, TYPE_VECTOR3I, TYPE_VECTOR4, TYPE_RECT2, TYPE_RECT2I, TYPE_COLOR, TYPE_TRANSFORM2D:
 			return true
 		_:
 			return false
@@ -842,12 +873,34 @@ func _serialize_runtime_value(value: Variant) -> Variant:
 			return value
 		TYPE_VECTOR2:
 			return {"x": value.x, "y": value.y}
+		TYPE_VECTOR2I:
+			return {"x": value.x, "y": value.y}
 		TYPE_VECTOR3:
+			return {"x": value.x, "y": value.y, "z": value.z}
+		TYPE_VECTOR3I:
 			return {"x": value.x, "y": value.y, "z": value.z}
 		TYPE_VECTOR4:
 			return {"x": value.x, "y": value.y, "z": value.z, "w": value.w}
+		TYPE_RECT2:
+			return {
+				"position": _serialize_runtime_value(value.position),
+				"size": _serialize_runtime_value(value.size),
+				"end": _serialize_runtime_value(value.end)
+			}
+		TYPE_RECT2I:
+			return {
+				"position": _serialize_runtime_value(value.position),
+				"size": _serialize_runtime_value(value.size),
+				"end": _serialize_runtime_value(value.end)
+			}
 		TYPE_COLOR:
 			return {"r": value.r, "g": value.g, "b": value.b, "a": value.a}
+		TYPE_TRANSFORM2D:
+			return {
+				"x": _serialize_runtime_value(value.x),
+				"y": _serialize_runtime_value(value.y),
+				"origin": _serialize_runtime_value(value.origin)
+			}
 		TYPE_ARRAY:
 			var array_result: Array = []
 			for item in value:

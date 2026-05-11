@@ -59,6 +59,8 @@ func register_tools(server_core: RefCounted) -> void:
 	
 	# 注册list_project_scenes工具
 	_register_list_project_scenes(server_core)
+	_register_list_open_scenes(server_core)
+	_register_close_scene_tab(server_core)
 
 # ============================================================================
 # create_scene - 创建新场�?
@@ -580,6 +582,140 @@ func _tool_list_project_scenes(params: Dictionary) -> Dictionary:
 	return {
 		"scenes": scenes,
 		"count": scenes.size()
+	}
+
+# ============================================================================
+# list_open_scenes - 列出当前已打开的场景 tab
+# ============================================================================
+
+func _register_list_open_scenes(server_core: RefCounted) -> void:
+	var tool_name: String = "list_open_scenes"
+	var description: String = "List scene tabs currently open in the Godot editor."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"active_scene": {"type": "string"},
+			"count": {"type": "integer"},
+			"open_scenes": {"type": "array"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_list_open_scenes"),
+						  output_schema, annotations)
+
+func _tool_list_open_scenes(params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var open_scene_paths: PackedStringArray = editor_interface.get_open_scenes()
+	var open_scene_roots: Array = editor_interface.get_open_scene_roots()
+	var active_root: Node = editor_interface.get_edited_scene_root()
+	var active_scene_path: String = active_root.scene_file_path if active_root else ""
+
+	var open_scenes: Array = []
+	for i in range(open_scene_paths.size()):
+		var scene_path: String = str(open_scene_paths[i])
+		var root_name: String = ""
+		var root_type: String = ""
+		if i < open_scene_roots.size():
+			var root_node: Node = open_scene_roots[i]
+			if root_node:
+				root_name = root_node.name
+				root_type = root_node.get_class()
+		open_scenes.append({
+			"index": i,
+			"scene_path": scene_path,
+			"root_name": root_name,
+			"root_type": root_type,
+			"is_active": scene_path == active_scene_path
+		})
+
+	return {
+		"active_scene": active_scene_path,
+		"count": open_scenes.size(),
+		"open_scenes": open_scenes
+	}
+
+# ============================================================================
+# close_scene_tab - 关闭当前或指定场景 tab
+# ============================================================================
+
+func _register_close_scene_tab(server_core: RefCounted) -> void:
+	var tool_name: String = "close_scene_tab"
+	var description: String = "Close the active scene tab, or activate a specified scene tab and close it."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"scene_path": {
+				"type": "string",
+				"description": "Optional scene path to close. If omitted, closes the currently active scene."
+			}
+		}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"status": {"type": "string"},
+			"closed_scene": {"type": "string"},
+			"remaining_count": {"type": "integer"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": true,
+		"idempotentHint": false,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_close_scene_tab"),
+						  output_schema, annotations)
+
+func _tool_close_scene_tab(params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var scene_path: String = str(params.get("scene_path", "")).strip_edges()
+	if not scene_path.is_empty():
+		var validation: Dictionary = PathValidator.validate_file_path(scene_path, [".tscn"])
+		if not validation["valid"]:
+			return {"error": "Invalid path: " + validation["error"]}
+		scene_path = validation["sanitized"]
+
+		var open_scene_paths: PackedStringArray = editor_interface.get_open_scenes()
+		if not open_scene_paths.has(scene_path):
+			return {"error": "Scene is not currently open: " + scene_path}
+		editor_interface.open_scene_from_path(scene_path)
+
+	var active_root: Node = editor_interface.get_edited_scene_root()
+	var closed_scene: String = active_root.scene_file_path if active_root else scene_path
+	var close_error: Error = editor_interface.close_scene()
+	if close_error != OK:
+		return {"error": "Failed to close scene: " + error_string(close_error)}
+
+	return {
+		"status": "success",
+		"closed_scene": closed_scene,
+		"remaining_count": editor_interface.get_open_scenes().size()
 	}
 
 # 辅助函数：递归收集场景文件

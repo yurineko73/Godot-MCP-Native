@@ -30,6 +30,7 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_modify_script(server_core)
 	_register_analyze_script(server_core)
 	_register_get_current_script(server_core)
+	_register_open_script_at_line(server_core)
 	_register_attach_script(server_core)
 	_register_validate_script(server_core)
 	_register_search_in_files(server_core)
@@ -651,6 +652,115 @@ func _tool_get_current_script(params: Dictionary) -> Dictionary:
 		"script_path": script_path,
 		"content": content,
 		"line_count": line_count
+	}
+
+# ============================================================================
+# open_script_at_line - 打开脚本并定位到指定行/列
+# ============================================================================
+
+func _register_open_script_at_line(server_core: RefCounted) -> void:
+	var tool_name: String = "open_script_at_line"
+	var description: String = "Open a script in the Godot script editor and move the caret to a specific line and column."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"script_path": {
+				"type": "string",
+				"description": "Path to the script file (e.g. 'res://scripts/player.gd')."
+			},
+			"line": {
+				"type": "integer",
+				"description": "1-based line number to focus.",
+				"default": 1
+			},
+			"column": {
+				"type": "integer",
+				"description": "0-based column to focus.",
+				"default": 0
+			},
+			"grab_focus": {
+				"type": "boolean",
+				"description": "Whether the editor should grab focus. Default is true.",
+				"default": true
+			}
+		},
+		"required": ["script_path"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"status": {"type": "string"},
+			"script_path": {"type": "string"},
+			"line": {"type": "integer"},
+			"column": {"type": "integer"},
+			"caret_line": {"type": "integer"},
+			"caret_column": {"type": "integer"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_open_script_at_line"),
+						  output_schema, annotations)
+
+func _tool_open_script_at_line(params: Dictionary) -> Dictionary:
+	var script_path: String = str(params.get("script_path", "")).strip_edges()
+	if script_path.is_empty():
+		return {"error": "Missing required parameter: script_path"}
+
+	var validation: Dictionary = PathValidator.validate_file_path(script_path, [".gd", ".cs"])
+	if not validation["valid"]:
+		return {"error": "Invalid path: " + validation["error"]}
+	script_path = validation["sanitized"]
+
+	if not FileAccess.file_exists(script_path):
+		return {"error": "Script file not found: " + script_path}
+
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var script_resource: Script = load(script_path)
+	if not script_resource:
+		return {"error": "Failed to load script: " + script_path}
+
+	var line: int = max(1, int(params.get("line", 1)))
+	var column: int = max(0, int(params.get("column", 0)))
+	var grab_focus: bool = params.get("grab_focus", true)
+
+	editor_interface.edit_script(script_resource, line - 1, column, grab_focus)
+
+	var caret_line: int = line - 1
+	var caret_column: int = column
+	var script_editor: ScriptEditor = editor_interface.get_script_editor()
+	if script_editor:
+		var current_editor: ScriptEditorBase = script_editor.get_current_editor()
+		if current_editor:
+			var base_editor: Control = current_editor.get_base_editor()
+			if base_editor:
+				if base_editor.has_method("set_caret_line"):
+					base_editor.call("set_caret_line", line - 1, true, true, -1, 0)
+				if base_editor.has_method("set_caret_column"):
+					base_editor.call("set_caret_column", column, true, 0)
+				if base_editor.has_method("get_caret_line") and base_editor.has_method("get_caret_column"):
+					caret_line = int(base_editor.call("get_caret_line"))
+					caret_column = int(base_editor.call("get_caret_column"))
+
+	return {
+		"status": "success",
+		"script_path": script_path,
+		"line": line,
+		"column": column,
+		"caret_line": caret_line + 1,
+		"caret_column": caret_column
 	}
 
 # ============================================================================

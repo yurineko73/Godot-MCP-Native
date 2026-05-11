@@ -56,6 +56,9 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_run_project(server_core)
 	_register_stop_project(server_core)
 	_register_get_selected_nodes(server_core)
+	_register_select_node(server_core)
+	_register_select_file(server_core)
+	_register_get_inspector_properties(server_core)
 	_register_set_editor_setting(server_core)
 	_register_get_editor_screenshot(server_core)
 	_register_get_signals(server_core)
@@ -327,6 +330,268 @@ func _tool_get_selected_nodes(params: Dictionary) -> Dictionary:
 	return {
 		"selected_nodes": selected_nodes,
 		"count": selected_nodes.size()
+	}
+
+# ============================================================================
+# select_node - 选择并在 Inspector 中编辑节点
+# ============================================================================
+
+func _register_select_node(server_core: RefCounted) -> void:
+	var tool_name: String = "select_node"
+	var description: String = "Select a node in the current edited scene and focus it in the Inspector."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"node_path": {
+				"type": "string",
+				"description": "Node path such as '/root/MainScene/Player'."
+			},
+			"clear_existing": {
+				"type": "boolean",
+				"description": "Whether to clear the existing editor selection before selecting the node. Default is true.",
+				"default": true
+			}
+		},
+		"required": ["node_path"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"status": {"type": "string"},
+			"node_path": {"type": "string"},
+			"node_type": {"type": "string"},
+			"selected_count": {"type": "integer"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_select_node"),
+						  output_schema, annotations)
+
+func _tool_select_node(params: Dictionary) -> Dictionary:
+	var node_path: String = str(params.get("node_path", "")).strip_edges()
+	if node_path.is_empty():
+		return {"error": "Missing required parameter: node_path"}
+
+	var clear_existing: bool = params.get("clear_existing", true)
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var target_node: Node = _resolve_node_path(editor_interface, node_path)
+	if not target_node:
+		return {"error": "Node not found: " + node_path}
+
+	var selection: EditorSelection = editor_interface.get_selection()
+	if selection:
+		if clear_existing:
+			selection.clear()
+		selection.add_node(target_node)
+
+	editor_interface.edit_node(target_node)
+
+	var selected_count: int = 1
+	if selection:
+		selected_count = selection.get_selected_nodes().size()
+
+	return {
+		"status": "success",
+		"node_path": _make_friendly_path(target_node, _get_user_scene_root()),
+		"node_type": target_node.get_class(),
+		"selected_count": selected_count
+	}
+
+# ============================================================================
+# select_file - 在 FileSystem dock 中选择文件
+# ============================================================================
+
+func _register_select_file(server_core: RefCounted) -> void:
+	var tool_name: String = "select_file"
+	var description: String = "Select a project file in the Godot FileSystem dock."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"file_path": {
+				"type": "string",
+				"description": "Project file path such as 'res://scenes/Main.tscn'."
+			}
+		},
+		"required": ["file_path"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"status": {"type": "string"},
+			"file_path": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_select_file"),
+						  output_schema, annotations)
+
+func _tool_select_file(params: Dictionary) -> Dictionary:
+	var file_path: String = str(params.get("file_path", "")).strip_edges()
+	if file_path.is_empty():
+		return {"error": "Missing required parameter: file_path"}
+
+	var validation: Dictionary = PathValidator.validate_path(file_path)
+	if not validation["valid"]:
+		return {"error": "Invalid path: " + validation["error"]}
+	file_path = validation["sanitized"]
+
+	if not FileAccess.file_exists(file_path):
+		return {"error": "File not found: " + file_path}
+
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	editor_interface.select_file(file_path)
+	return {
+		"status": "success",
+		"file_path": file_path
+	}
+
+# ============================================================================
+# get_inspector_properties - 获取 Inspector 风格的属性元数据
+# ============================================================================
+
+func _register_get_inspector_properties(server_core: RefCounted) -> void:
+	var tool_name: String = "get_inspector_properties"
+	var description: String = "Inspect a node or resource and return property metadata and serialized values similar to the Inspector."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"node_path": {
+				"type": "string",
+				"description": "Optional node path to inspect."
+			},
+			"resource_path": {
+				"type": "string",
+				"description": "Optional resource path to inspect."
+			},
+			"property_filter": {
+				"type": "string",
+				"description": "Optional substring filter for property names."
+			},
+			"include_values": {
+				"type": "boolean",
+				"description": "Whether to include current property values. Default is true.",
+				"default": true
+			}
+		}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"target_kind": {"type": "string"},
+			"target_path": {"type": "string"},
+			"class_name": {"type": "string"},
+			"property_count": {"type": "integer"},
+			"properties": {"type": "array"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_inspector_properties"),
+						  output_schema, annotations)
+
+func _tool_get_inspector_properties(params: Dictionary) -> Dictionary:
+	var node_path: String = str(params.get("node_path", "")).strip_edges()
+	var resource_path: String = str(params.get("resource_path", "")).strip_edges()
+	var property_filter: String = str(params.get("property_filter", "")).strip_edges().to_lower()
+	var include_values: bool = params.get("include_values", true)
+
+	if node_path.is_empty() and resource_path.is_empty():
+		return {"error": "Provide node_path or resource_path"}
+
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var target_object: Object = null
+	var target_kind: String = ""
+	var target_path: String = ""
+
+	if not node_path.is_empty():
+		var target_node: Node = _resolve_node_path(editor_interface, node_path)
+		if not target_node:
+			return {"error": "Node not found: " + node_path}
+		editor_interface.edit_node(target_node)
+		editor_interface.inspect_object(target_node)
+		target_object = target_node
+		target_kind = "node"
+		target_path = _make_friendly_path(target_node, _get_user_scene_root())
+	else:
+		var validation: Dictionary = PathValidator.validate_path(resource_path)
+		if not validation["valid"]:
+			return {"error": "Invalid path: " + validation["error"]}
+		resource_path = validation["sanitized"]
+		if not FileAccess.file_exists(resource_path):
+			return {"error": "File not found: " + resource_path}
+		var resource: Resource = load(resource_path)
+		if not resource:
+			return {"error": "Failed to load resource: " + resource_path}
+		editor_interface.inspect_object(resource)
+		target_object = resource
+		target_kind = "resource"
+		target_path = resource_path
+
+	var properties: Array = []
+	for property_info_variant in target_object.get_property_list():
+		var property_info: Dictionary = property_info_variant
+		var property_name: String = str(property_info.get("name", ""))
+		if property_name.is_empty():
+			continue
+		if not property_filter.is_empty() and not property_name.to_lower().contains(property_filter):
+			continue
+
+		var serialized: Dictionary = {
+			"name": property_name,
+			"type": int(property_info.get("type", TYPE_NIL)),
+			"usage": int(property_info.get("usage", 0)),
+			"hint": int(property_info.get("hint", PROPERTY_HINT_NONE)),
+			"hint_string": str(property_info.get("hint_string", "")),
+			"class_name": str(property_info.get("class_name", ""))
+		}
+		if include_values:
+			serialized["value"] = _serialize_editor_value(target_object.get(property_name))
+		properties.append(serialized)
+
+	return {
+		"target_kind": target_kind,
+		"target_path": target_path,
+		"class_name": target_object.get_class(),
+		"property_count": properties.size(),
+		"properties": properties
 	}
 
 # ============================================================================
@@ -996,6 +1261,33 @@ func _resolve_node_path(editor_interface: EditorInterface, path: String) -> Node
 		var relative: String = path.substr(("/root/" + edited_scene.name + "/").length())
 		return edited_scene.get_node_or_null(relative)
 	return edited_scene.get_node_or_null(path)
+
+func _serialize_editor_value(value: Variant) -> Variant:
+	if value == null:
+		return null
+	match typeof(value):
+		TYPE_BOOL, TYPE_INT, TYPE_FLOAT, TYPE_STRING:
+			return value
+		TYPE_VECTOR2:
+			return {"x": value.x, "y": value.y}
+		TYPE_VECTOR3:
+			return {"x": value.x, "y": value.y, "z": value.z}
+		TYPE_VECTOR4:
+			return {"x": value.x, "y": value.y, "z": value.z, "w": value.w}
+		TYPE_COLOR:
+			return {"r": value.r, "g": value.g, "b": value.b, "a": value.a}
+		TYPE_ARRAY:
+			var array_result: Array = []
+			for item in value:
+				array_result.append(_serialize_editor_value(item))
+			return array_result
+		TYPE_DICTIONARY:
+			var dict_result: Dictionary = {}
+			for key in value:
+				dict_result[str(key)] = _serialize_editor_value(value[key])
+			return dict_result
+		_:
+			return str(value)
 
 # ============================================================================
 # reload_project - 重新扫描文件系统并重新加载脚本

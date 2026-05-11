@@ -1258,6 +1258,23 @@ func _build_input_event(payload: Dictionary) -> InputEvent:
 			mouse_motion_event.pen_inverted = bool(payload.get("pen_inverted", false))
 			_apply_input_modifiers(mouse_motion_event, payload)
 			return mouse_motion_event
+		"screen_touch":
+			var screen_touch_event := InputEventScreenTouch.new()
+			screen_touch_event.index = int(payload.get("index", 0))
+			screen_touch_event.pressed = bool(payload.get("pressed", true))
+			screen_touch_event.position = _dict_to_vector2(payload.get("position", {}))
+			screen_touch_event.double_tap = bool(payload.get("double_tap", false))
+			screen_touch_event.canceled = bool(payload.get("canceled", false))
+			return screen_touch_event
+		"screen_drag":
+			var screen_drag_event := InputEventScreenDrag.new()
+			screen_drag_event.index = int(payload.get("index", 0))
+			screen_drag_event.position = _dict_to_vector2(payload.get("position", {}))
+			screen_drag_event.relative = _dict_to_vector2(payload.get("relative", {}))
+			screen_drag_event.velocity = _dict_to_vector2(payload.get("velocity", {}))
+			screen_drag_event.pressure = float(payload.get("pressure", 0.0))
+			screen_drag_event.pen_inverted = bool(payload.get("pen_inverted", false))
+			return screen_drag_event
 		_:
 			return null
 
@@ -1305,6 +1322,25 @@ func _serialize_input_event(event: InputEvent) -> Dictionary:
 			"position": {"x": event.position.x, "y": event.position.y},
 			"relative": {"x": event.relative.x, "y": event.relative.y},
 			"velocity": {"x": event.velocity.x, "y": event.velocity.y}
+		}
+	if event is InputEventScreenTouch:
+		return {
+			"type": "screen_touch",
+			"index": event.index,
+			"pressed": event.pressed,
+			"position": {"x": event.position.x, "y": event.position.y},
+			"double_tap": event.double_tap,
+			"canceled": event.canceled
+		}
+	if event is InputEventScreenDrag:
+		return {
+			"type": "screen_drag",
+			"index": event.index,
+			"position": {"x": event.position.x, "y": event.position.y},
+			"relative": {"x": event.relative.x, "y": event.relative.y},
+			"velocity": {"x": event.velocity.x, "y": event.velocity.y},
+			"pressure": event.pressure,
+			"pen_inverted": event.pen_inverted
 		}
 	return {"type": "unknown", "class": event.get_class()}
 

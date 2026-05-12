@@ -55,6 +55,14 @@ def tool_call(name: str, arguments: dict | None = None, request_id: int = 100) -
     return json.loads(result["content"][0]["text"])
 
 
+def get_debugger_messages(count: int = 100, request_id: int = 5000) -> dict:
+    return tool_call(
+        "get_debugger_messages",
+        {"count": count, "order": "desc"},
+        request_id=request_id,
+    )
+
+
 def wait_for_server(timeout_seconds: float = 30.0) -> None:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
@@ -66,24 +74,150 @@ def wait_for_server(timeout_seconds: float = 30.0) -> None:
     raise TimeoutError("Timed out waiting for MCP server on port 9080")
 
 
-def wait_for_runtime(timeout_seconds: float = 15.0) -> None:
-    deadline = time.time() + timeout_seconds
-    while time.time() < deadline:
-        info = tool_call("get_runtime_info", request_id=50)
-        if info.get("status") == "success":
-            return
-        time.sleep(0.5)
-    raise TimeoutError("Timed out waiting for runtime probe")
+def wait_for_editor_scene_state_to_stabilize(delay_seconds: float = 3.0) -> None:
+    time.sleep(delay_seconds)
 
 
-def runtime_tool_call(name: str, arguments: dict, request_id: int, timeout_seconds: float = 8.0) -> dict:
+def wait_for_current_scene(scene_path: str, timeout_seconds: float = 10.0, start_request_id: int = 200) -> dict:
     deadline = time.time() + timeout_seconds
+    request_id = start_request_id
+    last_result = None
     while time.time() < deadline:
-        result = tool_call(name, arguments, request_id=request_id)
-        if result.get("status") != "pending":
-            return result
+        last_result = tool_call("get_current_scene", {}, request_id=request_id)
+        if last_result.get("scene_path") == scene_path:
+            return last_result
         time.sleep(0.5)
-    raise TimeoutError(f"Timed out waiting for runtime tool {name}")
+        request_id += 1
+    raise AssertionError(f"Scene did not become active: expected {scene_path}, last result: {last_result}")
+
+
+def wait_for_active_debugger_session(timeout_seconds: float = 20.0, start_request_id: int = 300) -> dict:
+    deadline = time.time() + timeout_seconds
+    request_id = start_request_id
+    last_result = None
+    while time.time() < deadline:
+        last_result = tool_call("get_debugger_sessions", {}, request_id=request_id)
+        sessions = last_result.get("sessions", [])
+        if last_result.get("count", 0) > 0 and any(session.get("active") for session in sessions):
+            return last_result
+        time.sleep(0.5)
+        request_id += 1
+    raise AssertionError(f"Debugger session never became active: {last_result}")
+
+
+def prime_runtime_probe(
+    timeout_seconds: float = 8.0,
+    start_request_id: int = 30,
+    minimum_node_count: int = 0,
+) -> dict:
+    deadline = time.time() + timeout_seconds
+    request_id = start_request_id
+    last_result = None
+    while time.time() < deadline:
+        last_result = tool_call("get_runtime_info", {"timeout_ms": 2000}, request_id=request_id)
+        if (
+            last_result.get("status") in {"success", "stale"}
+            and last_result.get("current_scene")
+            and int(last_result.get("node_count", 0)) >= minimum_node_count
+        ):
+            return last_result
+        time.sleep(0.5)
+        request_id += 1
+    raise AssertionError(f"Runtime probe never primed: {last_result}")
+
+
+def run_project_until_debugger_active(scene_path: str, attempts: int = 3, start_request_id: int = 4) -> None:
+    last_error = None
+    request_id = start_request_id
+    for _attempt in range(attempts):
+        run_result = tool_call("run_project", {"scene_path": scene_path}, request_id=request_id)
+        if run_result.get("status") != "success":
+            last_error = AssertionError(f"run_project failed: {run_result}")
+        else:
+            try:
+                time.sleep(1.0)
+                wait_for_active_debugger_session(start_request_id=request_id + 1)
+                time.sleep(1.5)
+                prime_runtime_probe(start_request_id=request_id + 21, minimum_node_count=2)
+                return
+            except AssertionError as exc:
+                last_error = exc
+        try:
+            tool_call("stop_project", {}, request_id=request_id + 40)
+        except Exception:
+            pass
+        time.sleep(1.0)
+        request_id += 100
+    if last_error:
+        raise last_error
+    raise AssertionError("Failed to start project with an active debugger session")
+
+
+def dispatch_runtime_tool(name: str, arguments: dict, request_id: int) -> dict:
+    result = tool_call(name, arguments, request_id=request_id)
+    if result.get("status") not in {"success", "pending"}:
+        raise AssertionError(f"{name} did not dispatch cleanly: {result}")
+    return result
+
+
+def wait_for_debugger_message(
+    message_name: str,
+    predicate,
+    minimum_sequence: int = 0,
+    timeout_seconds: float = 8.0,
+    start_request_id: int = 5200,
+) -> dict:
+    deadline = time.time() + timeout_seconds
+    request_id = start_request_id
+    last_messages = []
+    while time.time() < deadline:
+        response = get_debugger_messages(count=50, request_id=request_id)
+        last_messages = response.get("messages", [])
+        for entry in last_messages:
+            if int(entry.get("sequence", 0)) <= minimum_sequence:
+                continue
+            if entry.get("message") != message_name:
+                continue
+            payloads = entry.get("data", [])
+            payload = payloads[0] if payloads else None
+            if predicate(payload):
+                return payload
+        time.sleep(0.5)
+        request_id += 1
+    raise AssertionError(
+        f"Timed out waiting for debugger message {message_name} after sequence {minimum_sequence}. "
+        f"Last messages: {last_messages}"
+    )
+
+
+def dispatch_runtime_tool_until_message(
+    tool_name: str,
+    arguments: dict,
+    message_name: str,
+    predicate,
+    attempts: int,
+    start_request_id: int,
+    wait_timeout_seconds: float = 6.0,
+) -> dict:
+    last_error: Exception | None = None
+    request_id = start_request_id
+    for _attempt in range(attempts):
+        dispatch_runtime_tool(tool_name, arguments, request_id=request_id + 1)
+        try:
+            return wait_for_debugger_message(
+                message_name,
+                predicate,
+                minimum_sequence=0,
+                timeout_seconds=wait_timeout_seconds,
+                start_request_id=request_id + 2,
+            )
+        except AssertionError as exc:
+            last_error = exc
+            time.sleep(1.0)
+            request_id += 100
+    if last_error:
+        raise last_error
+    raise AssertionError(f"Failed to observe debugger message for {tool_name}")
 
 
 def main() -> int:
@@ -112,6 +246,7 @@ def main() -> int:
 
     try:
         wait_for_server()
+        wait_for_editor_scene_state_to_stabilize()
 
         tools_response = rpc_call("tools/list")
         tool_names = {tool["name"] for tool in tools_response["result"]["tools"]}
@@ -127,80 +262,120 @@ def main() -> int:
         open_result = tool_call("open_scene", {"scene_path": SCENE_PATH}, request_id=2)
         if open_result.get("status") != "success":
             raise AssertionError(f"open_scene failed: {open_result}")
+        wait_for_current_scene(SCENE_PATH)
 
         install_result = tool_call("install_runtime_probe", {}, request_id=3)
-        if install_result.get("status") != "success":
+        if install_result.get("status") not in {"success", "already_installed"}:
             raise AssertionError(f"install_runtime_probe failed: {install_result}")
 
-        run_result = tool_call("run_project", {"scene_path": SCENE_PATH}, request_id=4)
-        if run_result.get("status") != "success":
-            raise AssertionError(f"run_project failed: {run_result}")
+        run_project_until_debugger_active(SCENE_PATH)
 
-        wait_for_runtime()
-
-        initial_color = runtime_tool_call(
+        initial_color = dispatch_runtime_tool_until_message(
             "get_runtime_theme_item",
-            {"node_path": button_path, "item_type": "color", "item_name": "font_color"},
-            request_id=5,
+            {"node_path": button_path, "item_type": "color", "item_name": "font_color", "timeout_ms": 2000},
+            "mcp:theme_item",
+            lambda payload: payload
+            and payload.get("node_path") == button_path
+            and payload.get("item_type") == "color"
+            and payload.get("item_name") == "font_color",
+            attempts=3,
+            start_request_id=1000,
         )
         if initial_color.get("has_item") is not True:
             raise AssertionError(f"Expected runtime theme color to resolve: {initial_color}")
         if initial_color.get("has_override") is not False:
             raise AssertionError(f"Color override should be absent before set: {initial_color}")
 
-        updated_color = runtime_tool_call(
+        updated_color = dispatch_runtime_tool_until_message(
             "set_runtime_theme_override",
             {
                 "node_path": button_path,
                 "item_type": "color",
                 "item_name": "font_color",
                 "value": {"r": 0.25, "g": 0.5, "b": 0.75, "a": 1.0},
+                "timeout_ms": 2000,
             },
-            request_id=6,
+            "mcp:theme_override_updated",
+            lambda payload: payload
+            and payload.get("node_path") == button_path
+            and payload.get("item_type") == "color"
+            and payload.get("item_name") == "font_color"
+            and payload.get("has_override") is True,
+            attempts=3,
+            start_request_id=1100,
         )
         if updated_color.get("has_override") is not True:
             raise AssertionError(f"Expected color override after update: {updated_color}")
 
-        font_size = runtime_tool_call(
+        font_size = dispatch_runtime_tool_until_message(
             "set_runtime_theme_override",
             {
                 "node_path": button_path,
                 "item_type": "font_size",
                 "item_name": "font_size",
                 "value": 22,
+                "timeout_ms": 2000,
             },
-            request_id=7,
+            "mcp:theme_override_updated",
+            lambda payload: payload
+            and payload.get("node_path") == button_path
+            and payload.get("item_type") == "font_size"
+            and payload.get("item_name") == "font_size"
+            and payload.get("value") == 22,
+            attempts=3,
+            start_request_id=1200,
         )
         if font_size.get("value") != 22:
             raise AssertionError(f"Expected font size override to apply: {font_size}")
 
-        separation = runtime_tool_call(
+        separation = dispatch_runtime_tool_until_message(
             "set_runtime_theme_override",
             {
                 "node_path": button_path,
                 "item_type": "constant",
                 "item_name": "h_separation",
                 "value": 13,
+                "timeout_ms": 2000,
             },
-            request_id=8,
+            "mcp:theme_override_updated",
+            lambda payload: payload
+            and payload.get("node_path") == button_path
+            and payload.get("item_type") == "constant"
+            and payload.get("item_name") == "h_separation"
+            and payload.get("value") == 13,
+            attempts=3,
+            start_request_id=1300,
         )
         if separation.get("value") != 13:
             raise AssertionError(f"Expected constant override to apply: {separation}")
 
-        stylebox = runtime_tool_call(
+        stylebox = dispatch_runtime_tool_until_message(
             "get_runtime_theme_item",
-            {"node_path": button_path, "item_type": "stylebox", "item_name": "normal"},
-            request_id=9,
+            {"node_path": button_path, "item_type": "stylebox", "item_name": "normal", "timeout_ms": 2000},
+            "mcp:theme_item",
+            lambda payload: payload
+            and payload.get("node_path") == button_path
+            and payload.get("item_type") == "stylebox"
+            and payload.get("item_name") == "normal",
+            attempts=3,
+            start_request_id=1400,
         )
         if stylebox.get("has_item") is not True:
             raise AssertionError(f"Expected stylebox item to resolve: {stylebox}")
         if stylebox.get("value", {}).get("resource_class") == "":
             raise AssertionError(f"Expected stylebox resource metadata: {stylebox}")
 
-        cleared_color = runtime_tool_call(
+        cleared_color = dispatch_runtime_tool_until_message(
             "clear_runtime_theme_override",
-            {"node_path": button_path, "item_type": "color", "item_name": "font_color"},
-            request_id=10,
+            {"node_path": button_path, "item_type": "color", "item_name": "font_color", "timeout_ms": 2000},
+            "mcp:theme_override_cleared",
+            lambda payload: payload
+            and payload.get("node_path") == button_path
+            and payload.get("item_type") == "color"
+            and payload.get("item_name") == "font_color"
+            and payload.get("has_override") is False,
+            attempts=3,
+            start_request_id=1500,
         )
         if cleared_color.get("has_override") is not False:
             raise AssertionError(f"Expected color override to clear: {cleared_color}")

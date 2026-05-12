@@ -69,7 +69,11 @@ def wait_for_server(timeout_seconds: float = 30.0) -> None:
     raise TimeoutError("Timed out waiting for MCP server on port 9080")
 
 
-def wait_for_reimport(resource_path: str, timeout_seconds: float = 30.0, start_request_id: int = 700) -> dict:
+def wait_for_editor_scene_state_to_stabilize(delay_seconds: float = 3.0) -> None:
+    time.sleep(delay_seconds)
+
+
+def wait_for_reimport(resource_path: str, timeout_seconds: float = 45.0, start_request_id: int = 700) -> dict:
     deadline = time.time() + timeout_seconds
     request_id = start_request_id
     last_result = None
@@ -112,6 +116,7 @@ def main() -> int:
 
     try:
         wait_for_server()
+        wait_for_editor_scene_state_to_stabilize()
 
         tools_response = rpc_call("tools/list")
         tool_names = {tool["name"] for tool in tools_response["result"]["tools"]}

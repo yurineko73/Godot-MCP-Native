@@ -13,13 +13,13 @@ A powerful Godot Engine plugin that integrates AI assistants (Claude, etc.) via 
 - **Full Project Access**: AI assistants can read and modify scripts, scenes, nodes, and resources
 - **Native Implementation**: No Node.js dependency required - runs entirely within Godot
 - **Real-time Editing**: Apply AI suggestions directly in the editor
-- **Comprehensive Tool Set** (62 tools):
-  - **Node Tools** (16): Create, modify, manage scene nodes, duplicate, move, rename, signal connections, group management
-  - **Script Tools** (9): Edit, analyze, create, attach, validate GDScript files, search in files
-  - **Scene Tools** (6): Manipulate scene structure and save scenes
-  - **Editor Tools** (8): Control editor functionality, screenshot, signal inspection, filesystem reload
-  - **Debug Tools** (18): Logging, script execution, debugger sessions, breakpoints, stack/variable inspection, profilers, runtime probe
-  - **Project Tools** (5): Access project settings and list resources
+- **Comprehensive Tool Set** (146 tools):
+  - **Node Tools** (20): Create, modify, batch edit, audit, duplicate, move, rename, connect signals, and manage groups
+  - **Script Tools** (14): Read, edit, analyze, create, attach, validate, search, jump to symbols, find references, and rename symbols
+  - **Scene Tools** (8): List, open, inspect, save, and close scenes or scene tabs
+  - **Editor Tools** (15): Inspect editor state, run/stop projects, select nodes/files, inspect signals and Inspector properties, screenshot, reload, and export
+  - **Debug Tools** (63): Logs, script execution, debugger sessions, breakpoints, DAP-style threads/stack/variables, runtime probe, screenshots, input, animation, audio, TileMap, material, theme, and runtime assertions
+  - **Project Tools** (26): Project settings, resources, dependencies, UIDs/imports, input maps, autoloads, global classes, tests, health checks, and C# support checks
 
 ## 📦 Installation
 
@@ -45,6 +45,8 @@ A powerful Godot Engine plugin that integrates AI assistants (Claude, etc.) via 
 
 ### Configuring MCP Server
 The plugin provides two transport modes:
+
+**Vibe Coding / Do Not Disturb mode** is enabled by default. In this mode, the MCP server keeps responding in the background but blocks tools that would steal editor focus, switch scene tabs, select nodes/files, or open/control a runtime window. Turn it off in the MCP panel when pairing manual debugging with MCP, or explicitly pass `allow_ui_focus=true` / `allow_window=true` for a single tool call.
 
 #### HTTP Mode (for remote access)
 - Best for: Network-based AI integration
@@ -89,7 +91,7 @@ I need help optimizing my player movement code. Can you suggest improvements?
 ```
 
 ```
-@mcp godot-mcp get-scene-tree
+@mcp godot-mcp get_scene_tree
 
 Add a cube in the middle of the scene and create a camera that looks at it.
 ```
@@ -104,79 +106,16 @@ Implement a day/night cycle system with dynamic lighting
 
 ## 📚 Available Commands
 
-### Node Tools (16)
-- `get-scene-tree` - Get scene tree structure
-- `get-node-properties` - Get properties of a specific node
-- `create-node` - Create a new node
-- `delete-node` - Delete a node
-- `update-node-property` - Update node properties
-- `list-nodes` - List nodes under a parent
-- `duplicate-node` - Duplicate a node and its children
-- `move-node` - Move a node to a new parent
-- `rename-node` - Rename a node in the scene
-- `add-resource` - Add a resource child node (collision shape, mesh, etc.)
-- `set-anchor-preset` - Set anchor preset for Control nodes
-- `connect-signal` - Connect a signal between nodes
-- `disconnect-signal` - Disconnect a signal connection
-- `get-node-groups` - Get groups a node belongs to
-- `set-node-groups` - Set group memberships for a node
-- `find-nodes-in-group` - Find all nodes in a specific group
+Tool names use underscores, matching the MCP `tools/list` response. Common examples include:
 
-### Script Tools (9)
-- `list-project-scripts` - List all scripts
-- `read-script` - Read a specific script
-- `modify-script` - Update script content
-- `create-script` - Create a new script
-- `analyze-script` - Analyze script structure
-- `get-current-script` - Get currently editing script
-- `attach-script` - Attach an existing script to a node
-- `validate-script` - Validate GDScript syntax
-- `search-in-files` - Search project files
+- Node: `get_scene_tree`, `create_node`, `batch_scene_node_edits`, `audit_scene_inheritance`
+- Script: `read_script`, `modify_script`, `list_project_script_symbols`, `find_script_symbol_references`, `rename_script_symbol`
+- Scene: `list_project_scenes`, `open_scene`, `get_scene_structure`, `close_scene_tab`
+- Editor: `get_editor_state`, `run_project`, `select_node`, `get_inspector_properties`, `run_export`
+- Debug/runtime: `get_editor_logs`, `get_debug_threads`, `get_debug_stack_frames`, `install_runtime_probe`, `get_runtime_scene_tree`, `simulate_runtime_input_event`, `assert_runtime_condition`
+- Project: `get_project_info`, `audit_project_health`, `get_resource_dependencies`, `list_project_tests`, `run_project_tests`
 
-### Scene Tools (6)
-- `list-project-scenes` - List all scenes
-- `read-scene` - Read scene structure
-- `create-scene` - Create a new scene
-- `save-scene` - Save current scene
-- `open-scene` - Open a scene
-- `get-current-scene` - Get current scene info
-
-### Project Tools (5)
-- `get-project-info` - Get project information
-- `get-project-settings` - Get project settings
-- `list-project-resources` - List project resources
-- `create-resource` - Create a new resource
-- `get-project-structure` - Get project directory structure
-
-### Editor Tools (8)
-- `get-editor-state` - Get current editor state
-- `run-project` - Run the project
-- `stop-project` - Stop the running project
-- `get-selected-nodes` - Get selected nodes
-- `set-editor-setting` - Modify editor settings
-- `get-editor-screenshot` - Capture an editor viewport screenshot
-- `get-signals` - Inspect node signals and connections
-- `reload-project` - Rescan the project filesystem
-
-### Debug Tools (18)
-- `get-editor-logs` - Get editor/runtime logs
-- `execute-script` - Execute GDScript expression
-- `get-performance-metrics` - Get performance data
-- `debug-print` - Print debug info
-- `execute-editor-script` - Execute GDScript script
-- `clear-output` - Clear MCP/editor output buffers
-- `get-debugger-sessions` - List editor debugger sessions and active/break state
-- `set-debugger-breakpoint` - Enable or disable debugger breakpoints
-- `send-debugger-message` - Send custom messages to the running game debugger
-- `toggle-debugger-profiler` - Toggle EngineProfiler channels in active sessions
-- `get-debugger-messages` - Read custom runtime messages captured by the bridge
-- `add-debugger-capture-prefix` - Capture additional EngineDebugger message prefixes
-- `get-debug-stack-frames` - Read captured script stack frames from a breaked session
-- `get-debug-stack-variables` - Read locals, members, and globals for a captured stack frame
-- `install-runtime-probe` - Add the MCP runtime probe node to the current scene
-- `remove-runtime-probe` - Remove the MCP runtime probe node from the current scene
-- `request-debug-break` - Ask the runtime probe to enter Godot's debug break loop
-- `send-debug-command` - Send step/next/out/continue/stack debugger commands to breaked sessions
+See [Current Tool Inventory](docs/current/tool-inventory.md) for the complete 146-tool list, and use MCP `tools/list` for live JSON Schema details.
 
 ## 🔒 Security Recommendations
 
@@ -196,6 +135,7 @@ For detailed documentation, see the `docs/current/` folder:
 - [Quick Start Guide](docs/current/quickstart.md)
 - [Architecture Design](docs/current/architecture.md)
 - [Tools Reference](docs/current/tools-reference.md)
+- [Current Tool Inventory](docs/current/tool-inventory.md)
 - [Testing Guide](docs/current/testing-guide.md)
 
 ## 🤝 Contributing

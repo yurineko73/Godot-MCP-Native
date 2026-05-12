@@ -25,7 +25,7 @@ Godot MCP Native 采用 **三层架构**，将 AI Client、MCP 服务器和 Godo
 │  - 发送 JSON-RPC 请求                          │
 │  - 接收工具执行结果                             │
 └────────────────┬──────────────────────────────┘
-                 │ JSON-RPC 2.0 (stdio / HTTP)
+                 │ JSON-RPC 2.0 (HTTP; stdio 保留但暂不可用)
 ┌────────────────▼──────────────────────────────┐
 │    Godot Native MCP Server                │
 │  - 工具注册和管理                              │
@@ -90,12 +90,12 @@ Godot MCP Native 采用 **三层架构**，将 AI Client、MCP 服务器和 Godo
 MCP Server 是核心中间层，负责：
 
 1. **工具管理**：
-   - 注册工具（50 个工具）
+   - 注册工具（当前 146 个工具）
    - 验证工具参数
    - 执行工具逻辑
 
 2. **传输抽象**：
-   - 支持多种传输方式（stdio、HTTP）
+   - 支持 HTTP 传输；stdio 传输代码保留但当前暂不可用
    - 统一的消息处理接口
 
 3. **安全和认证**：
@@ -120,8 +120,11 @@ addons/godot_mcp/
 │   ├── mcp_stdio_server.gd  # Stdio 传输
 │   ├── mcp_http_server.gd    # HTTP 传输
 │   ├── mcp_auth_manager.gd   # 认证管理
-│   └── tools/                # 工具实现
-└── ui/                       # UI 面板
+│   └── mcp_debugger_bridge.gd # 调试器 bridge
+├── runtime/                  # 运行时探针
+├── tools/                    # 工具实现
+├── ui/                       # UI 面板
+└── utils/                    # 路径、节点、资源、脚本和免打扰策略工具
 ```
 
 ### 第三层：Godot Editor
@@ -306,14 +309,16 @@ func _generate_session_id() -> String:
 
 ### 工具注册
 
-Godot-MCP 实现了 **50 个工具**，分为 6 大类：
+Godot-MCP 当前实现了 **146 个工具**，分为 6 个已启用工具模块：
 
-1. **Node Tools** (16 个)：节点管理（创建、删除、修改属性、复制、移动、重命名、信号连接、组管理）
-2. **Script Tools** (9 个)：脚本管理（读取、创建、修改、分析、附加、验证、搜索）
-3. **Scene Tools** (6 个)：场景管理
-4. **Editor Tools** (8 个)：编辑器操作（运行、停止、截图、信号查询、文件系统重载）
-5. **Debug Tools** (6 个)：调试和日志（日志获取、清除、脚本执行、性能监控）
-6. **Project Tools** (5 个)：项目配置
+1. **Node Tools** (20 个)：节点管理、批量节点编辑、场景继承/持久化审计、信号连接和组管理
+2. **Script Tools** (14 个)：脚本读取、创建、修改、分析、附加、验证、搜索、符号索引、引用查找和重命名
+3. **Scene Tools** (8 个)：项目场景、当前场景、打开标签页、场景结构和保存/关闭
+4. **Editor Tools** (15 个)：编辑器状态、运行控制、选择/聚焦、截图、Inspector、导出预设和项目重载
+5. **Debug Tools** (63 个)：日志、脚本执行、调试会话、DAP 风格线程/栈/变量、运行时探针、截图、输入、动画、音频、TileMap、材质、主题和断言
+6. **Project Tools** (26 个)：项目设置、资源依赖/UID/import、输入映射、Autoload、全局类、测试、健康检查和 C# 支持检测
+
+完整工具名清单见 [当前工具清单](tool-inventory.md)。实时参数和返回结构以 MCP `tools/list` 返回的 JSON Schema 为准。
 
 ### 工具定义结构
 
@@ -624,6 +629,14 @@ func _validate_path(path: String) -> bool:
     
     return true
 ```
+
+### Vibe Coding / 免打扰策略
+
+插件默认启用 `vibe_coding_mode`，由 `addons/godot_mcp/utils/vibe_coding_policy.gd` 提供统一拦截策略。该策略不影响只读查询和后台执行，但会阻止可能抢占人工操作上下文的工具：
+
+- 改变编辑器焦点、选择节点/文件或切换编辑器上下文的工具，需要单次传入 `allow_ui_focus=true` 才允许执行聚焦行为。
+- 打开或控制运行窗口的工具，需要单次传入 `allow_window=true` 才允许执行。
+- MCP 面板提供 `Vibe Coding / 免打扰模式` 开关，适合在人工调试和全自动操作之间切换。
 
 ---
 

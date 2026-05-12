@@ -36,34 +36,34 @@
 
 | 测试类型 | 用途 | 工具 | 覆盖率目标 |
 |----------|------|------|------------|
-| 单元测试 | 测试单个函数/类 | Vitest, Godot | 80% |
-| 集成测试 | 测试模块交互 | Python, curl | 关键路径 100% |
-| 性能测试 | 测试系统性能 | GDScript | N/A |
-| 端到端测试 | 测试完整流程 | Node.js | 核心功能 100% |
+| 单元测试 | 测试单个 GDScript 类、工具模块和策略类 | Godot/GUT 风格 GDScript 测试 | 关键工具和边界条件优先 |
+| 集成测试 | 通过 MCP/HTTP 流程验证工具组合 | Python | 关键流程 100% |
+| 静态检查 | 验证策略、文档或源码约束 | Python | 规则命中 100% |
+| 端到端/运行时测试 | 验证运行时探针、输入、截图、动画、音频等完整流程 | Python + Godot HTTP MCP Server | 核心运行时能力 100% |
 
 ### 测试目录结构
 
 ```
 test/
-├── unit/                       # 单元测试
-│   ├── tools/                  # 工具单元测试
-│   │   ├── create_node.test.ts
-│   │   └── delete_node.test.ts
-│   └── utils/                 # 工具类单元测试
-│       └── godot_connection.test.ts
-├── integration/                # 集成测试
-│   ├── stdio/
-│   │   └── test_mcp_stdio.py
-│   └── http/
-│       └── test_mcp_http.py
-├── performance/                # 性能测试
-│   └── performance_test.gd
-├── e2e/                       # 端到端测试
-│   ├── test_mcp_client.js
-│   └── test_mcp_client.ts
-└── helpers/                   # 测试辅助工具
-    ├── mcp_client.js
-    └── godot_mock.gd
+├── quiet_mode_static_check.py          # 免打扰模式静态检查
+├── integration/                        # Python 集成流程测试
+│   ├── test_batch_scene_node_edits_flow.py
+│   ├── test_debug_execution_control_flow.py
+│   ├── test_runtime_probe_flow.py
+│   ├── test_runtime_viewport_capture_flow.py
+│   ├── test_script_symbol_index_flow.py
+│   └── ...                             # 资源、输入、动画、音频、TileMap、导出、项目测试等流程
+└── unit/                               # GDScript 单元测试
+    ├── test_mcp_server_core.gd
+    ├── test_mcp_server_native.gd
+    ├── test_vibe_coding_policy.gd
+    └── tools/
+        ├── test_debug_tools.gd
+        ├── test_editor_tools.gd
+        ├── test_node_tools.gd
+        ├── test_project_tools.gd
+        ├── test_scene_tools.gd
+        └── test_script_tools.gd
 ```
 
 ---
@@ -105,6 +105,7 @@ test/unit/
 ├── test_mcp_types.gd
 ├── test_node_tools_convert.gd
 ├── test_path_validator.gd
+├── test_vibe_coding_policy.gd
 └── tools/
     ├── test_debug_tools.gd
     ├── test_editor_tools.gd
@@ -113,10 +114,11 @@ test/unit/
     ├── test_project_tools.gd
     ├── test_resource_tools.gd
     ├── test_scene_tools.gd
+    ├── test_script_editor_debug_tools_enhanced.gd
     └── test_script_tools.gd
 ```
 
-**当前测试规模**：19 个测试脚本，295 个测试用例，521 个断言
+**当前测试规模**会随新增工具持续变化；以 `test/unit/` 和 `test/integration/` 下的实际文件为准。
 
 **运行测试**：
 ```powershell
@@ -186,6 +188,8 @@ func test_connect_signal_basic():
 
 **工具**：Python + `requests`
 
+当前集成测试集中在 `test/integration/`，覆盖批量节点编辑、脚本符号索引/引用/重命名、项目诊断、资源流水线、运行时探针、运行时输入、截图、动画、音频、TileMap、主题、材质、导出和项目测试运行器等流程。Stdio 传输目前处于开发阶段，集成验证优先使用 HTTP 模式。
+
 **示例测试** (`test/http/test_mcp_http.py`)：
 ```python
 #!/usr/bin/env python3
@@ -216,7 +220,7 @@ def test_tools_list():
     data = response.json()
     assert "result" in data, "Missing result in response"
     assert "tools" in data["result"], "Missing tools in result"
-    assert len(data["result"]["tools"]) >= 42, "Not enough tools"
+    assert len(data["result"]["tools"]) >= 146, "Not enough tools"
     
     print("✓ test_tools_list passed")
 
@@ -270,12 +274,10 @@ if __name__ == "__main__":
 **运行测试**：
 ```bash
 # 首先启动 HTTP 服务器
-cd F:\gitProjects\Godot-MCP
-"Godot.exe" --path . --mcp-server --http
+godot --path . --mcp-server --http
 
 # 然后运行测试
-cd test/http
-python test_mcp_http.py
+python test/integration/test_runtime_probe_flow.py
 ```
 
 ---
@@ -493,56 +495,35 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     strategy:
       matrix:
-        node-version: [18.x, 20.x]
-        godot-version: ["4.2", "4.3"]
-    
+        godot-version: ["4.5", "4.6"]
+
     steps:
       - uses: actions/checkout@v3
-      
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v3
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: "npm"
-      
+
       - name: Setup Godot ${{ matrix.godot-version }}
         uses: azure/godot-builds@v1
         with:
           version: ${{ matrix.godot-version }}
-      
-      - name: Install dependencies
+
+      - name: Run GDScript unit tests
         run: |
-          cd server
-          npm install
-          npm run build
-      
-      - name: Run unit tests
+          godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://test/unit/ -ginclude_subdirs -gexit
+
+      - name: Run static checks
         run: |
-          cd server
-          npm test
-      
-      - name: Run integration tests (stdio)
+          python test/quiet_mode_static_check.py
+
+      - name: Run HTTP integration tests
         run: |
-          cd test/stdio
-          python test_mcp_stdio.py
-      
-      - name: Run integration tests (http)
-        run: |
-          # 启动 Godot 服务器（后台）
+          # 启动 Godot HTTP MCP 服务器（后台）
           godot --path . --mcp-server --http &
           sleep 5
-          
-          # 运行测试
-          cd test/http
-          python test_mcp_http.py
-      
-      - name: Upload coverage
-        uses: codecov/codecov-action@v3
-        with:
-          file: ./server/coverage/coverage-final.json
+          for script in test/integration/test_*_flow.py; do
+            python "$script"
+          done
 ```
 
 ---

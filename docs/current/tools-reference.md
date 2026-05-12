@@ -18,16 +18,28 @@
 
 ## 工具概述
 
-Godot MCP Native 实现了 **62 个工具**，分为 6 大类：
+Godot MCP Native 当前实现了 **146 个工具**，分为 6 大类。本文档保留核心工具的详细参数说明；完整工具名清单见 [当前工具清单](tool-inventory.md)，实时参数和返回结构以 MCP `tools/list` 返回的 JSON Schema 为准。
 
 | 类别 | 工具数量 | 源文件 | 用途 |
 |------|----------|--------|------|
-| [Node Tools](#node-tools) | 16 | `node_tools_native.gd` | 节点管理（创建、删除、修改属性、复制、移动、重命名、信号、组） |
-| [Script Tools](#script-tools) | 9 | `script_tools_native.gd` | 脚本管理（读取、创建、修改、分析、附加、验证、搜索） |
-| [Scene Tools](#scene-tools) | 6 | `scene_tools_native.gd` | 场景管理（创建、保存、打开） |
-| [Editor Tools](#editor-tools) | 8 | `editor_tools_native.gd` | 编辑器操作（运行、停止、获取状态、截图、信号、重载） |
-| [Debug Tools](#debug-tools) | 18 | `debug_tools_native.gd` | 调试和日志（日志获取、脚本执行、调试会话、断点、栈帧/变量读取、Profiler、运行时探针） |
-| [Project Tools](#project-tools) | 5 | `project_tools_native.gd` | 项目配置（信息、设置、结构） |
+| [Node Tools](#node-tools) | 20 | `node_tools_native.gd` | 节点管理、批量节点编辑、场景继承/持久化审计、信号、组 |
+| [Script Tools](#script-tools) | 14 | `script_tools_native.gd` | 脚本读写、符号索引/引用/重命名、跳转、附加、验证、搜索 |
+| [Scene Tools](#scene-tools) | 8 | `scene_tools_native.gd` | 场景管理、打开标签页、场景结构、保存和关闭 |
+| [Editor Tools](#editor-tools) | 15 | `editor_tools_native.gd` | 编辑器状态、运行控制、选择/聚焦、截图、Inspector、导出和重载 |
+| [Debug Tools](#debug-tools) | 63 | `debug_tools_native.gd` | 日志、脚本执行、调试器、DAP 风格线程/栈/变量、运行时探针和运行时检查 |
+| [Project Tools](#project-tools) | 26 | `project_tools_native.gd` | 项目配置、资源依赖/UID/import、输入映射、Autoload、全局类、测试和健康检查 |
+
+### 完整工具清单
+
+当前源码注册的完整工具名已整理到 [当前工具清单](tool-inventory.md)。新增或高频但未在本文展开的能力包括：
+
+- 批量场景节点编辑：`batch_scene_node_edits`、`batch_update_node_properties`
+- 脚本符号能力：`list_project_script_symbols`、`find_script_symbol_definition`、`find_script_symbol_references`、`rename_script_symbol`、`open_script_at_line`
+- 场景标签页能力：`list_open_scenes`、`close_scene_tab`、`get_scene_structure`
+- 编辑器和导出能力：`select_node`、`select_file`、`get_inspector_properties`、`list_export_presets`、`validate_export_preset`、`run_export`
+- DAP 风格调试能力：`get_debug_threads`、`get_debug_stack_frames`、`get_debug_stack_variables`、`get_debug_scopes`、`expand_debug_variable`、`await_debugger_state`
+- 运行时探针能力：`get_runtime_scene_tree`、`inspect_runtime_node`、`update_runtime_node_property`、`get_runtime_screenshot`、`simulate_runtime_input_event`、`assert_runtime_condition`
+- 项目审计和测试能力：`audit_project_health`、`detect_broken_scripts`、`scan_missing_resource_dependencies`、`run_project_tests`、`inspect_csharp_project_support`
 
 ### 工具调用格式
 
@@ -1722,7 +1734,7 @@ Godot MCP Native 实现了 **62 个工具**，分为 6 大类：
 
 ## 总结
 
-本手册详细说明了 Godot MCP Native 项目的所有 62 个工具。每个工具都有清晰的参数说明、返回值描述和注解信息。
+本手册详细说明了 Godot MCP Native 项目的核心工具。当前源码注册了 146 个工具；完整清单见 [当前工具清单](tool-inventory.md)，实时参数、返回值和注解信息以 `tools/list` 为准。
 
 **提示**：
 - 使用 `tools/list` 方法获取所有工具的实时列表和完整 JSON Schema

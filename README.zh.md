@@ -13,13 +13,13 @@
 - **完整项目访问**：AI 助手可以读取和修改脚本、场景、节点和资源
 - **原生实现**：无需 Node.js 依赖——完全在 Godot 中运行
 - **实时编辑**：直接在编辑器中应用 AI 建议
-- **全面的工具集**（62 个工具）：
-  - **节点工具**（16 个）：创建、修改、管理场景节点，复制、移动、重命名，信号连接，组管理
-  - **脚本工具**（9 个）：编辑、分析、创建、附加、验证 GDScript 文件，文件搜索
-  - **场景工具**（6 个）：操作场景结构并保存场景
-  - **编辑器工具**（8 个）：控制编辑器功能、截图、信号检查、文件系统重载
-  - **调试工具**（18 个）：日志、脚本执行、调试会话、断点、栈帧/变量读取、性能分析器、运行时探针
-  - **项目工具**（5 个）：访问项目设置和列出资源
+- **全面的工具集**（146 个工具）：
+  - **节点工具**（20 个）：创建、修改、批量编辑、审计、复制、移动、重命名、信号连接和组管理
+  - **脚本工具**（14 个）：读取、编辑、分析、创建、附加、验证、搜索、符号跳转、引用查找和符号重命名
+  - **场景工具**（8 个）：列出、打开、检查、保存和关闭场景或场景标签页
+  - **编辑器工具**（15 个）：查看编辑器状态、运行/停止项目、选择节点/文件、检查信号和 Inspector 属性、截图、重载和导出
+  - **调试工具**（63 个）：日志、脚本执行、调试会话、断点、DAP 风格线程/栈/变量、运行时探针、截图、输入、动画、音频、TileMap、材质、主题和运行时断言
+  - **项目工具**（26 个）：项目设置、资源、依赖、UID/import、输入映射、Autoload、全局类、测试、健康检查和 C# 支持检测
 
 ## 📦 安装
 
@@ -45,6 +45,8 @@
 
 ### 配置 MCP 服务器
 插件提供两种传输模式：
+
+默认启用 **Vibe Coding / 免打扰模式**。在此模式下，MCP 服务会后台响应请求，但会阻止会抢占编辑器焦点、切换场景标签、选择节点/文件或打开运行窗口的工具。需要 AI 配合人工调试时，可以在 MCP 面板中关闭该模式，或在单次工具调用中显式传入 `allow_ui_focus=true` / `allow_window=true`。
 
 #### HTTP 模式（用于远程访问）
 - 适用场景：基于网络的 AI 集成
@@ -91,7 +93,7 @@
 ```
 
 ```
-@mcp godot-mcp get-scene-tree
+@mcp godot-mcp get_scene_tree
 
 在场景中间添加一个立方体，并创建一个相机看向它。
 ```
@@ -106,79 +108,16 @@
 
 ## 📚 可用命令
 
-### 节点工具 (16)
-- `get-scene-tree` - 获取场景树结构
-- `get-node-properties` - 获取特定节点的属性
-- `create-node` - 创建新节点
-- `delete-node` - 删除节点
-- `update-node-property` - 更新节点属性
-- `list-nodes` - 列出父节点下的所有节点
-- `duplicate-node` - 复制节点及子节点
-- `move-node` - 移动节点到新父节点
-- `rename-node` - 重命名节点
-- `add-resource` - 向节点添加资源子节点（碰撞形状、网格等）
-- `set-anchor-preset` - 设置 Control 节点锚点预设
-- `connect-signal` - 连接节点间的信号
-- `disconnect-signal` - 断开信号连接
-- `get-node-groups` - 获取节点所属的组
-- `set-node-groups` - 设置节点的组成员关系
-- `find-nodes-in-group` - 查找组中的所有节点
+工具名使用下划线，与 MCP `tools/list` 返回值一致。常用示例包括：
 
-### 脚本工具 (9)
-- `list-project-scripts` - 列出所有脚本
-- `read-script` - 读取特定脚本
-- `modify-script` - 更新脚本内容
-- `create-script` - 创建新脚本
-- `analyze-script` - 分析脚本结构
-- `get-current-script` - 获取当前正在编辑的脚本
-- `attach-script` - 将已有脚本附加到节点
-- `validate-script` - 验证 GDScript 语法
-- `search-in-files` - 搜索项目文件
+- 节点：`get_scene_tree`、`create_node`、`batch_scene_node_edits`、`audit_scene_inheritance`
+- 脚本：`read_script`、`modify_script`、`list_project_script_symbols`、`find_script_symbol_references`、`rename_script_symbol`
+- 场景：`list_project_scenes`、`open_scene`、`get_scene_structure`、`close_scene_tab`
+- 编辑器：`get_editor_state`、`run_project`、`select_node`、`get_inspector_properties`、`run_export`
+- 调试/运行时：`get_editor_logs`、`get_debug_threads`、`get_debug_stack_frames`、`install_runtime_probe`、`get_runtime_scene_tree`、`simulate_runtime_input_event`、`assert_runtime_condition`
+- 项目：`get_project_info`、`audit_project_health`、`get_resource_dependencies`、`list_project_tests`、`run_project_tests`
 
-### 场景工具 (6)
-- `list-project-scenes` - 列出所有场景
-- `read-scene` - 读取场景结构
-- `create-scene` - 创建新场景
-- `save-scene` - 保存当前场景
-- `open-scene` - 打开场景
-- `get-current-scene` - 获取当前场景信息
-
-### 项目工具 (5)
-- `get-project-info` - 获取项目信息
-- `get-project-settings` - 获取项目设置
-- `list-project-resources` - 列出项目资源
-- `create-resource` - 创建新资源
-- `get-project-structure` - 获取项目目录结构
-
-### 编辑器工具 (8)
-- `get-editor-state` - 获取当前编辑器状态
-- `run-project` - 运行项目
-- `stop-project` - 停止运行中的项目
-- `get-selected-nodes` - 获取选中的节点
-- `set-editor-setting` - 修改编辑器设置
-- `get-editor-screenshot` - 截取编辑器视口截图
-- `get-signals` - 检查节点信号和连接
-- `reload-project` - 重新扫描项目文件系统
-
-### 调试工具 (18)
-- `get-editor-logs` - 获取编辑器/运行时日志
-- `execute-script` - 执行 GDScript 表达式
-- `get-performance-metrics` - 获取性能数据
-- `debug-print` - 打印调试信息
-- `execute-editor-script` - 执行 GDScript 脚本
-- `clear-output` - 清除 MCP/编辑器输出缓冲
-- `get-debugger-sessions` - 列出编辑器调试会话和 active/break 状态
-- `set-debugger-breakpoint` - 启用或禁用调试断点
-- `send-debugger-message` - 向运行中的游戏调试器发送自定义消息
-- `toggle-debugger-profiler` - 在活动会话中切换 EngineProfiler 通道
-- `get-debugger-messages` - 读取 bridge 捕获的运行时自定义消息
-- `add-debugger-capture-prefix` - 捕获更多 EngineDebugger 消息前缀
-- `get-debug-stack-frames` - 读取已暂停会话捕获到的脚本栈帧
-- `get-debug-stack-variables` - 读取指定栈帧的局部变量、成员变量和全局变量
-- `install-runtime-probe` - 向当前场景添加 MCP 运行时探针节点
-- `remove-runtime-probe` - 从当前场景移除 MCP 运行时探针节点
-- `request-debug-break` - 请求运行时探针进入 Godot 调试暂停循环
-- `send-debug-command` - 向已暂停会话发送 step/next/out/continue/stack 调试命令
+完整 146 个工具清单见 [当前工具清单](docs/current/tool-inventory.md)，实时 JSON Schema 以 MCP `tools/list` 返回为准。
 
 ## 🔒 安全建议
 
@@ -198,6 +137,7 @@
 - [快速开始指南](docs/current/quickstart.md)
 - [架构设计](docs/current/architecture.md)
 - [工具参考](docs/current/tools-reference.md)
+- [当前工具清单](docs/current/tool-inventory.md)
 - [测试指南](docs/current/testing-guide.md)
 
 ## 🤝 贡献

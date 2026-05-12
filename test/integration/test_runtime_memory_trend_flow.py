@@ -65,6 +65,50 @@ def wait_for_server(timeout_seconds: float = 30.0) -> None:
     raise TimeoutError("Timed out waiting for MCP server on port 9080")
 
 
+def wait_for_editor_scene_state_to_stabilize(delay_seconds: float = 3.0) -> None:
+    time.sleep(delay_seconds)
+
+
+def wait_for_current_scene(scene_path: str, timeout_seconds: float = 10.0, start_request_id: int = 200) -> dict:
+    deadline = time.time() + timeout_seconds
+    request_id = start_request_id
+    last_result = None
+    while time.time() < deadline:
+        last_result = tool_call("get_current_scene", {}, request_id=request_id)
+        if last_result.get("scene_path") == scene_path:
+            return last_result
+        time.sleep(0.5)
+        request_id += 1
+    raise AssertionError(f"Scene did not become active: expected {scene_path}, last result: {last_result}")
+
+
+def wait_for_active_debugger_session(timeout_seconds: float = 15.0, start_request_id: int = 300) -> dict:
+    deadline = time.time() + timeout_seconds
+    request_id = start_request_id
+    last_result = None
+    while time.time() < deadline:
+        last_result = tool_call("get_debugger_sessions", {}, request_id=request_id)
+        sessions = last_result.get("sessions", [])
+        if last_result.get("count", 0) > 0 and any(session.get("active") for session in sessions):
+            return last_result
+        time.sleep(0.5)
+        request_id += 1
+    raise AssertionError(f"Debugger session never became active: {last_result}")
+
+
+def wait_for_runtime_ready(timeout_seconds: float = 12.0, start_request_id: int = 400) -> dict:
+    deadline = time.time() + timeout_seconds
+    request_id = start_request_id
+    last_result = None
+    while time.time() < deadline:
+        last_result = tool_call("get_runtime_info", {"timeout_ms": 2000}, request_id=request_id)
+        if last_result.get("status") in {"success", "stale"} and last_result.get("current_scene"):
+            return last_result
+        time.sleep(0.5)
+        request_id += 1
+    raise AssertionError(f"Runtime probe never became ready: {last_result}")
+
+
 def runtime_tool_call(name: str, arguments: dict, request_id: int, timeout_seconds: float = 10.0) -> dict:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
@@ -99,6 +143,7 @@ def main() -> int:
 
     try:
         wait_for_server()
+        wait_for_editor_scene_state_to_stabilize()
 
         tools_response = rpc_call("tools/list")
         tool_names = {tool["name"] for tool in tools_response["result"]["tools"]}
@@ -110,14 +155,17 @@ def main() -> int:
         open_result = tool_call("open_scene", {"scene_path": SCENE_PATH}, request_id=2)
         if open_result.get("status") != "success":
             raise AssertionError(f"open_scene failed: {open_result}")
+        wait_for_current_scene(SCENE_PATH)
 
         install_result = tool_call("install_runtime_probe", {}, request_id=3)
-        if install_result.get("status") != "success":
+        if install_result.get("status") not in {"success", "already_installed"}:
             raise AssertionError(f"install_runtime_probe failed: {install_result}")
 
         run_result = tool_call("run_project", {"scene_path": SCENE_PATH}, request_id=4)
         if run_result.get("status") != "success":
             raise AssertionError(f"run_project failed: {run_result}")
+        wait_for_active_debugger_session()
+        wait_for_runtime_ready()
 
         trend = runtime_tool_call(
             "get_runtime_memory_trend",

@@ -1,5 +1,7 @@
 [gd_scene format=3 uid="uid://cj6x3fv3tu00f"]
 
+[ext_resource type="Script" uid="uid://bsg12huaf1u5i" path="res://addons/godot_mcp/runtime/mcp_runtime_probe.gd" id="1_mncer"]
+
 [node name="Node3D" type="Node3D" unique_id=13738152]
 
 [node name="A test node" type="Node3D" parent="." unique_id=1636092095]
@@ -11,3 +13,6 @@ fov = 45.0
 
 [node name="Cube" type="CSGBox3D" parent="A test node" unique_id=281772220]
 size = Vector3(2, 2, 2)
+
+[node name="MCPRuntimeProbe" type="Node" parent="." unique_id=241895693]
+script = ExtResource("1_mncer")

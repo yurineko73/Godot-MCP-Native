@@ -16,6 +16,12 @@ func load_state() -> Dictionary:
 	return load_config()
 
 func save_state(enabled_states: Dictionary) -> bool:
+	var absolute_storage_path: String = ProjectSettings.globalize_path(get_storage_path())
+	var parent_dir: String = absolute_storage_path.get_base_dir()
+	if not DirAccess.dir_exists_absolute(parent_dir):
+		var make_dir_error: Error = DirAccess.make_dir_recursive_absolute(parent_dir)
+		if make_dir_error != OK and not DirAccess.dir_exists_absolute(parent_dir):
+			return false
 	return save_config(enabled_states)
 
 func apply_states_to_server(server_core: MCPServerCore, states: Dictionary) -> void:

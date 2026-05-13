@@ -98,7 +98,11 @@ def main() -> int:
         if create_scene.get("status") != "success":
             raise AssertionError(f"create_scene failed: {create_scene}")
 
-        open_scene = tool_call("open_scene", {"scene_path": TEMP_SCENE_PATH}, request_id=3)
+        open_scene = tool_call(
+            "open_scene",
+            {"scene_path": TEMP_SCENE_PATH, "allow_ui_focus": True},
+            request_id=3,
+        )
         if open_scene.get("status") != "success":
             raise AssertionError(f"open_scene failed: {open_scene}")
 
@@ -139,12 +143,126 @@ def main() -> int:
         if batch_result.get("change_count") != 2:
             raise AssertionError(f"Expected two property changes: {batch_result}")
 
+        mover_groups = tool_call(
+            "set_node_groups",
+            {"node_path": "/root/temp_batch_scene/Mover", "groups": ["paged_group"]},
+            request_id=61,
+        )
+        pivot_groups = tool_call(
+            "set_node_groups",
+            {"node_path": "/root/temp_batch_scene/Pivot", "groups": ["paged_group"]},
+            request_id=62,
+        )
+        extra = tool_call(
+            "create_node",
+            {"parent_path": "/root", "node_type": "Node2D", "node_name": "Extra"},
+            request_id=63,
+        )
+        extra_groups = tool_call(
+            "set_node_groups",
+            {"node_path": "/root/temp_batch_scene/Extra", "groups": ["paged_group"]},
+            request_id=64,
+        )
+        if mover_groups.get("status") != "success" or pivot_groups.get("status") != "success" or extra.get("status") != "success" or extra_groups.get("status") != "success":
+            raise AssertionError(f"Failed to prepare paged group fixtures: {mover_groups} / {pivot_groups} / {extra} / {extra_groups}")
+
         mover_props = tool_call("get_node_properties", {"node_path": "/root/temp_batch_scene/Mover"}, request_id=7)
         pivot_props = tool_call("get_node_properties", {"node_path": "/root/temp_batch_scene/Pivot"}, request_id=8)
         if mover_props["properties"].get("position") != {"x": 12.0, "y": 24.0}:
             raise AssertionError(f"Mover position was not updated: {mover_props}")
         if pivot_props["properties"].get("visible") is not False:
             raise AssertionError(f"Pivot visible flag was not updated: {pivot_props}")
+
+        mover_props_page_1 = tool_call(
+            "get_node_properties",
+            {"node_path": "/root/temp_batch_scene/Mover", "max_properties": 2},
+            request_id=81,
+        )
+        if mover_props_page_1.get("truncated") is not True or mover_props_page_1.get("has_more") is not True:
+            raise AssertionError(f"Expected paged get_node_properties metadata on first page: {mover_props_page_1}")
+        if mover_props_page_1.get("count") != 2 or mover_props_page_1.get("total_available", 0) <= 2:
+            raise AssertionError(f"Unexpected first get_node_properties page sizing: {mover_props_page_1}")
+        next_cursor = mover_props_page_1.get("next_cursor")
+        if not isinstance(next_cursor, int):
+            raise AssertionError(f"Expected integer next_cursor from first property page: {mover_props_page_1}")
+
+        mover_props_page_2 = tool_call(
+            "get_node_properties",
+            {"node_path": "/root/temp_batch_scene/Mover", "max_properties": 2, "cursor": next_cursor},
+            request_id=82,
+        )
+        if mover_props_page_2.get("count", 0) < 1 or mover_props_page_2.get("count", 0) > 2:
+            raise AssertionError(f"Expected continuation get_node_properties page to stay within max_properties: {mover_props_page_2}")
+        if mover_props_page_2.get("properties") == mover_props_page_1.get("properties"):
+            raise AssertionError(f"Expected continuation get_node_properties page to advance beyond the first window: {mover_props_page_2}")
+
+        final_cursor = mover_props_page_1.get("total_available", 0) - 1
+        mover_props_last_page = tool_call(
+            "get_node_properties",
+            {"node_path": "/root/temp_batch_scene/Mover", "max_properties": 2, "cursor": final_cursor},
+            request_id=83,
+        )
+        if mover_props_last_page.get("has_more") is not False or mover_props_last_page.get("truncated") is not False:
+            raise AssertionError(f"Expected last get_node_properties page to be complete: {mover_props_last_page}")
+        if mover_props_last_page.get("count") != 1:
+            raise AssertionError(f"Expected last get_node_properties page to contain exactly one trailing property: {mover_props_last_page}")
+
+        group_page_1 = tool_call(
+            "find_nodes_in_group",
+            {"group": "paged_group", "max_items": 2},
+            request_id=84,
+        )
+        if group_page_1.get("truncated") is not True or group_page_1.get("has_more") is not True:
+            raise AssertionError(f"Expected paged find_nodes_in_group metadata on first page: {group_page_1}")
+        if group_page_1.get("node_count") != 2 or group_page_1.get("total_available", 0) != 3:
+            raise AssertionError(f"Unexpected first find_nodes_in_group page sizing: {group_page_1}")
+        group_next_cursor = group_page_1.get("next_cursor")
+        if not isinstance(group_next_cursor, int):
+            raise AssertionError(f"Expected integer next_cursor from first group page: {group_page_1}")
+
+        group_last_page = tool_call(
+            "find_nodes_in_group",
+            {"group": "paged_group", "max_items": 2, "cursor": group_next_cursor},
+            request_id=85,
+        )
+        if group_last_page.get("has_more") is not False or group_last_page.get("truncated") is not False:
+            raise AssertionError(f"Expected last find_nodes_in_group page to be complete: {group_last_page}")
+        if group_last_page.get("node_count") != 1:
+            raise AssertionError(f"Expected last find_nodes_in_group page to contain one trailing node: {group_last_page}")
+
+        extra_more_groups = tool_call(
+            "set_node_groups",
+            {
+                "node_path": "/root/temp_batch_scene/Extra",
+                "groups": ["group_alpha", "group_beta", "group_gamma"],
+            },
+            request_id=86,
+        )
+        if extra_more_groups.get("status") != "success":
+            raise AssertionError(f"Failed to prepare paged get_node_groups fixture: {extra_more_groups}")
+
+        groups_page_1 = tool_call(
+            "get_node_groups",
+            {"node_path": "/root/temp_batch_scene/Extra", "max_items": 2},
+            request_id=87,
+        )
+        if groups_page_1.get("truncated") is not True or groups_page_1.get("has_more") is not True:
+            raise AssertionError(f"Expected paged get_node_groups metadata on first page: {groups_page_1}")
+        if groups_page_1.get("group_count") != 2 or groups_page_1.get("total_available", 0) < 4:
+            raise AssertionError(f"Unexpected first get_node_groups page sizing: {groups_page_1}")
+        groups_next_cursor = groups_page_1.get("next_cursor")
+        if not isinstance(groups_next_cursor, int):
+            raise AssertionError(f"Expected integer next_cursor from first get_node_groups page: {groups_page_1}")
+
+        groups_last_page = tool_call(
+            "get_node_groups",
+            {"node_path": "/root/temp_batch_scene/Extra", "max_items": 2, "cursor": groups_next_cursor + 1},
+            request_id=88,
+        )
+        if groups_last_page.get("has_more") is not False or groups_last_page.get("truncated") is not False:
+            raise AssertionError(f"Expected last get_node_groups page to be complete: {groups_last_page}")
+        if groups_last_page.get("group_count") != 1:
+            raise AssertionError(f"Expected last get_node_groups page to contain one trailing group: {groups_last_page}")
 
         undo_check = tool_call(
             "execute_editor_script",

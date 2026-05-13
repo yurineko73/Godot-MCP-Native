@@ -320,7 +320,8 @@ func _handle_initialize(message: Dictionary) -> Dictionary:
 	
 	var result: Dictionary = {
 		"protocolVersion": negotiated_version,
-		"capabilities": MCPTypes.create_capabilities(true, true, true, true),
+		# Advertise only the protocol surfaces that the server currently implements.
+		"capabilities": MCPTypes.create_capabilities(true, false, false, true, false),
 		"serverInfo": {
 			"name": "godot-native-mcp",
 			"version": "2.0.0"
@@ -531,10 +532,11 @@ func _handle_resource_subscribe(message: Dictionary) -> Dictionary:
 	_log_info("Resource subscribe: " + uri)
 	
 	# TODO: 实现资源订阅逻辑
-	var result: Dictionary = {"subscriptionId": MCPTypes.generate_id()}
-	var response: Dictionary = MCPTypes.create_response(id, result)
-	
-	return response
+	return MCPTypes.create_error_response(
+		id,
+		MCPTypes.ERROR_METHOD_NOT_FOUND,
+		"Method not implemented: resources/subscribe"
+	)
 
 func _handle_prompts_list(message: Dictionary) -> Dictionary:
 	var id: Variant = message.get("id")
@@ -557,18 +559,28 @@ func _handle_prompt_get(message: Dictionary) -> Dictionary:
 	var id: Variant = message.get("id")
 	var params: Dictionary = message.get("params", {})
 	var prompt_name: String = params.get("name", "")
+	var prompt_arguments: Dictionary = params.get("arguments", {})
 	
 	_log_info("Prompt get: " + prompt_name)
 	
-	# TODO: 实现prompt获取逻辑
-	var result: Dictionary = {
-		"description": "Prompt: " + prompt_name,
-		"messages": []
-	}
-	
-	var response: Dictionary = MCPTypes.create_response(id, result)
-	
-	return response
+	if not _prompts.has(prompt_name):
+		return MCPTypes.create_error_response(id, MCPTypes.ERROR_INVALID_PARAMS, "Unknown prompt: " + prompt_name)
+
+	var prompt: MCPTypes.MCPPrompt = _prompts[prompt_name]
+	if prompt == null or not prompt.get_callable.is_valid():
+		return MCPTypes.create_error_response(id, MCPTypes.ERROR_INTERNAL_ERROR, "Prompt get callable is invalid: " + prompt_name)
+
+	var result_variant: Variant = prompt.get_callable.call(prompt_arguments)
+	if typeof(result_variant) != TYPE_DICTIONARY:
+		return MCPTypes.create_error_response(id, MCPTypes.ERROR_INTERNAL_ERROR, "Prompt get callable must return a Dictionary: " + prompt_name)
+
+	var result: Dictionary = result_variant
+	if not result.has("description"):
+		result["description"] = prompt.description
+	if not result.has("messages"):
+		result["messages"] = []
+
+	return MCPTypes.create_response(id, result)
 
 # ============================================================================
 # 工具注册API（优化版 - 根据mcp-builder）
@@ -754,6 +766,7 @@ func register_prompt(name: String, description: String,
 	prompt.name = name
 	prompt.description = description
 	prompt.arguments = arguments
+	prompt.get_callable = get_callable
 	
 	_prompts[name] = prompt
 	_log_info("Prompt registered: " + name)

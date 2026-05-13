@@ -144,6 +144,61 @@ def main() -> int:
         if missing_tools:
             raise AssertionError(f"Missing expected script rename tools: {missing_tools}")
 
+        capped_preview = tool_call(
+            "rename_script_symbol",
+            {
+                "symbol_name": "TempRenameTarget",
+                "new_name": "TempRenameRenamed",
+                "search_path": "res://.tmp_script_rename",
+                "include_extensions": [".gd", ".cs"],
+                "dry_run": True,
+                "max_results": 1,
+            },
+            request_id=2,
+        )
+        if capped_preview.get("dry_run") is not True:
+            raise AssertionError(f"Expected capped dry_run preview result: {capped_preview}")
+        if capped_preview.get("replacement_count") != 1:
+            raise AssertionError(f"Expected one capped textual replacement in preview: {capped_preview}")
+        if capped_preview.get("truncated") is not True or capped_preview.get("has_more") is not True:
+            raise AssertionError(f"Expected rerun metadata on capped preview: {capped_preview}")
+        if capped_preview.get("max_results_applied") != 1 or capped_preview.get("next_max_results") != 2:
+            raise AssertionError(f"Expected next_max_results=2 on capped preview: {capped_preview}")
+        if {entry["script_path"] for entry in capped_preview.get("changed_files", [])} != {GD_SCRIPT_PATH}:
+            raise AssertionError(f"Expected capped preview to stop in the first changed file: {capped_preview}")
+        if "TempRenameRenamed" in read_text(GD_SCRIPT_FILE):
+            raise AssertionError("Dry run should not modify files")
+
+        capped_apply = tool_call(
+            "rename_script_symbol",
+            {
+                "symbol_name": "TempRenameTarget",
+                "new_name": "TempRenameRenamed",
+                "search_path": "res://.tmp_script_rename",
+                "include_extensions": [".gd", ".cs"],
+                "dry_run": False,
+                "max_results": 1,
+            },
+            request_id=3,
+        )
+        if capped_apply.get("dry_run") is not False:
+            raise AssertionError(f"Expected capped apply result: {capped_apply}")
+        if capped_apply.get("replacement_count") != 1:
+            raise AssertionError(f"Expected one capped textual replacement during apply: {capped_apply}")
+        if capped_apply.get("truncated") is not True or capped_apply.get("has_more") is not True:
+            raise AssertionError(f"Expected rerun metadata on capped apply: {capped_apply}")
+        if capped_apply.get("max_results_applied") != 1 or capped_apply.get("next_max_results") != 2:
+            raise AssertionError(f"Expected next_max_results=2 on capped apply: {capped_apply}")
+        if "class_name TempRenameRenamed" not in read_text(GD_SCRIPT_FILE):
+            raise AssertionError("Expected capped apply to rename the first definition match")
+        if "TempRenameRenamed" in read_text(GD_USAGE_FILE) or "TempRenameRenamed" in read_text(CS_USAGE_FILE):
+            raise AssertionError("Capped apply should not rename later usage files once the budget is exhausted")
+
+        GD_SCRIPT_FILE.write_text(GD_SCRIPT_TEXT, encoding="utf-8")
+        GD_USAGE_FILE.write_text(GD_USAGE_TEXT, encoding="utf-8")
+        CS_USAGE_FILE.write_text(CS_USAGE_TEXT, encoding="utf-8")
+        SCENE_USAGE_FILE.write_text(SCENE_USAGE_TEXT, encoding="utf-8")
+
         preview = tool_call(
             "rename_script_symbol",
             {
@@ -153,12 +208,14 @@ def main() -> int:
                 "include_extensions": [".gd", ".cs"],
                 "dry_run": True,
             },
-            request_id=2,
+            request_id=4,
         )
         if preview.get("dry_run") is not True:
             raise AssertionError(f"Expected dry_run preview result: {preview}")
         if preview.get("replacement_count") != 4:
             raise AssertionError(f"Expected four textual replacements in preview: {preview}")
+        if preview.get("truncated") is not False or preview.get("has_more") is not False:
+            raise AssertionError(f"Expected terminal metadata on uncapped preview: {preview}")
         if "TempRenameRenamed" in read_text(GD_SCRIPT_FILE):
             raise AssertionError("Dry run should not modify files")
 
@@ -171,12 +228,14 @@ def main() -> int:
                 "include_extensions": [".gd", ".cs"],
                 "dry_run": False,
             },
-            request_id=3,
+            request_id=5,
         )
         if apply_result.get("dry_run") is not False:
             raise AssertionError(f"Expected apply result: {apply_result}")
         if apply_result.get("replacement_count") != 4:
             raise AssertionError(f"Expected four textual replacements during apply: {apply_result}")
+        if apply_result.get("truncated") is not False or apply_result.get("has_more") is not False:
+            raise AssertionError(f"Expected terminal metadata on uncapped apply: {apply_result}")
         changed_paths = {entry["script_path"] for entry in apply_result.get("changed_files", [])}
         if changed_paths != {GD_SCRIPT_PATH, GD_USAGE_PATH, CS_USAGE_PATH}:
             raise AssertionError(f"Unexpected changed files: {apply_result}")

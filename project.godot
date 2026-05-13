@@ -20,6 +20,10 @@ config/features=PackedStringArray("4.6", "GL Compatibility")
 run/flush_stdout_on_print=true
 config/icon="res://icon.svg"
 
+[dotnet]
+
+project/assembly_name="Godot MCP Native"
+
 [editor_plugins]
 
 enabled=PackedStringArray("res://addons/godot_mcp/plugin.cfg")

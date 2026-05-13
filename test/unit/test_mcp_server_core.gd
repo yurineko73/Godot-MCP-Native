@@ -1,14 +1,35 @@
 extends "res://addons/gut/test.gd"
 
 var _core: RefCounted = null
+const TOOL_STATE_STORAGE_PATH := "user://mcp_tool_state.cfg"
+
+func _clear_tool_state_storage() -> void:
+	if not FileAccess.file_exists(TOOL_STATE_STORAGE_PATH):
+		return
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(TOOL_STATE_STORAGE_PATH))
+
+func _can_write_tool_state_storage() -> bool:
+	var absolute_probe_path := ProjectSettings.globalize_path("user://mcp_tool_state_probe.tmp")
+	var parent_dir := absolute_probe_path.get_base_dir()
+	DirAccess.make_dir_recursive_absolute(parent_dir)
+	var probe_file: FileAccess = FileAccess.open(absolute_probe_path, FileAccess.WRITE)
+	if probe_file == null:
+		return false
+	probe_file.store_string("probe")
+	probe_file.close()
+	if FileAccess.file_exists(absolute_probe_path):
+		DirAccess.remove_absolute(absolute_probe_path)
+	return true
 
 func before_each():
+	_clear_tool_state_storage()
 	_core = load("res://addons/godot_mcp/native_mcp/mcp_server_core.gd").new()
 
 func after_each():
 	if _core and _core.is_running():
 		_core.stop()
 	_core = null
+	_clear_tool_state_storage()
 
 func test_negotiate_protocol_version_older():
 	var result: String = _core._negotiate_protocol_version("2024-11-05")
@@ -17,6 +38,72 @@ func test_negotiate_protocol_version_older():
 func test_negotiate_protocol_version_unsupported():
 	var result: String = _core._negotiate_protocol_version("2099-01-01")
 	assert_ne(result, "2099-01-01", "Should not return unsupported version")
+
+func test_initialize_advertises_only_supported_capabilities():
+	var response: Dictionary = _core._handle_initialize({
+		"id": 1,
+		"method": "initialize",
+		"params": {
+			"protocolVersion": MCPTypes.PROTOCOL_VERSION,
+			"capabilities": {}
+		}
+	})
+	var capabilities: Dictionary = response.get("result", {}).get("capabilities", {})
+	assert_has(capabilities, "tools", "Initialize should advertise tools support")
+	assert_has(capabilities, "resources", "Initialize should advertise resources support")
+	assert_has(capabilities, "prompts", "Initialize should advertise prompts support")
+	assert_eq(capabilities.get("prompts", {}), {}, "Initialize should not advertise prompt listChanged support yet")
+	assert_false(capabilities.get("resources", {}).get("subscribe", false), "Initialize should not advertise resources.subscribe yet")
+	assert_eq(capabilities.get("resources", {}), {}, "Initialize should not advertise resources listChanged support until notifications exist")
+
+func test_resource_subscribe_returns_not_implemented_error():
+	var response: Dictionary = _core._handle_resource_subscribe({
+		"id": 2,
+		"method": "resources/subscribe",
+		"params": {"uri": "godot://test"}
+	})
+	var error: Dictionary = response.get("error", {})
+	assert_eq(error.get("code"), MCPTypes.ERROR_METHOD_NOT_FOUND, "Resource subscribe should return method-not-found while unimplemented")
+	assert_string_contains(error.get("message", ""), "resources/subscribe", "Error message should mention resources/subscribe")
+
+func test_prompt_get_returns_unknown_prompt_error():
+	var response: Dictionary = _core._handle_prompt_get({
+		"id": 3,
+		"method": "prompts/get",
+		"params": {"name": "test_prompt"}
+	})
+	var error: Dictionary = response.get("error", {})
+	assert_eq(error.get("code"), MCPTypes.ERROR_INVALID_PARAMS, "Unknown prompt should return invalid params")
+	assert_string_contains(error.get("message", ""), "test_prompt", "Error message should mention the missing prompt")
+
+func test_prompt_get_returns_registered_prompt_messages():
+	var prompt_arguments: Array[Dictionary] = [{"name": "subject", "required": true}]
+	_core.register_prompt(
+		"test_prompt",
+		"Test prompt",
+		prompt_arguments,
+		func(args): return {
+			"messages": [
+				{"role": "user", "content": {"type": "text", "text": "Explain %s" % [args.get("subject", "")]}}
+			]
+		}
+	)
+	var response: Dictionary = _core._handle_prompt_get({
+		"id": 4,
+		"method": "prompts/get",
+		"params": {
+			"name": "test_prompt",
+			"arguments": {"subject": "signals"}
+		}
+	})
+	var result: Dictionary = response.get("result", {})
+	assert_eq(result.get("description"), "Test prompt", "Prompt get should default description from registered metadata")
+	assert_eq(result.get("messages", []).size(), 1, "Prompt get should return callable-provided messages")
+	assert_string_contains(
+		result.get("messages", [{}])[0].get("content", {}).get("text", ""),
+		"signals",
+		"Prompt get should pass arguments into the registered callable"
+	)
 
 func test_register_tool():
 	_core.register_tool("test_tool", "A test tool", {"type": "object"}, func(args): return {"status": "ok"})
@@ -122,6 +209,9 @@ func test_load_tool_states_returns_zero_when_no_saved_state():
 	assert_true(count >= 0, "Should return 0 or more: %d" % [count])
 
 func test_save_and_load_tool_states():
+	if not _can_write_tool_state_storage():
+		pass_test("Tool-state persistence is not writable in this editor environment")
+		return
 	_core.register_tool("save_test_tool", "Save Test", {"type": "object"}, func(args): return {})
 	_core.set_tool_enabled("save_test_tool", false)
 	_core.save_tool_states()

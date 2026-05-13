@@ -291,14 +291,32 @@ def main() -> int:
 
         array_variables = tool_call(
             "get_debug_variables",
-            {"variables_reference": references["array_reference"]},
+            {"variables_reference": references["array_reference"], "count": 2, "offset": 0},
             request_id=11_4,
         )
         array_children = {entry["name"]: entry for entry in array_variables.get("variables", [])}
-        if not {"size", "0", "1", "2"}.issubset(array_children):
-            raise AssertionError(f"Unexpected Array children: {array_variables}")
+        if set(array_children) != {"size", "0"}:
+            raise AssertionError(f"Unexpected first Array page: {array_variables}")
+        if array_variables.get("count") != 2 or array_variables.get("total_available") != 4:
+            raise AssertionError(f"Unexpected Array pagination sizing: {array_variables}")
+        if array_variables.get("truncated") is not True or array_variables.get("has_more") is not True:
+            raise AssertionError(f"Expected Array pagination metadata on first page: {array_variables}")
+        if array_variables.get("next_cursor") != 2:
+            raise AssertionError(f"Expected Array pagination next_cursor=2: {array_variables}")
         if array_children["size"]["value"] != 3 or array_children["0"]["value"] != 10:
             raise AssertionError(f"Unexpected Array values: {array_variables}")
+        array_variables_page_2 = tool_call(
+            "get_debug_variables",
+            {"variables_reference": references["array_reference"], "count": 2, "offset": 2},
+            request_id=11_5,
+        )
+        array_children_page_2 = {entry["name"]: entry for entry in array_variables_page_2.get("variables", [])}
+        if set(array_children_page_2) != {"1", "2"}:
+            raise AssertionError(f"Unexpected second Array page: {array_variables_page_2}")
+        if array_variables_page_2.get("truncated") is not False or array_variables_page_2.get("has_more") is not False:
+            raise AssertionError(f"Expected terminal Array page metadata: {array_variables_page_2}")
+        if "next_cursor" in array_variables_page_2:
+            raise AssertionError(f"Did not expect next_cursor on terminal Array page: {array_variables_page_2}")
 
         transform3d_variables = tool_call(
             "get_debug_variables",
@@ -382,12 +400,30 @@ def main() -> int:
 
         expanded_array = tool_call(
             "expand_debug_variable",
-            {"scope": "evaluation", "variable_path": ["array_value"]},
+            {"scope": "evaluation", "variable_path": ["array_value"], "count": 2, "offset": 0},
             request_id=14_6,
         )
         expanded_array_entries = {entry["name"]: entry for entry in expanded_array.get("entries", [])}
-        if not {"size", "0", "1", "2"}.issubset(expanded_array_entries):
-            raise AssertionError(f"Unexpected expanded array entries: {expanded_array}")
+        if set(expanded_array_entries) != {"size", "0"}:
+            raise AssertionError(f"Unexpected first expanded array page: {expanded_array}")
+        if expanded_array.get("count") != 2 or expanded_array.get("total_available") != 4:
+            raise AssertionError(f"Unexpected expanded array pagination sizing: {expanded_array}")
+        if expanded_array.get("truncated") is not True or expanded_array.get("has_more") is not True:
+            raise AssertionError(f"Expected expanded array pagination metadata on first page: {expanded_array}")
+        if expanded_array.get("next_cursor") != 2:
+            raise AssertionError(f"Expected expanded array next_cursor=2: {expanded_array}")
+        expanded_array_page_2 = tool_call(
+            "expand_debug_variable",
+            {"scope": "evaluation", "variable_path": ["array_value"], "count": 2, "offset": 2},
+            request_id=14_7,
+        )
+        expanded_array_entries_page_2 = {entry["name"]: entry for entry in expanded_array_page_2.get("entries", [])}
+        if set(expanded_array_entries_page_2) != {"1", "2"}:
+            raise AssertionError(f"Unexpected second expanded array page: {expanded_array_page_2}")
+        if expanded_array_page_2.get("truncated") is not False or expanded_array_page_2.get("has_more") is not False:
+            raise AssertionError(f"Expected terminal expanded array pagination metadata: {expanded_array_page_2}")
+        if "next_cursor" in expanded_array_page_2:
+            raise AssertionError(f"Did not expect next_cursor on terminal expanded array page: {expanded_array_page_2}")
 
         inspect_helpers = tool_call(
             "execute_editor_script",

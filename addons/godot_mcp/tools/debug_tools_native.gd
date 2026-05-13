@@ -203,6 +203,9 @@ func _register_get_editor_logs(server_core: RefCounted) -> void:
 			},
 			"count": {"type": "integer"},
 			"total_available": {"type": "integer"},
+			"truncated": {"type": "boolean"},
+			"has_more": {"type": "boolean"},
+			"next_cursor": {"type": "integer"},
 			"source": {"type": "string"}
 		}
 	}
@@ -382,7 +385,7 @@ func _register_get_debugger_messages(server_core: RefCounted) -> void:
 			}
 		},
 		Callable(self, "_tool_get_debugger_messages"),
-		{"type": "object", "properties": {"messages": {"type": "array"}, "count": {"type": "integer"}, "total_available": {"type": "integer"}}},
+		{"type": "object", "properties": {"messages": {"type": "array"}, "count": {"type": "integer"}, "total_available": {"type": "integer"}, "truncated": {"type": "boolean"}, "has_more": {"type": "boolean"}, "next_cursor": {"type": "integer"}}},
 		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
 		"supplementary", "Debug-Advanced"
 	)
@@ -406,7 +409,7 @@ func _register_get_debug_state_events(server_core: RefCounted) -> void:
 			}
 		},
 		Callable(self, "_tool_get_debug_state_events"),
-		{"type": "object", "properties": {"events": {"type": "array"}, "count": {"type": "integer"}, "total_available": {"type": "integer"}}},
+		{"type": "object", "properties": {"events": {"type": "array"}, "count": {"type": "integer"}, "total_available": {"type": "integer"}, "truncated": {"type": "boolean"}, "has_more": {"type": "boolean"}, "next_cursor": {"type": "integer"}}},
 		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
 		"supplementary", "Debug-Advanced"
 	)
@@ -431,7 +434,7 @@ func _register_get_debug_output(server_core: RefCounted) -> void:
 			}
 		},
 		Callable(self, "_tool_get_debug_output"),
-		{"type": "object", "properties": {"events": {"type": "array"}, "count": {"type": "integer"}, "total_available": {"type": "integer"}}},
+		{"type": "object", "properties": {"events": {"type": "array"}, "count": {"type": "integer"}, "total_available": {"type": "integer"}, "truncated": {"type": "boolean"}, "has_more": {"type": "boolean"}, "next_cursor": {"type": "integer"}}},
 		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
 		"supplementary", "Debug-Advanced"
 	)
@@ -597,7 +600,7 @@ func _register_get_debug_variables(server_core: RefCounted) -> void:
 			"required": ["variables_reference"]
 		},
 		Callable(self, "_tool_get_debug_variables"),
-		{"type": "object", "properties": {"variables_reference": {"type": "integer"}, "variables": {"type": "array"}, "count": {"type": "integer"}, "total_available": {"type": "integer"}}},
+		{"type": "object", "properties": {"variables_reference": {"type": "integer"}, "variables": {"type": "array"}, "count": {"type": "integer"}, "total_available": {"type": "integer"}, "truncated": {"type": "boolean"}, "has_more": {"type": "boolean"}, "next_cursor": {"type": "integer"}}},
 		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
 		"supplementary", "Debug-Advanced"
 	)
@@ -634,7 +637,7 @@ func _register_expand_debug_variable(server_core: RefCounted) -> void:
 			"required": ["scope", "variable_path"]
 		},
 		Callable(self, "_tool_expand_debug_variable"),
-		{"type": "object", "properties": {"frame": {"type": "integer"}, "scope": {"type": "string"}, "variable_path": {"type": "array"}, "entries": {"type": "array"}, "count": {"type": "integer"}, "total_available": {"type": "integer"}}},
+		{"type": "object", "properties": {"frame": {"type": "integer"}, "scope": {"type": "string"}, "variable_path": {"type": "array"}, "entries": {"type": "array"}, "count": {"type": "integer"}, "total_available": {"type": "integer"}, "truncated": {"type": "boolean"}, "has_more": {"type": "boolean"}, "next_cursor": {"type": "integer"}}},
 		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
 		"supplementary", "Debug-Advanced"
 	)
@@ -679,16 +682,25 @@ func _tool_expand_debug_variable(params: Dictionary) -> Dictionary:
 	var offset: int = max(0, int(params.get("offset", 0)))
 	var count: int = max(0, int(params.get("count", 100)))
 	var start: int = mini(offset, entries.size())
-	var end: int = mini(start + count, entries.size())
+	var end: int = entries.size()
+	if count > 0:
+		end = mini(start + count, entries.size())
+	var has_more: bool = count > 0 and end < entries.size()
+	var truncated: bool = has_more
 
-	return {
+	var result := {
 		"frame": frame,
 		"scope": scope,
 		"variable_path": variable_path,
 		"entries": entries.slice(start, end),
 		"count": end - start,
-		"total_available": entries.size()
+		"total_available": entries.size(),
+		"truncated": truncated,
+		"has_more": has_more
 	}
+	if has_more:
+		result["next_cursor"] = end
+	return result
 
 func _resolve_debug_path_step(current_value: Variant, step: String) -> Dictionary:
 	if current_value is Array:
@@ -2802,6 +2814,8 @@ func _get_mcp_logs(types: Array, count: int, offset: int, order: String) -> Dict
 			"logs": [],
 			"count": 0,
 			"total_available": 0,
+			"truncated": false,
+			"has_more": false,
 			"source": "mcp"
 		}
 
@@ -2824,7 +2838,6 @@ func _get_mcp_logs(types: Array, count: int, offset: int, order: String) -> Dict
 			message = line.substr(7).strip_edges()
 		all_entries.append({"index": i, "type": log_type, "message": message})
 
-	var total_available: int = all_entries.size()
 	_log_mutex.unlock()
 
 	var filtered: Array = all_entries
@@ -2837,16 +2850,26 @@ func _get_mcp_logs(types: Array, count: int, offset: int, order: String) -> Dict
 	if order == "desc":
 		filtered.reverse()
 
-	var start: int = mini(offset, filtered.size())
-	var end: int = mini(start + count, filtered.size())
+	var total_available: int = filtered.size()
+	var start: int = mini(offset, total_available)
+	var end: int = total_available
+	if count > 0:
+		end = mini(start + count, total_available)
 	var result_logs: Array = filtered.slice(start, end)
+	var has_more: bool = count > 0 and end < total_available
+	var truncated: bool = has_more
 
-	return {
+	var result: Dictionary = {
 		"logs": result_logs,
 		"count": result_logs.size(),
 		"total_available": total_available,
+		"truncated": truncated,
+		"has_more": has_more,
 		"source": "mcp"
 	}
+	if has_more:
+		result["next_cursor"] = end
+	return result
 
 func _get_runtime_logs(types: Array, count: int, offset: int, order: String) -> Dictionary:
 	var log_path: String = "user://logs/godot.log"
@@ -2855,6 +2878,8 @@ func _get_runtime_logs(types: Array, count: int, offset: int, order: String) -> 
 			"logs": [],
 			"count": 0,
 			"total_available": 0,
+			"truncated": false,
+			"has_more": false,
 			"source": "runtime",
 			"note": "Runtime log file not found: " + log_path
 		}
@@ -2865,6 +2890,8 @@ func _get_runtime_logs(types: Array, count: int, offset: int, order: String) -> 
 			"logs": [],
 			"count": 0,
 			"total_available": 0,
+			"truncated": false,
+			"has_more": false,
 			"source": "runtime",
 			"note": "Runtime log file not available. Logs are only created after running the project."
 		}
@@ -2882,6 +2909,8 @@ func _get_runtime_logs(types: Array, count: int, offset: int, order: String) -> 
 			"logs": [],
 			"count": 0,
 			"total_available": 0,
+			"truncated": false,
+			"has_more": false,
 			"source": "runtime"
 		}
 
@@ -2894,15 +2923,24 @@ func _get_runtime_logs(types: Array, count: int, offset: int, order: String) -> 
 			entries.append({"index": i, "type": "Info", "message": all_lines[i]})
 
 	var start: int = mini(offset, entries.size())
-	var end: int = mini(start + count, entries.size())
+	var end: int = entries.size()
+	if count > 0:
+		end = mini(start + count, entries.size())
 	var result_logs: Array = entries.slice(start, end)
+	var has_more: bool = count > 0 and end < entries.size()
+	var truncated: bool = has_more
 
-	return {
+	var result: Dictionary = {
 		"logs": result_logs,
 		"count": result_logs.size(),
 		"total_available": total_available,
+		"truncated": truncated,
+		"has_more": has_more,
 		"source": "runtime"
 	}
+	if has_more:
+		result["next_cursor"] = end
+	return result
 
 # ============================================================================
 # execute_script - 执行脚本代码

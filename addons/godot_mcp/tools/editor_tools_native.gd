@@ -68,6 +68,35 @@ func register_tools(server_core: RefCounted) -> void:
 	_register_get_selected_nodes(server_core)
 	_register_select_node(server_core)
 	_register_select_file(server_core)
+	_register_get_file_system_navigation(server_core)
+	_register_get_editor_paths(server_core)
+	_register_get_editor_shell_state(server_core)
+	_register_get_editor_language(server_core)
+	_register_get_editor_play_state(server_core)
+	_register_get_editor_3d_snap_state(server_core)
+	_register_get_editor_subsystem_availability(server_core)
+	_register_get_editor_previewer_availability(server_core)
+	_register_get_editor_undo_redo_availability(server_core)
+	_register_get_editor_viewport_availability(server_core)
+	_register_get_editor_base_control_availability(server_core)
+	_register_get_editor_file_system_dock_availability(server_core)
+	_register_get_editor_inspector_availability(server_core)
+	_register_get_editor_current_location(server_core)
+	_register_get_editor_selected_paths_summary(server_core)
+	_register_get_editor_selection_availability(server_core)
+	_register_get_editor_command_palette_availability(server_core)
+	_register_get_editor_toaster_availability(server_core)
+	_register_get_editor_resource_filesystem_availability(server_core)
+	_register_get_editor_script_editor_availability(server_core)
+	_register_get_editor_open_script_summary(server_core)
+	_register_get_editor_open_scene_summary(server_core)
+	_register_get_editor_open_scenes_summary(server_core)
+	_register_get_editor_open_scene_roots_summary(server_core)
+	_register_get_editor_settings_availability(server_core)
+	_register_get_editor_theme_availability(server_core)
+	_register_get_editor_current_feature_profile(server_core)
+	_register_get_editor_plugin_enabled_state(server_core)
+	_register_get_editor_current_scene_dirty_state(server_core)
 	_register_get_inspector_properties(server_core)
 	_register_set_editor_setting(server_core)
 	_register_get_editor_screenshot(server_core)
@@ -524,8 +553,1445 @@ func _tool_select_file(params: Dictionary) -> Dictionary:
 	}
 
 # ============================================================================
+# get_file_system_navigation - 读取 FileSystem dock 当前导航状态
+# ============================================================================
+
+func _register_get_file_system_navigation(server_core: RefCounted) -> void:
+	var tool_name: String = "get_file_system_navigation"
+	var description: String = "Get the current FileSystem dock navigation state, including current path, current directory, and selected paths."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"current_path": {"type": "string"},
+			"current_directory": {"type": "string"},
+			"selected_paths": {
+				"type": "array",
+				"items": {"type": "string"}
+			},
+			"selected_count": {"type": "integer"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_file_system_navigation"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_file_system_navigation(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var selected_paths: Array = []
+	for path_variant in editor_interface.get_selected_paths():
+		selected_paths.append(str(path_variant))
+
+	return {
+		"current_path": str(editor_interface.get_current_path()),
+		"current_directory": str(editor_interface.get_current_directory()),
+		"selected_paths": selected_paths,
+		"selected_count": selected_paths.size()
+	}
+
+# ============================================================================
+# get_editor_paths - 读取编辑器路径状态
+# ============================================================================
+
+func _register_get_editor_paths(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_paths"
+	var description: String = "Get stable editor path information such as config, data, cache, and project settings directories."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"config_dir": {"type": "string"},
+			"data_dir": {"type": "string"},
+			"cache_dir": {"type": "string"},
+			"project_settings_dir": {"type": "string"},
+			"export_templates_dir": {"type": "string"},
+			"self_contained": {"type": "boolean"},
+			"self_contained_file": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_paths"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_paths(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var editor_paths = editor_interface.get_editor_paths()
+	if not editor_paths:
+		return {"error": "Editor paths not available"}
+
+	var data_dir: String = str(editor_paths.get_data_dir())
+	return {
+		"config_dir": str(editor_paths.get_config_dir()),
+		"data_dir": data_dir,
+		"cache_dir": str(editor_paths.get_cache_dir()),
+		"project_settings_dir": str(editor_paths.get_project_settings_dir()),
+		"export_templates_dir": data_dir.path_join("export_templates"),
+		"self_contained": bool(editor_paths.is_self_contained()),
+		"self_contained_file": str(editor_paths.get_self_contained_file())
+	}
+
+# ============================================================================
+# get_editor_shell_state - 读取编辑器 shell 状态
+# ============================================================================
+
+func _register_get_editor_shell_state(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_shell_state"
+	var description: String = "Get stable editor shell state such as the main screen host control, effective editor scale, and multi-window mode."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"main_screen_name": {"type": "string"},
+			"main_screen_type": {"type": "string"},
+			"editor_scale": {"type": "number"},
+			"multi_window_enabled": {"type": "boolean"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_shell_state"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_shell_state(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var main_screen: Control = editor_interface.get_editor_main_screen()
+	if not main_screen:
+		return {"error": "Editor main screen not available"}
+
+	return {
+		"main_screen_name": str(main_screen.name),
+		"main_screen_type": str(main_screen.get_class()),
+		"editor_scale": float(editor_interface.get_editor_scale()),
+		"multi_window_enabled": bool(editor_interface.is_multi_window_enabled())
+	}
+
+# ============================================================================
+# get_editor_language - 读取编辑器语言
+# ============================================================================
+
+func _register_get_editor_language(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_language"
+	var description: String = "Get the current editor language configured for the Godot editor UI."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"editor_language": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_language"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_language(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	return {
+		"editor_language": str(editor_interface.get_editor_language())
+	}
+
+# ============================================================================
+# get_editor_play_state - 读取编辑器运行态
+# ============================================================================
+
+func _register_get_editor_play_state(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_play_state"
+	var description: String = "Get whether the editor is currently playing a scene and the current playing scene path."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"is_playing_scene": {"type": "boolean"},
+			"playing_scene": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_play_state"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_play_state(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	return {
+		"is_playing_scene": bool(editor_interface.is_playing_scene()),
+		"playing_scene": str(editor_interface.get_playing_scene())
+	}
+
+# ============================================================================
+# get_editor_3d_snap_state - 读取 3D 编辑器吸附状态
+# ============================================================================
+
+func _register_get_editor_3d_snap_state(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_3d_snap_state"
+	var description: String = "Get whether 3D snapping is enabled in the editor and the current translate, rotate, and scale snap values."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"snap_enabled": {"type": "boolean"},
+			"translate_snap": {"type": "number"},
+			"rotate_snap": {"type": "number"},
+			"scale_snap": {"type": "number"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_3d_snap_state"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_3d_snap_state(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	return {
+		"snap_enabled": bool(editor_interface.is_node_3d_snap_enabled()),
+		"translate_snap": float(editor_interface.get_node_3d_translate_snap()),
+		"rotate_snap": float(editor_interface.get_node_3d_rotate_snap()),
+		"scale_snap": float(editor_interface.get_node_3d_scale_snap())
+	}
+
+# ============================================================================
+# get_editor_subsystem_availability - 读取编辑器子系统可用性
+# ============================================================================
+
+func _register_get_editor_subsystem_availability(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_subsystem_availability"
+	var description: String = "Get whether key editor subsystems such as the command palette, toaster, resource filesystem, and script editor are currently available."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"command_palette_available": {"type": "boolean"},
+			"command_palette_type": {"type": "string"},
+			"toaster_available": {"type": "boolean"},
+			"toaster_type": {"type": "string"},
+			"resource_filesystem_available": {"type": "boolean"},
+			"resource_filesystem_type": {"type": "string"},
+			"script_editor_available": {"type": "boolean"},
+			"script_editor_type": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_subsystem_availability"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_subsystem_availability(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var command_palette = editor_interface.get_command_palette()
+	var toaster = editor_interface.get_editor_toaster()
+	var resource_filesystem = editor_interface.get_resource_filesystem()
+	var script_editor = editor_interface.get_script_editor()
+
+	return {
+		"command_palette_available": command_palette != null,
+		"command_palette_type": command_palette.get_class() if command_palette else "",
+		"toaster_available": toaster != null,
+		"toaster_type": toaster.get_class() if toaster else "",
+		"resource_filesystem_available": resource_filesystem != null,
+		"resource_filesystem_type": resource_filesystem.get_class() if resource_filesystem else "",
+		"script_editor_available": script_editor != null,
+		"script_editor_type": script_editor.get_class() if script_editor else ""
+	}
+
+# ============================================================================
+# get_editor_previewer_availability - 读取资源预览器可用性
+# ============================================================================
+
+func _register_get_editor_previewer_availability(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_previewer_availability"
+	var description: String = "Get whether the editor resource previewer handle is currently available and its live class name."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"resource_previewer_available": {"type": "boolean"},
+			"resource_previewer_type": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_previewer_availability"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_previewer_availability(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var resource_previewer = editor_interface.get_resource_previewer()
+	return {
+		"resource_previewer_available": resource_previewer != null,
+		"resource_previewer_type": resource_previewer.get_class() if resource_previewer else ""
+	}
+
+# ============================================================================
+# get_editor_undo_redo_availability - 读取 undo/redo 管理器可用性
+# ============================================================================
+
+func _register_get_editor_undo_redo_availability(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_undo_redo_availability"
+	var description: String = "Get whether the editor undo/redo manager handle is currently available and its live class name."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"undo_redo_available": {"type": "boolean"},
+			"undo_redo_type": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_undo_redo_availability"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_undo_redo_availability(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var undo_redo = editor_interface.get_editor_undo_redo()
+	return {
+		"undo_redo_available": undo_redo != null,
+		"undo_redo_type": undo_redo.get_class() if undo_redo else ""
+	}
+
+# ============================================================================
+# get_editor_viewport_availability - 读取编辑器视口可用性
+# ============================================================================
+
+func _register_get_editor_viewport_availability(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_viewport_availability"
+	var description: String = "Get whether the editor 2D viewport and primary 3D viewport handles are currently available and their live class names."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"viewport_2d_available": {"type": "boolean"},
+			"viewport_2d_type": {"type": "string"},
+			"viewport_3d_available": {"type": "boolean"},
+			"viewport_3d_type": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_viewport_availability"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_viewport_availability(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var viewport_2d = editor_interface.get_editor_viewport_2d()
+	var viewport_3d = editor_interface.get_editor_viewport_3d(0)
+	return {
+		"viewport_2d_available": viewport_2d != null,
+		"viewport_2d_type": viewport_2d.get_class() if viewport_2d else "",
+		"viewport_3d_available": viewport_3d != null,
+		"viewport_3d_type": viewport_3d.get_class() if viewport_3d else ""
+	}
+
+# ============================================================================
+# get_editor_base_control_availability - 读取 base control 可用性
+# ============================================================================
+
+func _register_get_editor_base_control_availability(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_base_control_availability"
+	var description: String = "Get whether the editor base control handle is currently available and its live class name."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"base_control_available": {"type": "boolean"},
+			"base_control_type": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_base_control_availability"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_base_control_availability(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var base_control = editor_interface.get_base_control()
+	return {
+		"base_control_available": base_control != null,
+		"base_control_type": base_control.get_class() if base_control else ""
+	}
+
+# ============================================================================
+# get_editor_file_system_dock_availability - 读取 FileSystem dock 可用性
+# ============================================================================
+
+func _register_get_editor_file_system_dock_availability(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_file_system_dock_availability"
+	var description: String = "Get whether the editor file system dock handle is currently available and its live class name."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"file_system_dock_available": {"type": "boolean"},
+			"file_system_dock_type": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_file_system_dock_availability"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_file_system_dock_availability(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var file_system_dock = editor_interface.get_file_system_dock()
+	return {
+		"file_system_dock_available": file_system_dock != null,
+		"file_system_dock_type": file_system_dock.get_class() if file_system_dock else ""
+	}
+
+# ============================================================================
+# get_editor_inspector_availability - 读取 Inspector 可用性
+# ============================================================================
+
+func _register_get_editor_inspector_availability(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_inspector_availability"
+	var description: String = "Get whether the editor inspector handle is currently available and its live class name."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"inspector_available": {"type": "boolean"},
+			"inspector_type": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_inspector_availability"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_inspector_availability(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var inspector = editor_interface.get_inspector()
+	return {
+		"inspector_available": inspector != null,
+		"inspector_type": inspector.get_class() if inspector else ""
+	}
+
+# ============================================================================
+# get_editor_current_location - 读取当前编辑器路径摘要
+# ============================================================================
+
+func _register_get_editor_current_location(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_current_location"
+	var description: String = "Get the current file system path and current directory being viewed by the editor."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"current_path": {"type": "string"},
+			"current_directory": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_current_location"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_current_location(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	return {
+		"current_path": str(editor_interface.get_current_path()),
+		"current_directory": str(editor_interface.get_current_directory())
+	}
+
+# ============================================================================
+# get_editor_selected_paths_summary - 读取当前选中路径摘要
+# ============================================================================
+
+func _register_get_editor_selected_paths_summary(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_selected_paths_summary"
+	var description: String = "Get the currently selected file system paths in the editor and their count."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"selected_paths": {
+				"type": "array",
+				"items": {"type": "string"}
+			},
+			"selected_count": {"type": "integer"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_selected_paths_summary"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_selected_paths_summary(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var selected_paths: Array = []
+	for path_variant in editor_interface.get_selected_paths():
+		selected_paths.append(str(path_variant))
+
+	return {
+		"selected_paths": selected_paths,
+		"selected_count": selected_paths.size()
+	}
+
+# ============================================================================
+# get_editor_selection_availability - 读取 selection 对象可用性
+# ============================================================================
+
+func _register_get_editor_selection_availability(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_selection_availability"
+	var description: String = "Get whether the editor selection handle is currently available and its live class name."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"selection_available": {"type": "boolean"},
+			"selection_type": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_selection_availability"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_selection_availability(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var selection = editor_interface.get_selection()
+	return {
+		"selection_available": selection != null,
+		"selection_type": selection.get_class() if selection else ""
+	}
+
+# ============================================================================
+# get_editor_command_palette_availability - 读取 command palette 可用性
+# ============================================================================
+
+func _register_get_editor_command_palette_availability(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_command_palette_availability"
+	var description: String = "Get whether the editor command palette handle is currently available and its live class name."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"command_palette_available": {"type": "boolean"},
+			"command_palette_type": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_command_palette_availability"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_command_palette_availability(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var command_palette = editor_interface.get_command_palette()
+	return {
+		"command_palette_available": command_palette != null,
+		"command_palette_type": command_palette.get_class() if command_palette else ""
+	}
+
+# ============================================================================
+# get_editor_toaster_availability - 读取 toaster 可用性
+# ============================================================================
+
+func _register_get_editor_toaster_availability(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_toaster_availability"
+	var description: String = "Get whether the editor toaster handle is currently available and its live class name."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"toaster_available": {"type": "boolean"},
+			"toaster_type": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_toaster_availability"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_toaster_availability(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var toaster = editor_interface.get_editor_toaster()
+	return {
+		"toaster_available": toaster != null,
+		"toaster_type": toaster.get_class() if toaster else ""
+	}
+
+# ============================================================================
+# get_editor_resource_filesystem_availability - 读取 resource filesystem 可用性
+# ============================================================================
+
+func _register_get_editor_resource_filesystem_availability(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_resource_filesystem_availability"
+	var description: String = "Get whether the editor resource filesystem handle is currently available and its live class name."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"resource_filesystem_available": {"type": "boolean"},
+			"resource_filesystem_type": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_resource_filesystem_availability"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_resource_filesystem_availability(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var resource_filesystem = editor_interface.get_resource_filesystem()
+	return {
+		"resource_filesystem_available": resource_filesystem != null,
+		"resource_filesystem_type": resource_filesystem.get_class() if resource_filesystem else ""
+	}
+
+# ============================================================================
+# get_editor_script_editor_availability - 读取 script editor 可用性
+# ============================================================================
+
+func _register_get_editor_script_editor_availability(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_script_editor_availability"
+	var description: String = "Get whether the editor script editor handle is currently available and its live class name."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"script_editor_available": {"type": "boolean"},
+			"script_editor_type": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_script_editor_availability"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_script_editor_availability(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var script_editor = editor_interface.get_script_editor()
+	return {
+		"script_editor_available": script_editor != null,
+		"script_editor_type": script_editor.get_class() if script_editor else ""
+	}
+
+# ============================================================================
+# get_editor_open_script_summary - 读取当前打开脚本摘要
+# ============================================================================
+
+func _register_get_editor_open_script_summary(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_open_script_summary"
+	var description: String = "Get whether the editor currently has an active script open, the current script path, a summary of all open script tabs, the current script-editor type, and the current script-editor breakpoint list."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"script_open": {"type": "boolean"},
+			"script_path": {"type": "string"},
+			"current_script_type": {"type": "string"},
+			"current_editor_type": {"type": "string"},
+			"current_editor_breakpoints": {"type": "array", "items": {"type": "integer"}},
+			"current_editor_breakpoint_count": {"type": "integer"},
+			"open_script_paths": {"type": "array", "items": {"type": "string"}},
+			"open_script_types": {"type": "array", "items": {"type": "string"}},
+			"open_script_count": {"type": "integer"},
+			"open_script_editor_types": {"type": "array", "items": {"type": "string"}},
+			"open_script_editor_count": {"type": "integer"},
+			"breakpoints": {"type": "array", "items": {"type": "string"}},
+			"breakpoint_count": {"type": "integer"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_open_script_summary"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_open_script_summary(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var script_editor: ScriptEditor = editor_interface.get_script_editor()
+	if not script_editor:
+		return {
+			"script_open": false,
+			"script_path": "",
+			"current_script_type": "",
+			"current_editor_type": "",
+			"current_editor_breakpoints": [],
+			"current_editor_breakpoint_count": 0,
+			"open_script_paths": [],
+			"open_script_types": [],
+			"open_script_count": 0,
+			"open_script_editor_types": [],
+			"open_script_editor_count": 0,
+			"breakpoints": [],
+			"breakpoint_count": 0
+		}
+
+	var current_script: Script = script_editor.get_current_script()
+	var current_editor: ScriptEditorBase = script_editor.get_current_editor()
+	var current_editor_breakpoints: Array = []
+	if current_editor and current_editor.has_method("get_breakpoints"):
+		for line_variant in current_editor.get_breakpoints():
+			current_editor_breakpoints.append(int(line_variant))
+	var open_script_paths: Array = []
+	var open_script_types: Array = []
+	for script_variant in script_editor.get_open_scripts():
+		var open_script: Script = script_variant
+		if open_script:
+			open_script_paths.append(str(open_script.resource_path))
+			open_script_types.append(str(open_script.get_class()))
+	var open_script_editors: Array = script_editor.get_open_script_editors()
+	var open_script_editor_types: Array = []
+	for script_editor_base_variant in open_script_editors:
+		var script_editor_base: ScriptEditorBase = script_editor_base_variant
+		open_script_editor_types.append(script_editor_base.get_class() if script_editor_base else "")
+	var breakpoints: Array = []
+	for breakpoint_variant in script_editor.get_breakpoints():
+		breakpoints.append(str(breakpoint_variant))
+
+	return {
+		"script_open": current_script != null,
+		"script_path": str(current_script.resource_path) if current_script else "",
+		"current_script_type": str(current_script.get_class()) if current_script else "",
+		"current_editor_type": current_editor.get_class() if current_editor else "",
+		"current_editor_breakpoints": current_editor_breakpoints,
+		"current_editor_breakpoint_count": current_editor_breakpoints.size(),
+		"open_script_paths": open_script_paths,
+		"open_script_types": open_script_types,
+		"open_script_count": open_script_paths.size(),
+		"open_script_editor_types": open_script_editor_types,
+		"open_script_editor_count": open_script_editors.size(),
+		"breakpoints": breakpoints,
+		"breakpoint_count": breakpoints.size()
+	}
+
+# ============================================================================
+# get_editor_open_scene_summary - 读取当前打开场景摘要
+# ============================================================================
+
+func _register_get_editor_open_scene_summary(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_open_scene_summary"
+	var description: String = "Get whether the editor currently has an active scene open and the current scene path."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"scene_open": {"type": "boolean"},
+			"scene_path": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_open_scene_summary"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_open_scene_summary(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var active_scene: Node = editor_interface.get_edited_scene_root()
+	if not active_scene:
+		return {
+			"scene_open": false,
+			"scene_path": ""
+		}
+
+	return {
+		"scene_open": true,
+		"scene_path": str(active_scene.scene_file_path)
+	}
+
+# ============================================================================
+# get_editor_open_scenes_summary - 读取打开场景列表摘要
+# ============================================================================
+
+func _register_get_editor_open_scenes_summary(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_open_scenes_summary"
+	var description: String = "Get the list of open scene paths, the active scene path, and the current open scene count."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"open_scene_paths": {"type": "array", "items": {"type": "string"}},
+			"active_scene_path": {"type": "string"},
+			"open_scene_count": {"type": "integer"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_open_scenes_summary"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_open_scenes_summary(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var open_scene_paths: Array = []
+	for scene_path_variant in editor_interface.get_open_scenes():
+		open_scene_paths.append(str(scene_path_variant))
+	var active_scene: Node = editor_interface.get_edited_scene_root()
+	var active_scene_path: String = str(active_scene.scene_file_path) if active_scene else ""
+
+	return {
+		"open_scene_paths": open_scene_paths,
+		"active_scene_path": active_scene_path,
+		"open_scene_count": open_scene_paths.size()
+	}
+
+# ============================================================================
+# get_editor_open_scene_roots_summary - 读取打开场景根节点摘要
+# ============================================================================
+
+func _register_get_editor_open_scene_roots_summary(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_open_scene_roots_summary"
+	var description: String = "Get the list of open scene root node names and types, plus the current open scene root count."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"open_scene_roots": {
+				"type": "array",
+				"items": {"type": "object"}
+			},
+			"open_scene_root_count": {"type": "integer"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_open_scene_roots_summary"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_open_scene_roots_summary(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var open_scene_roots: Array = []
+	for root_variant in editor_interface.get_open_scene_roots():
+		var root_node: Node = root_variant
+		if root_node:
+			open_scene_roots.append({
+				"root_name": str(root_node.name),
+				"root_type": str(root_node.get_class())
+			})
+
+	return {
+		"open_scene_roots": open_scene_roots,
+		"open_scene_root_count": open_scene_roots.size()
+	}
+
+# ============================================================================
+# get_editor_settings_availability - 读取 editor settings 可用性
+# ============================================================================
+
+func _register_get_editor_settings_availability(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_settings_availability"
+	var description: String = "Get whether the editor settings handle is currently available and its live class name."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"editor_settings_available": {"type": "boolean"},
+			"editor_settings_type": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_settings_availability"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_settings_availability(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var editor_settings: EditorSettings = editor_interface.get_editor_settings()
+	return {
+		"editor_settings_available": editor_settings != null,
+		"editor_settings_type": editor_settings.get_class() if editor_settings else ""
+	}
+
+# ============================================================================
+# get_editor_theme_availability - 读取 editor theme 可用性
+# ============================================================================
+
+func _register_get_editor_theme_availability(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_theme_availability"
+	var description: String = "Get whether the editor theme handle is currently available and its live class name."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"editor_theme_available": {"type": "boolean"},
+			"editor_theme_type": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_theme_availability"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_theme_availability(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var editor_theme: Theme = editor_interface.get_editor_theme()
+	return {
+		"editor_theme_available": editor_theme != null,
+		"editor_theme_type": editor_theme.get_class() if editor_theme else ""
+	}
+
+# ============================================================================
+# get_editor_current_feature_profile - 读取当前激活 feature profile
+# ============================================================================
+
+func _register_get_editor_current_feature_profile(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_current_feature_profile"
+	var description: String = "Get the currently active editor feature profile name."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"current_feature_profile": {"type": "string"},
+			"uses_default_profile": {"type": "boolean"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_current_feature_profile"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_current_feature_profile(_params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var current_feature_profile: String = str(editor_interface.get_current_feature_profile())
+	return {
+		"current_feature_profile": current_feature_profile,
+		"uses_default_profile": current_feature_profile.is_empty()
+	}
+
+# ============================================================================
 # get_inspector_properties - 获取 Inspector 风格的属性元数据
 # ============================================================================
+
+func _register_get_editor_plugin_enabled_state(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_plugin_enabled_state"
+	var description: String = "Get whether the specified editor plugin is currently enabled according to EditorInterface."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"plugin_name": {
+				"type": "string",
+				"description": "Editor plugin directory name, for example gut or godot_mcp."
+			}
+		},
+		"required": ["plugin_name"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"plugin_name": {"type": "string"},
+			"enabled": {"type": "boolean"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_plugin_enabled_state"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_plugin_enabled_state(params: Dictionary) -> Dictionary:
+	var plugin_name: String = str(params.get("plugin_name", "")).strip_edges()
+	if plugin_name.is_empty():
+		return {"error": "Missing required parameter: plugin_name"}
+
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	return {
+		"plugin_name": plugin_name,
+		"enabled": bool(editor_interface.is_plugin_enabled(plugin_name))
+	}
+
+func _register_get_editor_current_scene_dirty_state(server_core: RefCounted) -> void:
+	var tool_name: String = "get_editor_current_scene_dirty_state"
+	var description: String = "Get whether the current edited scene root is marked as edited in the editor, and optionally force that edited state for the active scene root."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"set_dirty": {
+				"type": "boolean",
+				"description": "Optional edited-state override to apply to the current edited scene root before returning the live dirty-state snapshot."
+			}
+		}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"scene_open": {"type": "boolean"},
+			"scene_path": {"type": "string"},
+			"scene_dirty": {"type": "boolean"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_editor_current_scene_dirty_state"),
+						  output_schema, annotations,
+						  "supplementary", "Editor-Advanced")
+
+func _tool_get_editor_current_scene_dirty_state(params: Dictionary) -> Dictionary:
+	var editor_interface: EditorInterface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+
+	var edited_scene_root: Node = editor_interface.get_edited_scene_root()
+	if not edited_scene_root:
+		if params.has("set_dirty"):
+			return {"error": "No active scene open"}
+		return {
+			"scene_open": false,
+			"scene_path": "",
+			"scene_dirty": false
+		}
+
+	if params.has("set_dirty"):
+		editor_interface.set_object_edited(edited_scene_root, bool(params.get("set_dirty", false)))
+
+	return {
+		"scene_open": true,
+		"scene_path": str(edited_scene_root.scene_file_path),
+		"scene_dirty": bool(editor_interface.is_object_edited(edited_scene_root))
+	}
 
 func _register_get_inspector_properties(server_core: RefCounted) -> void:
 	var tool_name: String = "get_inspector_properties"
@@ -1127,6 +2593,10 @@ func _register_get_editor_screenshot(server_core: RefCounted) -> void:
 	var input_schema: Dictionary = {
 		"type": "object",
 		"properties": {
+			"scene_path": {
+				"type": "string",
+				"description": "Optional scene file to capture offscreen in headless editor mode instead of the live editor viewport."
+			},
 			"viewport_type": {
 				"type": "string",
 				"description": "Viewport type: '3d' or '2d'. Default is '3d'.",
@@ -1144,6 +2614,14 @@ func _register_get_editor_screenshot(server_core: RefCounted) -> void:
 				"type": "string",
 				"description": "Image format: 'png' or 'jpg'. Default is 'png'.",
 				"enum": ["png", "jpg"]
+			},
+			"viewport_width": {
+				"type": "integer",
+				"description": "Offscreen capture width when scene_path is used. Default is 256."
+			},
+			"viewport_height": {
+				"type": "integer",
+				"description": "Offscreen capture height when scene_path is used. Default is 256."
 			}
 		}
 	}
@@ -1153,7 +2631,11 @@ func _register_get_editor_screenshot(server_core: RefCounted) -> void:
 		"properties": {
 			"status": {"type": "string"},
 			"save_path": {"type": "string"},
-			"size": {"type": "string"}
+			"size": {"type": "string"},
+			"width": {"type": "integer"},
+			"height": {"type": "integer"},
+			"scene_path": {"type": "string"},
+			"render_mode": {"type": "string"}
 		}
 	}
 
@@ -1170,10 +2652,17 @@ func _register_get_editor_screenshot(server_core: RefCounted) -> void:
 		"supplementary", "Editor-Advanced")
 
 func _tool_get_editor_screenshot(params: Dictionary) -> Dictionary:
+	var scene_path: String = str(params.get("scene_path", "")).strip_edges()
 	var viewport_type: String = params.get("viewport_type", "3d")
 	var viewport_index: int = params.get("viewport_index", 0)
 	var save_path: String = params.get("save_path", "res://screenshot_editor.png")
 	var format: String = params.get("format", "png")
+
+	if not scene_path.is_empty():
+		var helper = load("res://addons/godot_mcp/utils/generated_scene_screenshot_helper.gd")
+		var viewport_width: int = int(params.get("viewport_width", 256))
+		var viewport_height: int = int(params.get("viewport_height", 256))
+		return helper.capture_scene(scene_path, save_path, format, Vector2i(viewport_width, viewport_height))
 
 	var editor_interface: EditorInterface = _get_editor_interface()
 	if not editor_interface:

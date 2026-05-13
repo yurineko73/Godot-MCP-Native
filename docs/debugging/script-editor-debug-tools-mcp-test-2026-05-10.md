@@ -1,5 +1,8 @@
 # 脚本/编辑器/调试工具增强 MCP 集成测试报告
 
+> Historical snapshot: this report reflects the tool surface at the time of the 2026-05-10 run and does not describe the current live 205-tool / 14-resource catalog. Use `docs/current/tools-reference.md` or MCP `tools/list` for current counts.
+
+
 > 测试日期：2026-05-10
 > 测试环境：Godot 4.6.1 + MCP Native Plugin
 > 测试工具数：7 个（attach_script, validate_script, search_in_files, get_editor_screenshot, get_signals, reload_project, clear_output）

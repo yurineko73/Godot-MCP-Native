@@ -253,7 +253,11 @@ func _register_find_script_symbol_definition(server_core: RefCounted) -> void:
 		"properties": {
 			"symbol_name": {"type": "string"},
 			"definitions": {"type": "array", "items": {"type": "object"}},
-			"count": {"type": "integer"}
+			"count": {"type": "integer"},
+			"truncated": {"type": "boolean"},
+			"has_more": {"type": "boolean"},
+			"max_results_applied": {"type": "integer"},
+			"next_max_results": {"type": "integer"}
 		}
 	}
 
@@ -295,20 +299,24 @@ func _tool_find_script_symbol_definition(params: Dictionary) -> Dictionary:
 		script_paths.sort_custom(Callable(self, "_compare_script_paths_for_preference").bind(preferred_script_path))
 
 	var definitions: Array = []
-	for script_path in script_paths:
+	var truncated: bool = false
+	for script_index in range(script_paths.size()):
 		if definitions.size() >= max_results:
+			truncated = true
 			break
+		var script_path: String = script_paths[script_index]
 		var matches: Array = _find_symbol_definitions_in_script(script_path, symbol_name, symbol_kinds)
-		for match in matches:
-			definitions.append(match)
+		for match_index in range(matches.size()):
+			definitions.append(matches[match_index])
 			if definitions.size() >= max_results:
+				truncated = match_index < matches.size() - 1 or script_index < script_paths.size() - 1
 				break
 
-	return {
+	return _with_max_results_continuation({
 		"symbol_name": symbol_name,
 		"definitions": definitions,
 		"count": definitions.size()
-	}
+	}, max_results, truncated)
 
 # ============================================================================
 # find_script_symbol_references - 查找脚本符号引用
@@ -364,7 +372,11 @@ func _register_find_script_symbol_references(server_core: RefCounted) -> void:
 		"properties": {
 			"symbol_name": {"type": "string"},
 			"references": {"type": "array", "items": {"type": "object"}},
-			"count": {"type": "integer"}
+			"count": {"type": "integer"},
+			"truncated": {"type": "boolean"},
+			"has_more": {"type": "boolean"},
+			"max_results_applied": {"type": "integer"},
+			"next_max_results": {"type": "integer"}
 		}
 	}
 
@@ -411,21 +423,25 @@ func _tool_find_script_symbol_references(params: Dictionary) -> Dictionary:
 		definitions_by_path = _collect_definition_lines_by_path(file_paths, symbol_name, case_sensitive)
 
 	var references: Array = []
-	for file_path in file_paths:
+	var truncated: bool = false
+	for file_index in range(file_paths.size()):
 		if references.size() >= max_results:
+			truncated = true
 			break
+		var file_path: String = file_paths[file_index]
 		var definition_lines: Array = definitions_by_path.get(file_path, [])
 		var matches: Array = _find_symbol_references_in_file(file_path, symbol_name, case_sensitive, include_definitions, definition_lines, max_results - references.size())
-		for match in matches:
-			references.append(match)
+		for match_index in range(matches.size()):
+			references.append(matches[match_index])
 			if references.size() >= max_results:
+				truncated = match_index < matches.size() - 1 or file_index < file_paths.size() - 1
 				break
 
-	return {
+	return _with_max_results_continuation({
 		"symbol_name": symbol_name,
 		"references": references,
 		"count": references.size()
-	}
+	}, max_results, truncated)
 
 # ============================================================================
 # rename_script_symbol - 重命名脚本符号
@@ -483,7 +499,11 @@ func _register_rename_script_symbol(server_core: RefCounted) -> void:
 			"new_name": {"type": "string"},
 			"dry_run": {"type": "boolean"},
 			"changed_files": {"type": "array", "items": {"type": "object"}},
-			"replacement_count": {"type": "integer"}
+			"replacement_count": {"type": "integer"},
+			"truncated": {"type": "boolean"},
+			"has_more": {"type": "boolean"},
+			"max_results_applied": {"type": "integer"},
+			"next_max_results": {"type": "integer"}
 		}
 	}
 
@@ -529,27 +549,32 @@ func _tool_rename_script_symbol(params: Dictionary) -> Dictionary:
 	_collect_script_reference_files(search_path, include_extensions, file_paths)
 	file_paths.sort()
 
-	var changed_files: Array = []
-	var replacement_count: int = 0
-	for file_path in file_paths:
-		if replacement_count >= max_results:
-			break
-		var remaining_results: int = max_results - replacement_count
-		var replacement_result: Dictionary = _rename_symbol_in_file(file_path, symbol_name, new_name, case_sensitive, dry_run, remaining_results)
-		if replacement_result.is_empty():
-			continue
-		changed_files.append(replacement_result)
-		replacement_count += int(replacement_result.get("replacement_count", 0))
+	var preview_result: Dictionary = _collect_rename_results(file_paths, symbol_name, new_name, case_sensitive, max_results + 1, true)
+	var truncated: bool = int(preview_result.get("replacement_count", 0)) > max_results
 
-	return {
+	var apply_result: Dictionary = preview_result
+	if not dry_run:
+		apply_result = _collect_rename_results(file_paths, symbol_name, new_name, case_sensitive, max_results, false)
+
+	var trimmed_changed_files: Array = _trim_rename_changed_files(Array(apply_result.get("changed_files", [])), max_results)
+
+	return _with_max_results_continuation({
 		"symbol_name": symbol_name,
 		"new_name": new_name,
 		"dry_run": dry_run,
-		"changed_files": changed_files,
-		"replacement_count": replacement_count
-	}
+		"changed_files": trimmed_changed_files,
+		"replacement_count": _count_rename_replacements(trimmed_changed_files)
+	}, max_results, truncated)
 
 # 辅助函数：递归收集脚本文件
+func _with_max_results_continuation(result: Dictionary, max_results: int, truncated: bool) -> Dictionary:
+	result["truncated"] = truncated
+	result["has_more"] = truncated
+	result["max_results_applied"] = max_results
+	if truncated:
+		result["next_max_results"] = max_results * 2
+	return result
+
 func _collect_scripts(directory_path: String, result: Array) -> void:
 	var dir: DirAccess = DirAccess.open(directory_path)
 	
@@ -1156,6 +1181,68 @@ func _rename_symbol_in_file(file_path: String, symbol_name: String, new_name: St
 		"replacement_count": total_replacements,
 		"changes": replacements
 	}
+
+func _collect_rename_results(file_paths: Array, symbol_name: String, new_name: String, case_sensitive: bool, max_results: int, dry_run: bool) -> Dictionary:
+	var changed_files: Array = []
+	var replacement_count: int = 0
+	for file_path_variant in file_paths:
+		if replacement_count >= max_results:
+			break
+		var file_path: String = str(file_path_variant)
+		var remaining_results: int = max_results - replacement_count
+		var replacement_result: Dictionary = _rename_symbol_in_file(file_path, symbol_name, new_name, case_sensitive, dry_run, remaining_results)
+		if replacement_result.is_empty():
+			continue
+		changed_files.append(replacement_result)
+		replacement_count += int(replacement_result.get("replacement_count", 0))
+	return {
+		"changed_files": changed_files,
+		"replacement_count": replacement_count
+	}
+
+func _trim_rename_changed_files(changed_files: Array, max_results: int) -> Array:
+	var remaining: int = max_results
+	var trimmed_changed_files: Array = []
+	for entry_variant in changed_files:
+		if remaining <= 0:
+			break
+		if not (entry_variant is Dictionary):
+			continue
+		var entry: Dictionary = entry_variant
+		var changes: Array = Array(entry.get("changes", []))
+		if changes.is_empty():
+			continue
+		var trimmed_changes: Array = []
+		for change_variant in changes:
+			if remaining <= 0:
+				break
+			if not (change_variant is Dictionary):
+				continue
+			var change: Dictionary = change_variant.duplicate(true)
+			var replacement_count: int = int(change.get("replacement_count", 0))
+			if replacement_count > remaining:
+				var adjusted_change: Dictionary = change.duplicate(true)
+				adjusted_change["replacement_count"] = remaining
+				trimmed_changes.append(adjusted_change)
+				remaining = 0
+				break
+			trimmed_changes.append(change)
+			remaining -= replacement_count
+		if trimmed_changes.is_empty():
+			continue
+		var trimmed_entry: Dictionary = entry.duplicate(true)
+		trimmed_entry["changes"] = trimmed_changes
+		trimmed_entry["replacement_count"] = _count_rename_replacements(trimmed_changes)
+		trimmed_changed_files.append(trimmed_entry)
+	return trimmed_changed_files
+
+func _count_rename_replacements(entries: Array) -> int:
+	var total: int = 0
+	for entry_variant in entries:
+		if not (entry_variant is Dictionary):
+			continue
+		total += int(entry_variant.get("replacement_count", 0))
+	return total
 
 # ============================================================================
 # read_script - 读取脚本内容
@@ -2073,7 +2160,11 @@ func _register_search_in_files(server_core: RefCounted) -> void:
 			"pattern": {"type": "string"},
 			"results": {"type": "array"},
 			"total_matches": {"type": "integer"},
-			"files_searched": {"type": "integer"}
+			"files_searched": {"type": "integer"},
+			"truncated": {"type": "boolean"},
+			"has_more": {"type": "boolean"},
+			"max_results_applied": {"type": "integer"},
+			"next_max_results": {"type": "integer"}
 		}
 	}
 
@@ -2116,18 +2207,21 @@ func _tool_search_in_files(params: Dictionary) -> Dictionary:
 		"results": [],
 		"files_searched": 0,
 		"total_matches": 0,
-		"max_results": max_results
+		"max_results": max_results + 1
 	}
 
 	_search_recursive(search_path, pattern, file_extensions, use_regex,
 		case_sensitive, regex, state)
 
-	return {
+	var truncated: bool = int(state["total_matches"]) > max_results
+	var trimmed_results: Array = _trim_search_results(Array(state["results"]), max_results)
+
+	return _with_max_results_continuation({
 		"pattern": pattern,
-		"results": state["results"],
-		"total_matches": state["total_matches"],
+		"results": trimmed_results,
+		"total_matches": _count_search_matches(trimmed_results),
 		"files_searched": state["files_searched"]
-	}
+	}, max_results, truncated)
 
 func _search_recursive(
 	dir_path: String, pattern: String, extensions: Array,
@@ -2217,3 +2311,30 @@ func _search_file(
 			"matches": file_matches,
 			"match_count": file_matches.size()
 		})
+
+func _trim_search_results(results: Array, max_results: int) -> Array:
+	var remaining: int = max_results
+	var trimmed_results: Array = []
+	for entry in results:
+		if remaining <= 0:
+			break
+		if not (entry is Dictionary):
+			continue
+		var matches: Array = Array(entry.get("matches", []))
+		if matches.is_empty():
+			continue
+		var trimmed_matches: Array = matches.slice(0, remaining)
+		var trimmed_entry: Dictionary = entry.duplicate(true)
+		trimmed_entry["matches"] = trimmed_matches
+		trimmed_entry["match_count"] = trimmed_matches.size()
+		trimmed_results.append(trimmed_entry)
+		remaining -= trimmed_matches.size()
+	return trimmed_results
+
+func _count_search_matches(results: Array) -> int:
+	var total: int = 0
+	for entry in results:
+		if not (entry is Dictionary):
+			continue
+		total += Array(entry.get("matches", [])).size()
+	return total

@@ -1,5 +1,15 @@
 extends "res://addons/gut/test.gd"
 
+class FakeRegistrationCore:
+	extends RefCounted
+
+	var tools := {}
+
+	func register_tool(name: String, description: String, input_schema: Dictionary, callable_ref: Callable, output_schema: Dictionary, annotations: Dictionary, category: String, group: String) -> void:
+		tools[name] = {
+			"output_schema": output_schema
+		}
+
 var _script_tools: RefCounted = null
 var _editor_tools: RefCounted = null
 var _debug_tools: RefCounted = null
@@ -119,6 +129,9 @@ func test_search_in_files_returns_structure():
 	assert_has(result, "results", "Should have results array")
 	assert_has(result, "total_matches", "Should have total_matches")
 	assert_has(result, "files_searched", "Should have files_searched")
+	assert_has(result, "truncated", "Should have truncated")
+	assert_has(result, "has_more", "Should have has_more")
+	assert_has(result, "max_results_applied", "Should have max_results_applied")
 	assert_eq(result.pattern, "extends", "Pattern should match input")
 
 func test_search_in_files_finds_matches():
@@ -139,6 +152,45 @@ func test_search_in_files_regex_mode():
 func test_search_in_files_max_results():
 	var result: Dictionary = _script_tools._tool_search_in_files({"pattern": "func", "search_path": "res://addons/godot_mcp/tools/", "max_results": 3})
 	assert_true(result.total_matches <= 3, "Should respect max_results limit")
+	assert_eq(result.max_results_applied, 3, "Should echo the applied max_results")
+
+func test_search_in_files_registers_rerun_continuation_metadata():
+	var server_core := FakeRegistrationCore.new()
+
+	_script_tools._register_search_in_files(server_core)
+
+	var properties: Dictionary = server_core.tools["search_in_files"]["output_schema"].get("properties", {})
+	assert_has(properties, "truncated", "search_in_files should expose truncated in output schema")
+	assert_has(properties, "has_more", "search_in_files should expose has_more in output schema")
+	assert_has(properties, "max_results_applied", "search_in_files should expose max_results_applied in output schema")
+	assert_has(properties, "next_max_results", "search_in_files should expose next_max_results in output schema")
+
+func test_search_in_files_reports_terminal_rerun_metadata_on_exact_fit():
+	var result: Dictionary = _script_tools._tool_search_in_files({
+		"pattern": "class_name ScriptToolsNative",
+		"search_path": "res://addons/godot_mcp/tools/",
+		"file_extensions": [".gd"],
+		"max_results": 1
+	})
+
+	assert_eq(result.total_matches, 1, "Should return the single exact-fit match")
+	assert_false(result.truncated, "Exact-fit result should not report truncation")
+	assert_false(result.has_more, "Exact-fit result should not report more data")
+	assert_eq(result.max_results_applied, 1, "Should echo the applied max_results")
+	assert_false(result.has("next_max_results"), "Terminal result should not advertise next_max_results")
+
+func test_search_in_files_reports_rerun_metadata_when_truncated():
+	var result: Dictionary = _script_tools._tool_search_in_files({
+		"pattern": "extends",
+		"search_path": "res://addons/godot_mcp/tools/",
+		"max_results": 1
+	})
+
+	assert_eq(result.total_matches, 1, "Truncated result should still cap returned matches to max_results")
+	assert_true(result.truncated, "Truncated result should report truncation")
+	assert_true(result.has_more, "Truncated result should report more data")
+	assert_eq(result.max_results_applied, 1, "Should echo the applied max_results")
+	assert_eq(result.next_max_results, 2, "Truncated result should advertise a larger rerun budget")
 
 func test_search_in_files_file_extension_filter():
 	var result: Dictionary = _script_tools._tool_search_in_files({"pattern": "Node", "search_path": "res://addons/godot_mcp/tools/", "file_extensions": [".tscn"]})

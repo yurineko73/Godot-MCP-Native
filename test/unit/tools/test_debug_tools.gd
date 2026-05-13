@@ -50,6 +50,22 @@ class FakeRuntimePlugin:
 	func get_debugger_bridge() -> RefCounted:
 		return bridge
 
+class FakeRegistrationCore:
+	extends RefCounted
+
+	var tools := {}
+
+	func register_tool(name: String, description: String, input_schema: Dictionary, callable_ref: Callable, output_schema: Dictionary, annotations: Dictionary, category: String, group: String) -> void:
+		tools[name] = {
+			"description": description,
+			"input_schema": input_schema,
+			"callable": callable_ref,
+			"output_schema": output_schema,
+			"annotations": annotations,
+			"category": category,
+			"group": group
+		}
+
 var _runtime_bridge: RefCounted = null
 
 func before_each() -> void:
@@ -181,3 +197,138 @@ func test_runtime_probe_polling_reuses_pending_request():
 	assert_eq(second_result.get("status"), "success", "Second poll should consume the response that arrived for the pending request")
 	assert_eq(second_result.get("node_count"), 3, "Runtime info payload should come from the bridge response")
 	assert_eq(_runtime_bridge.send_count, 1, "Polling a pending runtime request should not re-send the debugger message")
+
+func test_get_mcp_logs_marks_truncation():
+	var debug_tools: RefCounted = load("res://addons/godot_mcp/tools/debug_tools_native.gd").new()
+	debug_tools._log_buffer.append("[INFO] first")
+	debug_tools._log_buffer.append("[WARNING] second")
+	debug_tools._log_buffer.append("[ERROR] third")
+
+	var result: Dictionary = debug_tools._get_mcp_logs([], 2, 0, "asc")
+	assert_eq(result.get("count"), 2, "Result should honor requested count")
+	assert_eq(result.get("total_available"), 3, "Result should report filtered total")
+	assert_true(result.get("truncated", false), "Limited log result should report truncation")
+	assert_true(result.get("has_more", false), "Limited log result should report more data")
+	assert_eq(result.get("next_cursor"), 2, "Limited log result should advertise the next cursor")
+
+func test_get_mcp_logs_last_page_is_complete():
+	var debug_tools: RefCounted = load("res://addons/godot_mcp/tools/debug_tools_native.gd").new()
+	debug_tools._log_buffer.append("[INFO] first")
+	debug_tools._log_buffer.append("[WARNING] second")
+	debug_tools._log_buffer.append("[ERROR] third")
+
+	var result: Dictionary = debug_tools._get_mcp_logs([], 2, 2, "asc")
+	assert_eq(result.get("count"), 1, "Trailing log page should report its own count")
+	assert_eq(result.get("total_available"), 3, "Trailing log page should preserve filtered total")
+	assert_false(result.get("truncated", true), "Last log page should not report truncation")
+	assert_false(result.get("has_more", true), "Last log page should not report more data")
+	assert_false(result.has("next_cursor"), "Last log page should not advertise another cursor")
+
+func test_debug_history_tools_register_continuation_metadata():
+	var debug_tools: RefCounted = load("res://addons/godot_mcp/tools/debug_tools_native.gd").new()
+	var server_core := FakeRegistrationCore.new()
+
+	debug_tools._register_get_debugger_messages(server_core)
+	debug_tools._register_get_debug_state_events(server_core)
+	debug_tools._register_get_debug_output(server_core)
+
+	for tool_name in ["get_debugger_messages", "get_debug_state_events", "get_debug_output"]:
+		var output_schema: Dictionary = server_core.tools[tool_name]["output_schema"]
+		var properties: Dictionary = output_schema.get("properties", {})
+		assert_has(properties, "truncated", "%s should expose truncated in output schema" % tool_name)
+		assert_has(properties, "has_more", "%s should expose has_more in output schema" % tool_name)
+		assert_has(properties, "next_cursor", "%s should expose next_cursor in output schema" % tool_name)
+
+func test_debug_variable_tools_register_continuation_metadata():
+	var debug_tools: RefCounted = load("res://addons/godot_mcp/tools/debug_tools_native.gd").new()
+	var server_core := FakeRegistrationCore.new()
+
+	debug_tools._register_get_debug_variables(server_core)
+	debug_tools._register_expand_debug_variable(server_core)
+
+	for tool_name in ["get_debug_variables", "expand_debug_variable"]:
+		var output_schema: Dictionary = server_core.tools[tool_name]["output_schema"]
+		var properties: Dictionary = output_schema.get("properties", {})
+		assert_has(properties, "truncated", "%s should expose truncated in output schema" % tool_name)
+		assert_has(properties, "has_more", "%s should expose has_more in output schema" % tool_name)
+		assert_has(properties, "next_cursor", "%s should expose next_cursor in output schema" % tool_name)
+
+func test_debugger_bridge_captured_messages_marks_truncation():
+	var bridge: RefCounted = load("res://addons/godot_mcp/native_mcp/mcp_debugger_bridge.gd").new()
+	bridge._captured_messages = [
+		{"message": "alpha"},
+		{"message": "beta"},
+		{"message": "gamma"}
+	]
+
+	var result: Dictionary = bridge.get_captured_messages(2, 0, "asc")
+	assert_eq(result.get("count"), 2, "Message window should honor count")
+	assert_eq(result.get("total_available"), 3, "Message window should report total available messages")
+	assert_true(result.get("truncated", false), "Limited message window should report truncation")
+	assert_true(result.get("has_more", false), "Limited message window should report more data")
+	assert_eq(result.get("next_cursor"), 2, "Limited message window should advertise the next cursor")
+
+func test_debugger_bridge_state_events_marks_truncation():
+	var bridge: RefCounted = load("res://addons/godot_mcp/native_mcp/mcp_debugger_bridge.gd").new()
+	bridge._state_events = [
+		{"state": "breaked", "reason": "pause"},
+		{"state": "running", "reason": "continue"},
+		{"state": "stopped", "reason": "quit"}
+	]
+
+	var result: Dictionary = bridge.get_state_events(2, 0, "asc")
+	assert_eq(result.get("count"), 2, "State event window should honor count")
+	assert_eq(result.get("total_available"), 3, "State event window should report total available events")
+	assert_true(result.get("truncated", false), "Limited state event window should report truncation")
+	assert_true(result.get("has_more", false), "Limited state event window should report more data")
+	assert_eq(result.get("next_cursor"), 2, "Limited state event window should advertise the next cursor")
+
+func test_debugger_bridge_output_events_marks_truncation_after_category_filter():
+	var bridge: RefCounted = load("res://addons/godot_mcp/native_mcp/mcp_debugger_bridge.gd").new()
+	bridge._output_events = [
+		{"category": "stdout", "text": "one"},
+		{"category": "stderr", "text": "ignore"},
+		{"category": "stdout", "text": "two"}
+	]
+
+	var result: Dictionary = bridge.get_output_events(1, 0, "asc", "stdout")
+	assert_eq(result.get("count"), 1, "Filtered output window should honor count")
+	assert_eq(result.get("total_available"), 2, "Filtered output window should report filtered total")
+	assert_true(result.get("truncated", false), "Filtered output window should report truncation")
+	assert_true(result.get("has_more", false), "Filtered output window should report more data")
+	assert_eq(result.get("next_cursor"), 1, "Filtered output window should advertise the next cursor")
+
+func test_debugger_bridge_variables_reference_marks_truncation():
+	var bridge: RefCounted = load("res://addons/godot_mcp/native_mcp/mcp_debugger_bridge.gd").new()
+	bridge._variable_references[1] = [
+		{"name": "size"},
+		{"name": "0"},
+		{"name": "1"},
+		{"name": "2"}
+	]
+
+	var result: Dictionary = bridge.get_variables_by_reference(1, 2, 0)
+	assert_eq(result.get("variables_reference"), 1, "Variable page should preserve variables_reference")
+	assert_eq(result.get("count"), 2, "Variable page should honor count")
+	assert_eq(result.get("total_available"), 4, "Variable page should report total available entries")
+	assert_true(result.get("truncated", false), "Variable page should report truncation when limited")
+	assert_true(result.get("has_more", false), "Variable page should report more data when limited")
+	assert_eq(result.get("next_cursor"), 2, "Variable page should advertise the next cursor")
+
+func test_expand_debug_variable_marks_truncation():
+	var debug_tools: RefCounted = load("res://addons/godot_mcp/tools/debug_tools_native.gd").new()
+	var bridge: RefCounted = load("res://addons/godot_mcp/native_mcp/mcp_debugger_bridge.gd").new()
+	bridge._latest_evaluations["array_value"] = {"type": "Array", "value": [10, 20, 30]}
+	Engine.set_meta("GodotMCPPlugin", FakeRuntimePlugin.new(bridge))
+
+	var result: Dictionary = debug_tools._tool_expand_debug_variable({
+		"scope": "evaluation",
+		"variable_path": ["array_value"],
+		"count": 2,
+		"offset": 0
+	})
+	assert_eq(result.get("count"), 2, "Expanded variable page should honor count")
+	assert_eq(result.get("total_available"), 4, "Expanded variable page should report total available entries")
+	assert_true(result.get("truncated", false), "Expanded variable page should report truncation when limited")
+	assert_true(result.get("has_more", false), "Expanded variable page should report more data when limited")
+	assert_eq(result.get("next_cursor"), 2, "Expanded variable page should advertise the next cursor")

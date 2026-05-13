@@ -150,6 +150,7 @@ class MCPPrompt:
 	var name: String = ""
 	var description: String = ""
 	var arguments: Array[Dictionary] = []  # [{name, description, required}]
+	var get_callable: Callable = Callable()
 	
 	func to_dict() -> Dictionary:
 		return {
@@ -191,24 +192,27 @@ static func create_error_response(id: Variant, code: int, message: String, data:
 
 # 创建标准MCP capabilities响应（根据mcp-builder优化）
 static func create_capabilities(tools_changed: bool = true,
-								resources_subscribe: bool = true,
-								resources_changed: bool = true,
-								prompts_changed: bool = true) -> Dictionary:
+								resources_subscribe: bool = false,
+								resources_changed: bool = false,
+								prompts_supported: bool = true,
+								prompts_changed: bool = false) -> Dictionary:
 	var capabilities: Dictionary = {}
 	
 	if tools_changed:
 		capabilities["tools"] = {"listChanged": true}
 	
-	if resources_subscribe or resources_changed:
-		var resources_cap: Dictionary = {}
-		if resources_subscribe:
-			resources_cap["subscribe"] = true
-		if resources_changed:
-			resources_cap["listChanged"] = true
-		capabilities["resources"] = resources_cap
+	var resources_cap: Dictionary = {}
+	if resources_subscribe:
+		resources_cap["subscribe"] = true
+	if resources_changed:
+		resources_cap["listChanged"] = true
+	capabilities["resources"] = resources_cap
 	
-	if prompts_changed:
-		capabilities["prompts"] = {"listChanged": true}
+	if prompts_supported:
+		var prompts_cap: Dictionary = {}
+		if prompts_changed:
+			prompts_cap["listChanged"] = true
+		capabilities["prompts"] = prompts_cap
 	
 	return capabilities
 

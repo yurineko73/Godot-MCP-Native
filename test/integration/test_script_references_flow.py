@@ -214,6 +214,23 @@ def main() -> int:
         if GD_SCRIPT_PATH not in collect_paths(include_defs):
             raise AssertionError(f"Expected definitions to be included when requested: {include_defs}")
 
+        paged_refs = tool_call(
+            "find_script_symbol_references",
+            {
+                "symbol_name": "TempReferenceTarget",
+                "search_path": "res://.tmp_script_references",
+                "include_extensions": [".gd", ".cs", ".tscn"],
+                "max_results": 1,
+            },
+            request_id=7,
+        )
+        if paged_refs.get("count") != 1 or paged_refs.get("truncated") is not True:
+            raise AssertionError(f"Expected truncated paged reference result: {paged_refs}")
+        if paged_refs.get("has_more") is not True or paged_refs.get("max_results_applied") != 1:
+            raise AssertionError(f"Expected rerun metadata on paged reference result: {paged_refs}")
+        if paged_refs.get("next_max_results") != 2:
+            raise AssertionError(f"Expected next_max_results=2 on paged reference result: {paged_refs}")
+
         print("script references flow verified")
         return 0
     finally:

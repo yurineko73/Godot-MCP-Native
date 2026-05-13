@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GoalBuddy Board</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand" aria-label="GoalBuddy">
+      <img class="brand-mark" src="./goalbuddy-mark.png" alt="GoalBuddy">
+      <span class="brand-name">GoalBuddy</span>
+    </div>
+    <div class="live-state" id="live-state">Connecting</div>
+  </header>
+  <main class="shell">
+    <section class="goal-header" aria-labelledby="goal-title">
+      <div>
+        <p class="eyebrow">Local board</p>
+        <h1 id="goal-title">GoalBuddy Board</h1>
+        <p id="goal-tranche" class="goal-tranche"></p>
+      </div>
+      <dl class="goal-meta">
+        <div><dt>Status</dt><dd id="goal-status">Unknown</dd></div>
+        <div><dt>Active</dt><dd id="goal-active">None</dd></div>
+        <div><dt>Updated</dt><dd id="goal-updated">Waiting</dd></div>
+      </dl>
+    </section>
+    <section class="board" id="board" aria-label="Goal task board"></section>
+  </main>
+  <div class="modal" id="task-modal" hidden>
+    <button class="modal-scrim" type="button" data-close-modal aria-label="Close task detail"></button>
+    <article class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <header class="modal-header">
+        <div>
+          <p class="eyebrow" id="modal-kicker">Task</p>
+          <h2 id="modal-title">Task detail</h2>
+        </div>
+        <button class="icon-button" type="button" data-close-modal aria-label="Close task detail">x</button>
+      </header>
+      <div class="modal-body" id="modal-body"></div>
+    </article>
+  </div>
+  <script src="./app.js" type="module"></script>
+</body>
+</html>

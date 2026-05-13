@@ -53,6 +53,19 @@ def tool_call(name: str, arguments: dict | None = None, request_id: int = 100) -
     return json.loads(result["content"][0]["text"])
 
 
+def resource_list(request_id: int = 200) -> list[dict]:
+    response = rpc_call("resources/list", request_id=request_id)
+    return response["result"]["resources"]
+
+
+def resource_read(uri: str, request_id: int = 201) -> dict:
+    response = rpc_call("resources/read", {"uri": uri}, request_id=request_id)
+    contents = response["result"]["contents"]
+    if len(contents) != 1:
+        raise AssertionError(f"Expected one content item for {uri}: {contents}")
+    return json.loads(contents[0]["text"])
+
+
 def wait_for_server(timeout_seconds: float = 30.0) -> None:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
@@ -147,7 +160,11 @@ def main() -> int:
         tool_names = {tool["name"] for tool in tools_response["result"]["tools"]}
         expected_tools = {
             "list_project_autoloads",
+            "inspect_project_autoload",
+            "upsert_project_autoload",
+            "remove_project_autoload",
             "list_project_global_classes",
+            "inspect_project_global_class",
             "get_class_api_metadata",
             "execute_editor_script",
         }
@@ -155,8 +172,34 @@ def main() -> int:
         if missing_tools:
             raise AssertionError(f"Missing expected class metadata tools: {missing_tools}")
 
+        resources = resource_list(request_id=19)
+        resource_uris = {resource["uri"] for resource in resources}
+        if "godot://project/autoloads" not in resource_uris:
+            raise AssertionError(
+                f"Missing godot://project/autoloads in resources/list: {sorted(resource_uris)}"
+            )
+        if "godot://project/global_classes" not in resource_uris:
+            raise AssertionError(
+                f"Missing godot://project/global_classes in resources/list: {sorted(resource_uris)}"
+            )
+
         refresh_editor_filesystem(request_id=2)
-        set_temporary_autoload(request_id=3)
+
+        upsert_result = tool_call(
+            "upsert_project_autoload",
+            {
+                "name": AUTOLOAD_NAME,
+                "path": AUTOLOAD_SCRIPT_PATH,
+                "is_singleton": True,
+            },
+            request_id=3,
+        )
+        if upsert_result.get("name") != AUTOLOAD_NAME:
+            raise AssertionError(f"Unexpected upsert_project_autoload name: {upsert_result}")
+        if upsert_result.get("path") != AUTOLOAD_SCRIPT_PATH:
+            raise AssertionError(f"Unexpected upsert_project_autoload path: {upsert_result}")
+        if upsert_result.get("is_singleton") is not True:
+            raise AssertionError(f"Expected singleton autoload from upsert_project_autoload: {upsert_result}")
 
         autoload_result = tool_call("list_project_autoloads", {"filter": AUTOLOAD_NAME}, request_id=4)
         if autoload_result.get("count") != 1:
@@ -168,6 +211,40 @@ def main() -> int:
             raise AssertionError(f"Unexpected autoload entry path: {autoload_entry}")
         if autoload_entry.get("is_singleton") is not True:
             raise AssertionError(f"Expected temporary autoload to be singleton: {autoload_entry}")
+        resource_autoloads = resource_read("godot://project/autoloads", request_id=17)
+        resource_autoload_entry = next(
+            (entry for entry in resource_autoloads.get("autoloads", []) if entry.get("name") == AUTOLOAD_NAME),
+            None,
+        )
+        if resource_autoload_entry is None:
+            raise AssertionError(f"Expected temporary autoload in resource inventory: {resource_autoloads}")
+        if resource_autoload_entry.get("path") != AUTOLOAD_SCRIPT_PATH:
+            raise AssertionError(f"Unexpected resource autoload path: {resource_autoload_entry}")
+        if resource_autoload_entry.get("is_singleton") is not True:
+            raise AssertionError(f"Expected resource autoload to be singleton: {resource_autoload_entry}")
+
+        inspected_autoload = tool_call("inspect_project_autoload", {"name": AUTOLOAD_NAME}, request_id=18)
+        if inspected_autoload.get("exists") is not True:
+            raise AssertionError(f"Expected temporary autoload inspection to report exists=true: {inspected_autoload}")
+        if inspected_autoload.get("path") != AUTOLOAD_SCRIPT_PATH:
+            raise AssertionError(f"Unexpected inspected autoload path: {inspected_autoload}")
+        if inspected_autoload.get("is_singleton") is not True:
+            raise AssertionError(f"Expected inspected autoload to be singleton: {inspected_autoload}")
+
+        remove_result = tool_call("remove_project_autoload", {"name": AUTOLOAD_NAME}, request_id=19)
+        if remove_result.get("name") != AUTOLOAD_NAME:
+            raise AssertionError(f"Unexpected remove_project_autoload name: {remove_result}")
+        if remove_result.get("removed") is not True:
+            raise AssertionError(f"Expected autoload removal to succeed: {remove_result}")
+        if remove_result.get("path") != AUTOLOAD_SCRIPT_PATH:
+            raise AssertionError(f"Unexpected removed autoload path: {remove_result}")
+
+        post_remove_autoloads = tool_call("list_project_autoloads", {"filter": AUTOLOAD_NAME}, request_id=20)
+        if post_remove_autoloads.get("count") != 0:
+            raise AssertionError(f"Expected removed autoload to disappear from MCP readback: {post_remove_autoloads}")
+        inspected_removed_autoload = tool_call("inspect_project_autoload", {"name": AUTOLOAD_NAME}, request_id=21)
+        if inspected_removed_autoload.get("exists") is not False:
+            raise AssertionError(f"Expected removed autoload inspection to report exists=false: {inspected_removed_autoload}")
 
         global_classes = tool_call("list_project_global_classes", {"filter": GLOBAL_CLASS_NAME}, request_id=5)
         if global_classes.get("count", 0) < 1:
@@ -181,6 +258,29 @@ def main() -> int:
             raise AssertionError(f"Unexpected global class base type: {class_entry}")
         if class_entry.get("language") != "GDScript":
             raise AssertionError(f"Unexpected global class language: {class_entry}")
+        resource_global_classes = resource_read("godot://project/global_classes", request_id=22)
+        resource_class_entry = next(
+            (entry for entry in resource_global_classes.get("classes", []) if entry.get("name") == GLOBAL_CLASS_NAME),
+            None,
+        )
+        if resource_class_entry is None:
+            raise AssertionError(f"Expected {GLOBAL_CLASS_NAME} in resource global-class inventory: {resource_global_classes}")
+        if resource_class_entry.get("path") != GLOBAL_CLASS_SCRIPT_PATH:
+            raise AssertionError(f"Unexpected resource global class path: {resource_class_entry}")
+        if resource_class_entry.get("base") != "RefCounted":
+            raise AssertionError(f"Unexpected resource global class base type: {resource_class_entry}")
+        if resource_class_entry.get("language") != "GDScript":
+            raise AssertionError(f"Unexpected resource global class language: {resource_class_entry}")
+
+        inspected_class = tool_call("inspect_project_global_class", {"class_name": GLOBAL_CLASS_NAME}, request_id=6)
+        if inspected_class.get("exists") is not True:
+            raise AssertionError(f"Expected global class inspection to report exists=true: {inspected_class}")
+        if inspected_class.get("path") != GLOBAL_CLASS_SCRIPT_PATH:
+            raise AssertionError(f"Unexpected inspected global class path: {inspected_class}")
+        if inspected_class.get("base") != "RefCounted":
+            raise AssertionError(f"Unexpected inspected global class base type: {inspected_class}")
+        if inspected_class.get("language") != "GDScript":
+            raise AssertionError(f"Unexpected inspected global class language: {inspected_class}")
 
         class_api = tool_call(
             "get_class_api_metadata",

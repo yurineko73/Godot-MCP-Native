@@ -1,5 +1,8 @@
 # MCP 工具回归测试报告
 
+> Historical snapshot: this report reflects the tool surface at the time of the 2026-05-11 run and does not describe the current live 205-tool / 14-resource catalog. Use `docs/current/tools-reference.md` or MCP `tools/list` for current counts.
+
+
 **日期**: 2026-05-11
 **测试方式**: 通过 godot-mcp MCP Server 直接调用所有 50 个工具
 **测试环境**: Godot Engine v4.6.1, Godot MCP Native 项目

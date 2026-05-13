@@ -12,8 +12,10 @@ GODOT_EXE = Path(r"C:\SourceCode\Godot_v4.6.2-stable_mono_win64\Godot_v4.6.2-sta
 MCP_URL = "http://127.0.0.1:9080/mcp"
 TEMP_DIR = REPO_ROOT / ".tmp_script_definition"
 GD_SCRIPT_PATH = "res://.tmp_script_definition/temp_definition_target.gd"
+GD_DUPLICATE_SCRIPT_PATH = "res://.tmp_script_definition/temp_definition_duplicate.gd"
 CS_SCRIPT_PATH = "res://.tmp_script_definition/temp_definition_target.cs"
 GD_SCRIPT_FILE = TEMP_DIR / "temp_definition_target.gd"
+GD_DUPLICATE_SCRIPT_FILE = TEMP_DIR / "temp_definition_duplicate.gd"
 CS_SCRIPT_FILE = TEMP_DIR / "temp_definition_target.cs"
 
 GD_SCRIPT_TEXT = """
@@ -27,6 +29,16 @@ const DEFAULT_SPEED := 12
 var display_name: String = "runner"
 
 func ready_up() -> void:
+    pass
+
+func shared_lookup() -> void:
+    pass
+""".strip() + "\n"
+
+GD_DUPLICATE_SCRIPT_TEXT = """
+extends Node
+
+func shared_lookup() -> void:
     pass
 """.strip() + "\n"
 
@@ -109,6 +121,7 @@ def main() -> int:
         shutil.rmtree(TEMP_DIR, ignore_errors=True)
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
     GD_SCRIPT_FILE.write_text(GD_SCRIPT_TEXT, encoding="utf-8")
+    GD_DUPLICATE_SCRIPT_FILE.write_text(GD_DUPLICATE_SCRIPT_TEXT, encoding="utf-8")
     CS_SCRIPT_FILE.write_text(CS_SCRIPT_TEXT, encoding="utf-8")
 
     args = [
@@ -184,6 +197,25 @@ def main() -> int:
             request_id=5,
         )
         expect_single_definition(filtered_result, GD_SCRIPT_PATH, "spawned", "signal", 4)
+
+        paged_result = tool_call(
+            "find_script_symbol_definition",
+            {
+                "symbol_name": "shared_lookup",
+                "search_path": "res://.tmp_script_definition",
+                "include_extensions": [".gd"],
+                "max_results": 1,
+            },
+            request_id=6,
+        )
+        if paged_result.get("count") != 1 or paged_result.get("truncated") is not True:
+            raise AssertionError(f"Expected truncated paged definition result: {paged_result}")
+        if paged_result.get("has_more") is not True or paged_result.get("max_results_applied") != 1:
+            raise AssertionError(f"Expected rerun metadata on paged definition result: {paged_result}")
+        if paged_result.get("next_max_results") != 2:
+            raise AssertionError(f"Expected next_max_results=2 on paged definition result: {paged_result}")
+        if paged_result["definitions"][0].get("symbol_name") != "shared_lookup":
+            raise AssertionError(f"Unexpected paged definition payload: {paged_result}")
 
         print("script definition flow verified")
         return 0

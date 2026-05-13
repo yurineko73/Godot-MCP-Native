@@ -1,0 +1,20 @@
+name: Encoding Check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  utf8-bom:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Verify UTF-8 without BOM
+        run: python scripts/check_utf8_bom.py

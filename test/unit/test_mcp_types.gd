@@ -181,7 +181,20 @@ func test_create_capabilities():
 	var caps: Dictionary = MCPTypes.create_capabilities()
 	assert_has(caps, "tools", "Should have tools capability")
 	assert_has(caps, "resources", "Should have resources capability")
-	assert_has(caps, "prompts", "Should have prompts capability")
+	assert_has(caps, "prompts", "Default capabilities should advertise prompts support")
+	assert_eq(caps["tools"], {"listChanged": true}, "Default tools capability should expose listChanged")
+	assert_eq(caps["resources"], {}, "Default resources capability should not advertise listChanged without notifications")
+	assert_eq(caps["prompts"], {}, "Default prompts capability should not advertise listChanged")
+	assert_false(caps["resources"].get("subscribe", false), "Default capabilities should not advertise resources.subscribe")
+
+func test_create_capabilities_with_explicit_optional_features():
+	var caps: Dictionary = MCPTypes.create_capabilities(true, true, true, true, true)
+	assert_eq(caps["resources"], {"subscribe": true, "listChanged": true}, "Explicit opt-in should advertise resources.subscribe")
+	assert_eq(caps["prompts"], {"listChanged": true}, "Explicit opt-in should advertise prompts support")
+
+func test_create_capabilities_without_prompts_support():
+	var caps: Dictionary = MCPTypes.create_capabilities(true, false, true, false, false)
+	assert_false(caps.has("prompts"), "Prompt capability should be omitted when prompt support is disabled")
 
 func test_protocol_version():
 	assert_eq(MCPTypes.PROTOCOL_VERSION, "2025-11-25", "Protocol version should be 2025-11-25")

@@ -4,12 +4,12 @@
 class_name ProjectToolsNative
 extends RefCounted
 
-var _editor_interface: EditorInterface = null
+var _editor_interface = null
 
-func initialize(editor_interface: EditorInterface) -> void:
+func initialize(editor_interface) -> void:
 	_editor_interface = editor_interface
 
-func _get_editor_interface() -> EditorInterface:
+func _get_editor_interface():
 	if _editor_interface:
 		return _editor_interface
 	if Engine.has_meta("GodotMCPPlugin"):
@@ -25,19 +25,41 @@ func _get_editor_interface() -> EditorInterface:
 func register_tools(server_core: RefCounted) -> void:
 	_register_get_project_info(server_core)
 	_register_get_project_settings(server_core)
+	_register_set_project_setting(server_core)
+	_register_inspect_project_setting(server_core)
+	_register_clear_project_setting(server_core)
 	_register_list_project_tests(server_core)
+	_register_list_project_test_runners(server_core)
+	_register_inspect_project_test(server_core)
 	_register_run_project_test(server_core)
 	_register_run_project_tests(server_core)
 	_register_list_project_input_actions(server_core)
+	_register_inspect_project_input_action(server_core)
 	_register_upsert_project_input_action(server_core)
 	_register_remove_project_input_action(server_core)
 	_register_list_project_autoloads(server_core)
+	_register_inspect_project_autoload(server_core)
+	_register_upsert_project_autoload(server_core)
+	_register_remove_project_autoload(server_core)
+	_register_set_project_plugin_enabled(server_core)
+	_register_list_project_plugins(server_core)
+	_register_inspect_project_plugin(server_core)
+	_register_set_project_feature_profile(server_core)
+	_register_inspect_project_feature_profile(server_core)
+	_register_list_project_feature_profiles(server_core)
+	_register_get_project_configuration_summary(server_core)
 	_register_list_project_global_classes(server_core)
+	_register_inspect_project_global_class(server_core)
 	_register_get_class_api_metadata(server_core)
 	_register_inspect_csharp_project_support(server_core)
 	_register_compare_render_screenshots(server_core)
 	_register_inspect_tileset_resource(server_core)
 	_register_list_project_resources(server_core)
+	_register_inspect_project_resource(server_core)
+	_register_update_project_resource_properties(server_core)
+	_register_duplicate_project_resource(server_core)
+	_register_delete_project_resource(server_core)
+	_register_move_project_resource(server_core)
 	_register_create_resource(server_core)
 	_register_get_project_structure(server_core)
 	_register_reimport_resources(server_core)
@@ -57,13 +79,13 @@ func register_tools(server_core: RefCounted) -> void:
 func _register_get_project_info(server_core: RefCounted) -> void:
 	var tool_name: String = "get_project_info"
 	var description: String = "Get general information about the Godot project, including name, version, and description."
-	
+
 	# inputSchema
 	var input_schema: Dictionary = {
 		"type": "object",
 		"properties": {}
 	}
-	
+
 	# outputSchema
 	var output_schema: Dictionary = {
 		"type": "object",
@@ -76,7 +98,7 @@ func _register_get_project_info(server_core: RefCounted) -> void:
 			"godot_version": {"type": "string"}
 		}
 	}
-	
+
 	# annotations - readOnlyHint = true
 	var annotations: Dictionary = {
 		"readOnlyHint": true,
@@ -84,7 +106,7 @@ func _register_get_project_info(server_core: RefCounted) -> void:
 		"idempotentHint": true,
 		"openWorldHint": false
 	}
-	
+
 	# 注册工具
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_get_project_info"),
@@ -96,16 +118,16 @@ func _tool_get_project_info(params: Dictionary) -> Dictionary:
 	var project_version: String = ProjectSettings.get_setting("application/config/version", "")
 	var project_description: String = ProjectSettings.get_setting("application/config/description", "")
 	var main_scene_uid: String = ProjectSettings.get_setting("application/run/main_scene", "")
-	
+
 	var main_scene: String = main_scene_uid
 	if main_scene_uid.begins_with("uid://"):
 		if ClassDB.class_exists("ResourceUID"):
 			main_scene = ResourceUID.uid_to_path(main_scene_uid)
-	
+
 	var project_path: String = ProjectSettings.globalize_path("res://")
 	var godot_version: Dictionary = Engine.get_version_info()
 	var version_str: String = "%d.%d.%s" % [godot_version.get("major", 0), godot_version.get("minor", 0), godot_version.get("status", "")]
-	
+
 	return {
 		"project_name": project_name,
 		"project_version": project_version,
@@ -122,7 +144,7 @@ func _tool_get_project_info(params: Dictionary) -> Dictionary:
 func _register_get_project_settings(server_core: RefCounted) -> void:
 	var tool_name: String = "get_project_settings"
 	var description: String = "Get project settings. Optionally filter by a prefix."
-	
+
 	# inputSchema
 	var input_schema: Dictionary = {
 		"type": "object",
@@ -133,7 +155,7 @@ func _register_get_project_settings(server_core: RefCounted) -> void:
 			}
 		}
 	}
-	
+
 	# outputSchema
 	var output_schema: Dictionary = {
 		"type": "object",
@@ -142,7 +164,7 @@ func _register_get_project_settings(server_core: RefCounted) -> void:
 			"count": {"type": "integer"}
 		}
 	}
-	
+
 	# annotations - readOnlyHint = true
 	var annotations: Dictionary = {
 		"readOnlyHint": true,
@@ -150,7 +172,7 @@ func _register_get_project_settings(server_core: RefCounted) -> void:
 		"idempotentHint": true,
 		"openWorldHint": false
 	}
-	
+
 	# 注册工具
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_get_project_settings"),
@@ -159,22 +181,22 @@ func _register_get_project_settings(server_core: RefCounted) -> void:
 
 func _tool_get_project_settings(params: Dictionary) -> Dictionary:
 	var filter: String = params.get("filter", "")
-	
+
 	var settings: Dictionary = {}
 	var setting_count: int = 0
-	
+
 	var all_properties: Array = ProjectSettings.get_property_list()
-	
+
 	for property_info in all_properties:
 		var setting_name: String = property_info.get("name", "")
-		
+
 		if not filter.is_empty() and not setting_name.begins_with(filter):
 			continue
-		
+
 		var value: Variant = ProjectSettings.get_setting(setting_name)
 		settings[setting_name] = str(value)
 		setting_count += 1
-	
+
 	return {
 		"settings": settings,
 		"count": setting_count
@@ -183,6 +205,213 @@ func _tool_get_project_settings(params: Dictionary) -> Dictionary:
 # ============================================================================
 # project input actions - 项目级 InputMap
 # ============================================================================
+
+func _register_set_project_setting(server_core: RefCounted) -> void:
+	var tool_name: String = "set_project_setting"
+	var description: String = "Set one project setting value, save project.godot, and return the persisted value."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"setting_name": {
+				"type": "string",
+				"description": "Existing project setting key to update, or a custom key under the mcp/ namespace."
+			},
+			"setting_value": {
+				"description": "New scalar value for the setting."
+			}
+		},
+		"required": ["setting_name", "setting_value"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"status": {"type": "string"},
+			"setting_name": {"type": "string"},
+			"existed_before": {"type": "boolean"},
+			"value_type": {"type": "string"},
+			"previous_value": {},
+			"persisted_value": {}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": false,
+		"idempotentHint": false,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_set_project_setting"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_set_project_setting(params: Dictionary) -> Dictionary:
+	var setting_name: String = str(params.get("setting_name", "")).strip_edges()
+	if setting_name.is_empty():
+		return {"error": "Missing required parameter: setting_name"}
+	if not params.has("setting_value"):
+		return {"error": "Missing required parameter: setting_value"}
+
+	var validity: Dictionary = _validate_project_setting_name(setting_name)
+	if not bool(validity.get("ok", false)):
+		return {"error": str(validity.get("error", "Invalid project setting name"))}
+
+	var existed_before: bool = ProjectSettings.has_setting(setting_name)
+	var previous_value: Variant = ProjectSettings.get_setting(setting_name) if existed_before else null
+	var expected_type: int = typeof(previous_value) if existed_before else TYPE_NIL
+	var coerced: Dictionary = _coerce_project_setting_value(params.get("setting_value"), expected_type, existed_before)
+	if not bool(coerced.get("ok", false)):
+		return {"error": "Unsupported setting_value for '%s': %s" % [setting_name, str(coerced.get("error", "unknown error"))]}
+
+	ProjectSettings.set_setting(setting_name, coerced.get("value"))
+	var save_error: Error = ProjectSettings.save()
+	if save_error != OK:
+		return {"error": "Failed to save project settings: " + str(save_error)}
+
+	var persisted_value: Variant = ProjectSettings.get_setting(setting_name, null)
+	return {
+		"status": "success",
+		"setting_name": setting_name,
+		"existed_before": existed_before,
+		"value_type": type_string(typeof(persisted_value)),
+		"previous_value": _serialize_project_resource_value(previous_value),
+		"persisted_value": _serialize_project_resource_value(persisted_value)
+	}
+
+func _register_inspect_project_setting(server_core: RefCounted) -> void:
+	var tool_name: String = "inspect_project_setting"
+	var description: String = "Inspect one project setting key and return its current existence truth, persisted value, and value type."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"setting_name": {
+				"type": "string",
+				"description": "Existing project setting key, or a custom key under the mcp/ namespace."
+			}
+		},
+		"required": ["setting_name"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"setting_name": {"type": "string"},
+			"exists": {"type": "boolean"},
+			"value_type": {"type": "string"},
+			"persisted_value": {}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_inspect_project_setting"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_inspect_project_setting(params: Dictionary) -> Dictionary:
+	var setting_name: String = str(params.get("setting_name", "")).strip_edges()
+	if setting_name.is_empty():
+		return {"error": "Missing required parameter: setting_name"}
+
+	var validity: Dictionary = _validate_project_setting_name(setting_name)
+	if not bool(validity.get("ok", false)):
+		return {"error": str(validity.get("error", "Invalid project setting name"))}
+
+	var exists: bool = ProjectSettings.has_setting(setting_name)
+	if not exists:
+		return {
+			"setting_name": setting_name,
+			"exists": false
+		}
+
+	var persisted_value: Variant = ProjectSettings.get_setting(setting_name, null)
+	return {
+		"setting_name": setting_name,
+		"exists": true,
+		"value_type": type_string(typeof(persisted_value)),
+		"persisted_value": _serialize_project_resource_value(persisted_value)
+	}
+
+func _register_clear_project_setting(server_core: RefCounted) -> void:
+	var tool_name: String = "clear_project_setting"
+	var description: String = "Clear one project setting key, save project.godot, and report whether it existed."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"setting_name": {
+				"type": "string",
+				"description": "Existing project setting key to clear, or a custom key under the mcp/ namespace."
+			}
+		},
+		"required": ["setting_name"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"status": {"type": "string"},
+			"setting_name": {"type": "string"},
+			"existed_before": {"type": "boolean"},
+			"removed": {"type": "boolean"},
+			"previous_value": {}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": true,
+		"idempotentHint": false,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_clear_project_setting"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_clear_project_setting(params: Dictionary) -> Dictionary:
+	var setting_name: String = str(params.get("setting_name", "")).strip_edges()
+	if setting_name.is_empty():
+		return {"error": "Missing required parameter: setting_name"}
+
+	var validity: Dictionary = _validate_project_setting_name(setting_name)
+	if not bool(validity.get("ok", false)):
+		return {"error": str(validity.get("error", "Invalid project setting name"))}
+
+	var existed_before: bool = ProjectSettings.has_setting(setting_name)
+	var previous_value: Variant = ProjectSettings.get_setting(setting_name) if existed_before else null
+	if not existed_before:
+		return {
+			"status": "success",
+			"setting_name": setting_name,
+			"existed_before": false,
+			"removed": false,
+			"previous_value": null
+		}
+
+	ProjectSettings.clear(setting_name)
+	var save_error: Error = ProjectSettings.save()
+	if save_error != OK:
+		return {"error": "Failed to save project settings: " + str(save_error)}
+
+	return {
+		"status": "success",
+		"setting_name": setting_name,
+		"existed_before": true,
+		"removed": true,
+		"previous_value": _serialize_project_resource_value(previous_value)
+	}
 
 func _register_list_project_input_actions(server_core: RefCounted) -> void:
 	var tool_name: String = "list_project_input_actions"
@@ -227,6 +456,58 @@ func _tool_list_project_input_actions(params: Dictionary) -> Dictionary:
 		"count": actions.size(),
 		"filter": action_name
 	}
+
+func _register_inspect_project_input_action(server_core: RefCounted) -> void:
+	var tool_name: String = "inspect_project_input_action"
+	var description: String = "Inspect one project InputMap action and return existence truth plus current deadzone and serialized events."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"action_name": {"type": "string"}
+		},
+		"required": ["action_name"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"action_name": {"type": "string"},
+			"exists": {"type": "boolean"},
+			"deadzone": {"type": "number"},
+			"event_count": {"type": "integer"},
+			"events": {"type": "array"},
+			"setting_name": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_inspect_project_input_action"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_inspect_project_input_action(params: Dictionary) -> Dictionary:
+	var action_name: String = str(params.get("action_name", "")).strip_edges()
+	if action_name.is_empty():
+		return {"error": "Missing required parameter: action_name"}
+
+	var actions: Array = _collect_project_input_actions(action_name)
+	if actions.is_empty():
+		return {
+			"action_name": action_name,
+			"exists": false
+		}
+
+	var action_entry: Dictionary = actions[0]
+	action_entry["exists"] = true
+	return action_entry
 
 func _register_upsert_project_input_action(server_core: RefCounted) -> void:
 	var tool_name: String = "upsert_project_input_action"
@@ -435,6 +716,741 @@ func _tool_list_project_autoloads(params: Dictionary) -> Dictionary:
 		"count": autoloads.size()
 	}
 
+func _register_inspect_project_autoload(server_core: RefCounted) -> void:
+	var tool_name: String = "inspect_project_autoload"
+	var description: String = "Inspect one project autoload entry by name and return its resolved path, singleton flag, and existence truth."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"name": {
+				"type": "string",
+				"description": "Autoload entry name to inspect."
+			}
+		},
+		"required": ["name"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"name": {"type": "string"},
+			"setting_name": {"type": "string"},
+			"exists": {"type": "boolean"},
+			"path": {"type": "string"},
+			"is_singleton": {"type": "boolean"},
+			"order": {"type": "integer"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_inspect_project_autoload"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_inspect_project_autoload(params: Dictionary) -> Dictionary:
+	var autoload_name: String = str(params.get("name", "")).strip_edges()
+	if autoload_name.is_empty():
+		return {"error": "Missing required parameter: name"}
+	if autoload_name.contains("/") or autoload_name.contains("\\"):
+		return {"error": "Invalid autoload name: path separators are not allowed"}
+
+	var setting_name: String = "autoload/" + autoload_name
+	if not ProjectSettings.has_setting(setting_name):
+		return {
+			"name": autoload_name,
+			"setting_name": setting_name,
+			"exists": false
+		}
+
+	var values_by_name: Dictionary = {setting_name: ProjectSettings.get_setting(setting_name)}
+	var orders_by_name: Dictionary = {setting_name: ProjectSettings.get_order(setting_name)}
+	var entries: Array = _collect_project_autoloads_from_properties(
+		[{"name": setting_name}],
+		values_by_name,
+		orders_by_name
+	)
+	var entry: Dictionary = entries[0] if not entries.is_empty() else {}
+	entry["exists"] = true
+	return entry
+
+func _register_upsert_project_autoload(server_core: RefCounted) -> void:
+	var tool_name: String = "upsert_project_autoload"
+	var description: String = "Create or update one project autoload entry and save project.godot."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"name": {
+				"type": "string",
+				"description": "Autoload entry name."
+			},
+			"path": {
+				"type": "string",
+				"description": "Autoload target path. Supports .gd, .cs, and .tscn resources under res://."
+			},
+			"is_singleton": {
+				"type": "boolean",
+				"description": "Whether the autoload should be registered as a singleton.",
+				"default": true
+			}
+		},
+		"required": ["name", "path"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"name": {"type": "string"},
+			"path": {"type": "string"},
+			"is_singleton": {"type": "boolean"},
+			"setting_name": {"type": "string"},
+			"existed_before": {"type": "boolean"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": false,
+		"idempotentHint": false,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_upsert_project_autoload"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_upsert_project_autoload(params: Dictionary) -> Dictionary:
+	var autoload_name: String = str(params.get("name", "")).strip_edges()
+	if autoload_name.is_empty():
+		return {"error": "Missing required parameter: name"}
+	if autoload_name.contains("/") or autoload_name.contains("\\"):
+		return {"error": "Invalid autoload name: path separators are not allowed"}
+
+	var autoload_path: String = str(params.get("path", "")).strip_edges()
+	if autoload_path.is_empty():
+		return {"error": "Missing required parameter: path"}
+	var path_validation: Dictionary = PathValidator.validate_file_path(autoload_path, [".gd", ".cs", ".tscn"])
+	if not path_validation["valid"]:
+		return {"error": "Invalid autoload path: " + path_validation["error"]}
+	autoload_path = path_validation["sanitized"]
+	if not FileAccess.file_exists(autoload_path):
+		return {"error": "File not found: " + autoload_path}
+
+	var is_singleton: bool = bool(params.get("is_singleton", true))
+	var setting_name: String = "autoload/" + autoload_name
+	var existed_before: bool = ProjectSettings.has_setting(setting_name)
+	var stored_value: String = ("*" if is_singleton else "") + autoload_path
+
+	ProjectSettings.set_setting(setting_name, stored_value)
+	var save_error: Error = ProjectSettings.save()
+	if save_error != OK:
+		return {"error": "Failed to save project settings: " + str(save_error)}
+
+	var values_by_name: Dictionary = {setting_name: ProjectSettings.get_setting(setting_name)}
+	var orders_by_name: Dictionary = {setting_name: ProjectSettings.get_order(setting_name)}
+	var entries: Array = _collect_project_autoloads_from_properties(
+		[{"name": setting_name}],
+		values_by_name,
+		orders_by_name
+	)
+	var entry: Dictionary = entries[0] if not entries.is_empty() else {}
+	entry["existed_before"] = existed_before
+	return entry
+
+func _register_remove_project_autoload(server_core: RefCounted) -> void:
+	var tool_name: String = "remove_project_autoload"
+	var description: String = "Remove one project autoload entry and save project.godot."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"name": {
+				"type": "string",
+				"description": "Autoload entry name to remove."
+			}
+		},
+		"required": ["name"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"name": {"type": "string"},
+			"setting_name": {"type": "string"},
+			"existed_before": {"type": "boolean"},
+			"removed": {"type": "boolean"},
+			"path": {"type": "string"},
+			"is_singleton": {"type": "boolean"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": true,
+		"idempotentHint": false,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_remove_project_autoload"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_remove_project_autoload(params: Dictionary) -> Dictionary:
+	var autoload_name: String = str(params.get("name", "")).strip_edges()
+	if autoload_name.is_empty():
+		return {"error": "Missing required parameter: name"}
+	if autoload_name.contains("/") or autoload_name.contains("\\"):
+		return {"error": "Invalid autoload name: path separators are not allowed"}
+
+	var setting_name: String = "autoload/" + autoload_name
+	if not ProjectSettings.has_setting(setting_name):
+		return {
+			"name": autoload_name,
+			"setting_name": setting_name,
+			"existed_before": false,
+			"removed": false
+		}
+
+	var previous_value: String = str(ProjectSettings.get_setting(setting_name, ""))
+	var previous_is_singleton: bool = previous_value.begins_with("*")
+	var previous_path: String = previous_value.substr(1) if previous_is_singleton else previous_value
+
+	ProjectSettings.clear(setting_name)
+	var save_error: Error = ProjectSettings.save()
+	if save_error != OK:
+		return {"error": "Failed to save project settings: " + str(save_error)}
+
+	return {
+		"name": autoload_name,
+		"setting_name": setting_name,
+		"existed_before": true,
+		"removed": true,
+		"path": previous_path,
+		"is_singleton": previous_is_singleton
+	}
+
+func _register_set_project_plugin_enabled(server_core: RefCounted) -> void:
+	var tool_name: String = "set_project_plugin_enabled"
+	var description: String = "Enable or disable one installed editor plugin by its res://addons/.../plugin.cfg path."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"plugin_path": {
+				"type": "string",
+				"description": "Plugin config path under res://addons/, for example res://addons/gut/plugin.cfg."
+			},
+			"enabled": {
+				"type": "boolean",
+				"description": "Whether the plugin should be enabled."
+			}
+		},
+		"required": ["plugin_path", "enabled"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"plugin_path": {"type": "string"},
+			"plugin_name": {"type": "string"},
+			"enabled_requested": {"type": "boolean"},
+			"enabled": {"type": "boolean"},
+			"existed_before": {"type": "boolean"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": true,
+		"idempotentHint": false,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_set_project_plugin_enabled"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_set_project_plugin_enabled(params: Dictionary) -> Dictionary:
+	var plugin_path: String = str(params.get("plugin_path", "")).strip_edges()
+	if plugin_path.is_empty():
+		return {"error": "Missing required parameter: plugin_path"}
+	if not params.has("enabled"):
+		return {"error": "Missing required parameter: enabled"}
+	if not _is_valid_plugin_config_path(plugin_path):
+		return {"error": "Invalid plugin_path: expected a res://addons/.../plugin.cfg path"}
+	if not FileAccess.file_exists(plugin_path):
+		return {"error": "Plugin not found: " + plugin_path}
+
+	var editor_interface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+	if not editor_interface.has_method("is_plugin_enabled") or not editor_interface.has_method("set_plugin_enabled"):
+		return {"error": "Editor interface does not support plugin enablement"}
+
+	var plugin_name: String = _get_plugin_name_from_path(plugin_path)
+	var enabled_requested: bool = bool(params.get("enabled", false))
+	var existed_before: bool = bool(editor_interface.is_plugin_enabled(plugin_name))
+	editor_interface.set_plugin_enabled(plugin_name, enabled_requested)
+	var enabled: bool = bool(editor_interface.is_plugin_enabled(plugin_name))
+
+	return {
+		"plugin_path": plugin_path,
+		"plugin_name": plugin_name,
+		"enabled_requested": enabled_requested,
+		"enabled": enabled,
+		"existed_before": existed_before
+	}
+
+func _register_list_project_plugins(server_core: RefCounted) -> void:
+	var tool_name: String = "list_project_plugins"
+	var description: String = "List installed editor plugins discovered under res://addons/*/plugin.cfg and report their current enabled state."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"plugins": {"type": "array", "items": {"type": "object"}},
+			"count": {"type": "integer"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_list_project_plugins"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_list_project_plugins(_params: Dictionary) -> Dictionary:
+	var editor_interface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+	if not editor_interface.has_method("is_plugin_enabled"):
+		return {"error": "Editor interface does not support plugin listing"}
+
+	var plugins: Array = _collect_project_plugins()
+	for entry in plugins:
+		entry["enabled"] = bool(editor_interface.is_plugin_enabled(str(entry.get("name", ""))))
+
+	return {
+		"plugins": plugins,
+		"count": plugins.size()
+	}
+
+func _register_inspect_project_plugin(server_core: RefCounted) -> void:
+	var tool_name: String = "inspect_project_plugin"
+	var description: String = "Inspect one installed editor plugin by its res://addons/.../plugin.cfg path and report plugin.cfg metadata plus current enabled state."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"plugin_path": {
+				"type": "string",
+				"description": "Plugin config path under res://addons/, for example res://addons/gut/plugin.cfg."
+			}
+		},
+		"required": ["plugin_path"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"plugin_path": {"type": "string"},
+			"plugin_name": {"type": "string"},
+			"display_name": {"type": "string"},
+			"description": {"type": "string"},
+			"author": {"type": "string"},
+			"version": {"type": "string"},
+			"script": {"type": "string"},
+			"enabled": {"type": "boolean"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_inspect_project_plugin"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_inspect_project_plugin(params: Dictionary) -> Dictionary:
+	if not params.has("plugin_path"):
+		return {"error": "Missing required parameter: plugin_path"}
+
+	var plugin_path: String = str(params.get("plugin_path", "")).strip_edges()
+	if not _is_valid_plugin_config_path(plugin_path):
+		return {"error": "Invalid plugin_path: expected a res://addons/.../plugin.cfg path"}
+	if not FileAccess.file_exists(plugin_path):
+		return {"error": "Plugin not found: " + plugin_path}
+
+	var editor_interface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+	if not editor_interface.has_method("is_plugin_enabled"):
+		return {"error": "Editor interface does not support plugin inspection"}
+
+	var plugin_name: String = _get_plugin_name_from_path(plugin_path)
+	var plugin_metadata: Dictionary = _load_plugin_config_metadata(plugin_path)
+	if plugin_metadata.has("error"):
+		return plugin_metadata
+
+	return {
+		"plugin_path": plugin_path,
+		"plugin_name": plugin_name,
+		"display_name": str(plugin_metadata.get("display_name", "")),
+		"description": str(plugin_metadata.get("description", "")),
+		"author": str(plugin_metadata.get("author", "")),
+		"version": str(plugin_metadata.get("version", "")),
+		"script": str(plugin_metadata.get("script", "")),
+		"enabled": bool(editor_interface.is_plugin_enabled(plugin_name))
+	}
+
+func _register_set_project_feature_profile(server_core: RefCounted) -> void:
+	var tool_name: String = "set_project_feature_profile"
+	var description: String = "Activate one existing editor feature profile by name, or reset back to the default profile."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"profile_name": {
+				"type": "string",
+				"description": "Feature profile name to activate. Pass an empty string to reset to the default profile."
+			}
+		},
+		"required": ["profile_name"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"profile_name_requested": {"type": "string"},
+			"previous_profile": {"type": "string"},
+			"current_profile": {"type": "string"},
+			"used_default": {"type": "boolean"},
+			"profile_path": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": true,
+		"idempotentHint": false,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_set_project_feature_profile"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_set_project_feature_profile(params: Dictionary) -> Dictionary:
+	if not params.has("profile_name"):
+		return {"error": "Missing required parameter: profile_name"}
+
+	var profile_name: String = str(params.get("profile_name", "")).strip_edges()
+	if profile_name.contains("/") or profile_name.contains("\\"):
+		return {"error": "Invalid profile_name: path separators are not allowed"}
+
+	var editor_interface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+	if not editor_interface.has_method("get_current_feature_profile") or not editor_interface.has_method("set_current_feature_profile"):
+		return {"error": "Editor interface does not support feature profile selection"}
+
+	var previous_profile: String = str(editor_interface.get_current_feature_profile())
+	var profile_path: String = ""
+	var used_default: bool = profile_name.is_empty()
+	if not used_default:
+		if not editor_interface.has_method("get_editor_paths"):
+			return {"error": "Editor interface does not expose editor paths"}
+		var editor_paths = editor_interface.get_editor_paths()
+		if editor_paths == null or not editor_paths.has_method("get_config_dir"):
+			return {"error": "Editor paths not available"}
+		profile_path = _get_feature_profile_path(editor_paths.get_config_dir(), profile_name)
+		if not FileAccess.file_exists(profile_path):
+			return {"error": "Feature profile not found: " + profile_name}
+
+	editor_interface.set_current_feature_profile(profile_name)
+	var current_profile: String = str(editor_interface.get_current_feature_profile())
+	return {
+		"profile_name_requested": profile_name,
+		"previous_profile": previous_profile,
+		"current_profile": current_profile,
+		"used_default": used_default,
+		"profile_path": profile_path
+	}
+
+func _register_inspect_project_feature_profile(server_core: RefCounted) -> void:
+	var tool_name: String = "inspect_project_feature_profile"
+	var description: String = "Inspect one feature profile by name and report resolved path, existence truth, and whether it is currently active."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"profile_name": {
+				"type": "string",
+				"description": "Feature profile name to inspect."
+			}
+		},
+		"required": ["profile_name"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"profile_name": {"type": "string"},
+			"profile_path": {"type": "string"},
+			"exists": {"type": "boolean"},
+			"is_current": {"type": "boolean"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_inspect_project_feature_profile"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_inspect_project_feature_profile(params: Dictionary) -> Dictionary:
+	if not params.has("profile_name"):
+		return {"error": "Missing required parameter: profile_name"}
+
+	var profile_name: String = str(params.get("profile_name", "")).strip_edges()
+	if profile_name.is_empty():
+		return {"error": "Missing required parameter: profile_name"}
+	if profile_name.contains("/") or profile_name.contains("\\"):
+		return {"error": "Invalid profile_name: path separators are not allowed"}
+
+	var editor_interface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+	if not editor_interface.has_method("get_current_feature_profile") or not editor_interface.has_method("get_editor_paths"):
+		return {"error": "Editor interface does not support feature profile inspection"}
+
+	var editor_paths = editor_interface.get_editor_paths()
+	if editor_paths == null or not editor_paths.has_method("get_config_dir"):
+		return {"error": "Editor paths not available"}
+
+	var profile_path: String = _get_feature_profile_path(editor_paths.get_config_dir(), profile_name)
+	var current_profile: String = str(editor_interface.get_current_feature_profile())
+	var exists: bool = FileAccess.file_exists(profile_path)
+	return {
+		"profile_name": profile_name,
+		"profile_path": profile_path,
+		"exists": exists,
+		"is_current": exists and profile_name == current_profile
+	}
+
+func _register_list_project_feature_profiles(server_core: RefCounted) -> void:
+	var tool_name: String = "list_project_feature_profiles"
+	var description: String = "List available editor feature profiles from the editor config directory and mark which profile is currently active."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"profiles": {"type": "array", "items": {"type": "object"}},
+			"count": {"type": "integer"},
+			"current_profile": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_list_project_feature_profiles"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_list_project_feature_profiles(_params: Dictionary) -> Dictionary:
+	var editor_interface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+	if not editor_interface.has_method("get_current_feature_profile") or not editor_interface.has_method("get_editor_paths"):
+		return {"error": "Editor interface does not support feature profile listing"}
+
+	var editor_paths = editor_interface.get_editor_paths()
+	if editor_paths == null or not editor_paths.has_method("get_config_dir"):
+		return {"error": "Editor paths not available"}
+
+	var current_profile: String = str(editor_interface.get_current_feature_profile())
+	var feature_profiles_dir: String = editor_paths.get_config_dir().path_join("feature_profiles")
+	var profiles: Array = []
+	var dir: DirAccess = DirAccess.open(feature_profiles_dir)
+	if dir != null:
+		dir.list_dir_begin()
+		var entry_name: String = dir.get_next()
+		while not entry_name.is_empty():
+			if not dir.current_is_dir() and entry_name.ends_with(".profile"):
+				var profile_name: String = entry_name.trim_suffix(".profile")
+				profiles.append({
+					"name": profile_name,
+					"profile_path": feature_profiles_dir.path_join(entry_name),
+					"is_current": profile_name == current_profile
+				})
+			entry_name = dir.get_next()
+		dir.list_dir_end()
+	profiles.sort_custom(Callable(self, "_compare_named_entries"))
+
+	return {
+		"profiles": profiles,
+		"count": profiles.size(),
+		"current_profile": current_profile
+	}
+
+func _register_get_project_configuration_summary(server_core: RefCounted) -> void:
+	var tool_name: String = "get_project_configuration_summary"
+	var description: String = "Return a bounded summary of installed project plugins, configured autoloads, and available feature profiles."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"max_items": {
+				"type": "integer",
+				"description": "Maximum number of entries to include per summary list. Defaults to 10.",
+				"minimum": 1,
+				"default": 10
+			}
+		}
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"max_items_applied": {"type": "integer"},
+			"plugin_count": {"type": "integer"},
+			"enabled_plugin_count": {"type": "integer"},
+			"plugins": {"type": "array", "items": {"type": "object"}},
+			"plugins_truncated": {"type": "boolean"},
+			"autoload_count": {"type": "integer"},
+			"autoloads": {"type": "array", "items": {"type": "object"}},
+			"autoloads_truncated": {"type": "boolean"},
+			"feature_profile_count": {"type": "integer"},
+			"current_feature_profile": {"type": "string"},
+			"feature_profiles": {"type": "array", "items": {"type": "object"}},
+			"feature_profiles_truncated": {"type": "boolean"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_get_project_configuration_summary"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_get_project_configuration_summary(params: Dictionary) -> Dictionary:
+	var max_items: int = int(params.get("max_items", 10))
+	if max_items < 1:
+		return {"error": "Invalid max_items: expected integer >= 1"}
+
+	var editor_interface = _get_editor_interface()
+	if not editor_interface:
+		return {"error": "Editor interface not available"}
+	if not editor_interface.has_method("is_plugin_enabled") or not editor_interface.has_method("get_current_feature_profile") or not editor_interface.has_method("get_editor_paths"):
+		return {"error": "Editor interface does not support project configuration summary"}
+
+	var plugins: Array = _collect_project_plugins()
+	var enabled_plugin_count: int = 0
+	for entry in plugins:
+		var enabled: bool = bool(editor_interface.is_plugin_enabled(str(entry.get("name", ""))))
+		entry["enabled"] = enabled
+		if enabled:
+			enabled_plugin_count += 1
+
+	var values_by_name: Dictionary = {}
+	var orders_by_name: Dictionary = {}
+	for property_info in ProjectSettings.get_property_list():
+		var property_name: String = str(property_info.get("name", ""))
+		if not property_name.begins_with("autoload/"):
+			continue
+		values_by_name[property_name] = ProjectSettings.get_setting(property_name)
+		orders_by_name[property_name] = int(property_info.get("order", 0))
+	var autoloads: Array = _collect_project_autoloads_from_properties(ProjectSettings.get_property_list(), values_by_name, orders_by_name)
+
+	var editor_paths = editor_interface.get_editor_paths()
+	if editor_paths == null or not editor_paths.has_method("get_config_dir"):
+		return {"error": "Editor paths not available"}
+
+	var current_feature_profile: String = str(editor_interface.get_current_feature_profile())
+	var feature_profiles_dir: String = editor_paths.get_config_dir().path_join("feature_profiles")
+	var feature_profiles: Array = []
+	var dir: DirAccess = DirAccess.open(feature_profiles_dir)
+	if dir != null:
+		dir.list_dir_begin()
+		var entry_name: String = dir.get_next()
+		while not entry_name.is_empty():
+			if not dir.current_is_dir() and entry_name.ends_with(".profile"):
+				var profile_name: String = entry_name.trim_suffix(".profile")
+				feature_profiles.append({
+					"name": profile_name,
+					"profile_path": feature_profiles_dir.path_join(entry_name),
+					"is_current": profile_name == current_feature_profile
+				})
+			entry_name = dir.get_next()
+		dir.list_dir_end()
+	feature_profiles.sort_custom(Callable(self, "_compare_named_entries"))
+
+	return {
+		"max_items_applied": max_items,
+		"plugin_count": plugins.size(),
+		"enabled_plugin_count": enabled_plugin_count,
+		"plugins": plugins.slice(0, min(max_items, plugins.size())),
+		"plugins_truncated": plugins.size() > max_items,
+		"autoload_count": autoloads.size(),
+		"autoloads": autoloads.slice(0, min(max_items, autoloads.size())),
+		"autoloads_truncated": autoloads.size() > max_items,
+		"feature_profile_count": feature_profiles.size(),
+		"current_feature_profile": current_feature_profile,
+		"feature_profiles": feature_profiles.slice(0, min(max_items, feature_profiles.size())),
+		"feature_profiles_truncated": feature_profiles.size() > max_items
+	}
+
 # ============================================================================
 # list_project_global_classes - 列出项目全局脚本类
 # ============================================================================
@@ -490,6 +1506,73 @@ func _tool_list_project_global_classes(params: Dictionary) -> Dictionary:
 	return {
 		"classes": class_entries,
 		"count": class_entries.size()
+	}
+
+func _register_inspect_project_global_class(server_core: RefCounted) -> void:
+	var tool_name: String = "inspect_project_global_class"
+	var description: String = "Inspect one project global class entry and return its normalized metadata."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"class_name": {
+				"type": "string",
+				"description": "Project global class_name to inspect."
+			}
+		},
+		"required": ["class_name"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"class_name": {"type": "string"},
+			"exists": {"type": "boolean"},
+			"path": {"type": "string"},
+			"base": {"type": "string"},
+			"language": {"type": "string"},
+			"is_tool": {"type": "boolean"},
+			"is_abstract": {"type": "boolean"},
+			"icon": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_inspect_project_global_class"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_inspect_project_global_class(params: Dictionary) -> Dictionary:
+	var target_class_name: String = str(params.get("class_name", "")).strip_edges()
+	if target_class_name.is_empty():
+		return {"error": "Missing required parameter: class_name"}
+
+	var class_entries: Array = []
+	if ProjectSettings.has_method("get_global_class_list"):
+		class_entries = _normalize_global_class_entries(ProjectSettings.get_global_class_list())
+	for entry in class_entries:
+		if str(entry.get("name", "")) == target_class_name:
+			return {
+				"class_name": target_class_name,
+				"exists": true,
+				"path": str(entry.get("path", "")),
+				"base": str(entry.get("base", "")),
+				"language": str(entry.get("language", "")),
+				"is_tool": bool(entry.get("is_tool", false)),
+				"is_abstract": bool(entry.get("is_abstract", false)),
+				"icon": str(entry.get("icon", ""))
+			}
+
+	return {
+		"class_name": target_class_name,
+		"exists": false
 	}
 
 # ============================================================================
@@ -629,9 +1712,9 @@ func _tool_list_project_tests(params: Dictionary) -> Dictionary:
 	if dir == null:
 		return {"error": "Test directory not found: " + search_path}
 
-	var gut_available: bool = FileAccess.file_exists("res://addons/gut/gut_cmdln.gd")
+	var runner_availability: Dictionary = _get_project_test_runner_availability_map()
 	var tests: Array = []
-	_collect_project_tests_recursive(search_path, absolute_root, framework_filter, gut_available, tests)
+	_collect_project_tests_recursive(search_path, absolute_root, framework_filter, runner_availability, tests)
 	tests.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		return String(a.get("test_path", "")) < String(b.get("test_path", ""))
 	)
@@ -641,6 +1724,89 @@ func _tool_list_project_tests(params: Dictionary) -> Dictionary:
 		"search_path": search_path,
 		"tests": tests
 	}
+
+# ============================================================================
+# list_project_test_runners - 列出项目测试 runner 可用性
+# ============================================================================
+
+func _register_list_project_test_runners(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"list_project_test_runners",
+		"Report current runner availability for supported project test frameworks without executing project tests.",
+		{
+			"type": "object",
+			"properties": {}
+		},
+		Callable(self, "_tool_list_project_test_runners"),
+		{
+			"type": "object",
+			"properties": {
+				"count": {"type": "integer"},
+				"runners": {"type": "array"}
+			}
+		},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
+		"supplementary", "Project-Advanced"
+	)
+
+func _tool_list_project_test_runners(_params: Dictionary) -> Dictionary:
+	var runners: Array = _get_project_test_runner_entries()
+	return {
+		"count": runners.size(),
+		"runners": runners
+	}
+
+# ============================================================================
+# inspect_project_test - 检查单个项目测试
+# ============================================================================
+
+func _register_inspect_project_test(server_core: RefCounted) -> void:
+	server_core.register_tool(
+		"inspect_project_test",
+		"Inspect one project test entry and return the same normalized metadata shape used by list_project_tests.",
+		{
+			"type": "object",
+			"properties": {
+				"test_path": {"type": "string", "description": "res:// path to a single project test file under test/."}
+			},
+			"required": ["test_path"]
+		},
+		Callable(self, "_tool_inspect_project_test"),
+		{
+			"type": "object",
+			"properties": {
+				"test_path": {"type": "string"},
+				"exists": {"type": "boolean"},
+				"framework": {"type": "string"},
+				"kind": {"type": "string"},
+				"runnable": {"type": "boolean"},
+				"available_runner": {"type": "boolean"},
+				"name": {"type": "string"}
+			}
+		},
+		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
+		"supplementary", "Project-Advanced"
+	)
+
+func _tool_inspect_project_test(params: Dictionary) -> Dictionary:
+	var test_path: String = str(params.get("test_path", "")).strip_edges()
+	if test_path.is_empty():
+		return {"error": "Missing required parameter: test_path"}
+
+	var validation: Dictionary = _validate_test_path(test_path, false)
+	if validation.has("error"):
+		return validation
+	test_path = String(validation["sanitized"])
+
+	var entry: Dictionary = _build_project_test_entry(test_path, _get_project_test_runner_availability_map())
+	if entry.is_empty():
+		return {
+			"test_path": test_path,
+			"exists": false
+		}
+
+	entry["exists"] = true
+	return entry
 
 # ============================================================================
 # run_project_test - 运行项目测试
@@ -791,7 +1957,7 @@ func _validate_test_path(path: String, expect_directory: bool) -> Dictionary:
 		return {"error": "Invalid path: " + str(validation.get("error", "unknown"))}
 	return {"sanitized": String(validation.get("sanitized", path))}
 
-func _collect_project_tests_recursive(search_path: String, absolute_root: String, framework_filter: String, gut_available: bool, tests: Array) -> void:
+func _collect_project_tests_recursive(search_path: String, absolute_root: String, framework_filter: String, runner_availability: Dictionary, tests: Array) -> void:
 	var dir: DirAccess = DirAccess.open(absolute_root)
 	if dir == null:
 		return
@@ -805,34 +1971,160 @@ func _collect_project_tests_recursive(search_path: String, absolute_root: String
 		var child_res_path: String = search_path.path_join(entry_name)
 		var child_abs_path: String = absolute_root.path_join(entry_name)
 		if dir.current_is_dir():
-			_collect_project_tests_recursive(child_res_path, child_abs_path, framework_filter, gut_available, tests)
+			_collect_project_tests_recursive(child_res_path, child_abs_path, framework_filter, runner_availability, tests)
 			continue
-		var extension: String = entry_name.get_extension().to_lower()
-		var framework: String = ""
-		var kind: String = ""
-		var runnable: bool = false
-		match extension:
-			"py":
-				framework = "python"
-				kind = "integration"
-				runnable = true
-			"gd":
-				framework = "gut"
-				kind = "unit"
-				runnable = gut_available
-			_:
-				continue
+		var test_entry: Dictionary = _build_project_test_entry(child_res_path, runner_availability)
+		if test_entry.is_empty():
+			continue
+		var framework: String = String(test_entry.get("framework", ""))
 		if not framework_filter.is_empty() and framework != framework_filter:
 			continue
-		tests.append({
-			"test_path": child_res_path,
-			"framework": framework,
-			"kind": kind,
-			"runnable": runnable,
-			"available_runner": runnable,
-			"name": entry_name
-		})
+		tests.append(test_entry)
 	dir.list_dir_end()
+
+func _build_project_test_entry(test_path: String, runner_availability: Dictionary) -> Dictionary:
+	if not FileAccess.file_exists(test_path):
+		return {}
+	var extension: String = test_path.get_extension().to_lower()
+	var framework: String = ""
+	var kind: String = ""
+	match extension:
+		"py":
+			framework = "python"
+			kind = "integration"
+		"gd":
+			framework = "gut"
+			kind = "unit"
+		_:
+			return {}
+	var runner_info: Dictionary = runner_availability.get(framework, {})
+	var runnable: bool = bool(runner_info.get("available", false))
+	return {
+		"test_path": test_path,
+		"framework": framework,
+		"kind": kind,
+		"runnable": runnable,
+		"available_runner": runnable,
+		"name": test_path.get_file()
+	}
+
+func _get_project_test_runner_entries() -> Array:
+	var entries: Array = []
+
+	var python_logs: Array = []
+	var python_exit_code: int = OS.execute("python", ["--version"], python_logs, true)
+	var python_available: bool = python_exit_code == OK
+	entries.append({
+		"framework": "python",
+		"kind": "integration",
+		"available": python_available,
+		"probe_exit_code": python_exit_code,
+		"command": ["python", "--version"],
+		"reason": "python command is executable in the current environment" if python_available else "python command is not available in the current environment"
+	})
+
+	var gut_cmdln_path: String = "res://addons/gut/gut_cmdln.gd"
+	var gut_available: bool = FileAccess.file_exists(gut_cmdln_path)
+	entries.append({
+		"framework": "gut",
+		"kind": "unit",
+		"available": gut_available,
+		"runner_path": gut_cmdln_path,
+		"command": [OS.get_executable_path(), "--headless", "--path", ProjectSettings.globalize_path("res://"), "-s", gut_cmdln_path, "-gtest=<path>", "-gexit"],
+		"reason": "GUT command-line runner is installed" if gut_available else "GUT is not installed at res://addons/gut/gut_cmdln.gd"
+	})
+
+	return entries
+
+func _get_project_test_runner_availability_map() -> Dictionary:
+	var availability: Dictionary = {}
+	for entry_variant in _get_project_test_runner_entries():
+		if not (entry_variant is Dictionary):
+			continue
+		var entry: Dictionary = entry_variant
+		var framework: String = String(entry.get("framework", ""))
+		if framework.is_empty():
+			continue
+		availability[framework] = entry
+	return availability
+
+func _build_project_resource_detail(resource_path: String, property_filter: String, include_property_values: bool, max_properties: int) -> Dictionary:
+	var detail: Dictionary = {
+		"resource_path": resource_path,
+		"is_loadable": false,
+		"class_name": "",
+		"script_path": "",
+		"property_count": 0,
+		"returned_property_count": 0,
+		"properties": [],
+		"properties_truncated": false,
+		"has_more_properties": false,
+		"max_properties_applied": max_properties
+	}
+
+	var resource: Resource = ResourceLoader.load(resource_path)
+	if not resource:
+		detail["load_error"] = "Failed to load resource"
+		return detail
+
+	detail["is_loadable"] = true
+	detail["class_name"] = resource.get_class()
+	var script: Script = resource.get_script() as Script
+	if script:
+		detail["script_path"] = String(script.resource_path)
+
+	var matching_property_count: int = _count_project_resource_properties(resource, property_filter)
+	var sampled_properties: Array = _collect_project_resource_properties(resource, property_filter, include_property_values, max_properties + 1)
+	var has_more_properties: bool = sampled_properties.size() > max_properties
+	if has_more_properties:
+		sampled_properties.resize(max_properties)
+
+	detail["property_count"] = matching_property_count
+	detail["returned_property_count"] = sampled_properties.size()
+	detail["properties"] = sampled_properties
+	detail["properties_truncated"] = has_more_properties
+	detail["has_more_properties"] = has_more_properties
+	if has_more_properties:
+		detail["next_max_properties"] = max_properties * 2
+
+	return detail
+
+func _count_project_resource_properties(resource: Resource, property_filter: String) -> int:
+	var count: int = 0
+	for property_info_variant in resource.get_property_list():
+		var property_info: Dictionary = property_info_variant
+		var property_name: String = str(property_info.get("name", ""))
+		if property_name.is_empty():
+			continue
+		if not property_filter.is_empty() and not property_name.to_lower().contains(property_filter):
+			continue
+		count += 1
+	return count
+
+func _collect_project_resource_properties(resource: Resource, property_filter: String, include_property_values: bool, max_properties: int) -> Array:
+	var properties: Array = []
+	for property_info_variant in resource.get_property_list():
+		if properties.size() >= max_properties:
+			break
+		var property_info: Dictionary = property_info_variant
+		var property_name: String = str(property_info.get("name", ""))
+		if property_name.is_empty():
+			continue
+		if not property_filter.is_empty() and not property_name.to_lower().contains(property_filter):
+			continue
+		var serialized: Dictionary = {
+			"name": property_name,
+			"type": int(property_info.get("type", TYPE_NIL)),
+			"usage": int(property_info.get("usage", 0)),
+			"hint": int(property_info.get("hint", PROPERTY_HINT_NONE)),
+			"hint_string": str(property_info.get("hint_string", "")),
+			"class_name": str(property_info.get("class_name", ""))
+		}
+		if include_property_values:
+			serialized["value"] = _serialize_project_resource_value(resource.get(property_name))
+		properties.append(serialized)
+	properties.sort_custom(Callable(self, "_compare_named_entries"))
+	return properties
 
 func _run_python_project_test(test_path: String, absolute_test_path: String) -> Dictionary:
 	var logs: Array = []
@@ -1172,7 +2464,7 @@ func _tool_inspect_tileset_resource(params: Dictionary) -> Dictionary:
 func _register_list_project_resources(server_core: RefCounted) -> void:
 	var tool_name: String = "list_project_resources"
 	var description: String = "List all resource files in the project (.tres, .res, .png, .ogg, etc.)."
-	
+
 	# inputSchema
 	var input_schema: Dictionary = {
 		"type": "object",
@@ -1186,10 +2478,29 @@ func _register_list_project_resources(server_core: RefCounted) -> void:
 				"type": "array",
 				"items": {"type": "string"},
 				"description": "Optional list of file extensions to filter (e.g. ['.tres', '.png']). Returns all if not provided."
+			},
+			"include_resource_details": {
+				"type": "boolean",
+				"description": "Whether to load each listed resource and include a bounded property summary. Default is false.",
+				"default": false
+			},
+			"include_property_values": {
+				"type": "boolean",
+				"description": "When include_resource_details is true, whether to serialize property values in returned property entries. Default is false.",
+				"default": false
+			},
+			"property_filter": {
+				"type": "string",
+				"description": "Optional case-insensitive substring filter applied to property names when include_resource_details is true."
+			},
+			"max_properties": {
+				"type": "integer",
+				"description": "Maximum matching properties to return per resource detail entry. Default is 40.",
+				"default": 40
 			}
 		}
 	}
-	
+
 	# outputSchema
 	var output_schema: Dictionary = {
 		"type": "object",
@@ -1198,10 +2509,15 @@ func _register_list_project_resources(server_core: RefCounted) -> void:
 				"type": "array",
 				"items": {"type": "string"}
 			},
-			"count": {"type": "integer"}
+			"count": {"type": "integer"},
+			"details_included": {"type": "boolean"},
+			"include_property_values": {"type": "boolean"},
+			"property_filter_applied": {"type": "string"},
+			"max_properties_applied": {"type": "integer"},
+			"resource_details": {"type": "array"}
 		}
 	}
-	
+
 	# annotations - readOnlyHint = true
 	var annotations: Dictionary = {
 		"readOnlyHint": true,
@@ -1209,7 +2525,7 @@ func _register_list_project_resources(server_core: RefCounted) -> void:
 		"idempotentHint": true,
 		"openWorldHint": false
 	}
-	
+
 	# 注册工具
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_list_project_resources"),
@@ -1220,15 +2536,19 @@ func _tool_list_project_resources(params: Dictionary) -> Dictionary:
 	# 参数提取
 	var search_path: String = params.get("search_path", "res://")
 	var resource_types: Array = params.get("resource_types", [])
-	
+	var include_resource_details: bool = bool(params.get("include_resource_details", false))
+	var include_property_values: bool = bool(params.get("include_property_values", false))
+	var property_filter: String = str(params.get("property_filter", "")).strip_edges().to_lower()
+	var max_properties: int = max(1, int(params.get("max_properties", 40)))
+
 	# 使用PathValidator验证路径安全性
 	var validation: Dictionary = PathValidator.validate_directory_path(search_path)
 	if not validation["valid"]:
 		return {"error": "Invalid path: " + validation["error"]}
-	
+
 	# 使用清理后的路径
 	search_path = validation["sanitized"]
-	
+
 	# 常见资源扩展名
 	var default_extensions: Array[String] = [
 		".tres", ".res", ".otr", ".font", ".theme",
@@ -1239,7 +2559,7 @@ func _tool_list_project_resources(params: Dictionary) -> Dictionary:
 		".tscn", ".gd", ".cfg", ".json",
 		".ttf", ".otf", ".woff", ".woff2"
 	]
-	
+
 	# 如果提供了resource_types，使用它；否则使用默认扩展名
 	var extensions: Array[String] = []
 	if resource_types.size() > 0:
@@ -1250,30 +2570,490 @@ func _tool_list_project_resources(params: Dictionary) -> Dictionary:
 			extensions.append(ext_str)
 	else:
 		extensions = default_extensions
-	
+
 	# 使用DirAccess递归查找资源文件
 	var resources: Array[String] = []
 	_collect_resources(search_path, extensions, resources)
-	
+
 	# 排序
 	resources.sort()
-	
-	return {
+
+	var result: Dictionary = {
 		"resources": resources,
-		"count": resources.size()
+		"count": resources.size(),
+		"details_included": include_resource_details,
+		"include_property_values": include_property_values if include_resource_details else false,
+		"property_filter_applied": property_filter,
+		"max_properties_applied": max_properties,
+		"resource_details": []
+	}
+	if include_resource_details:
+		var resource_details: Array = []
+		for resource_path in resources:
+			resource_details.append(_build_project_resource_detail(resource_path, property_filter, include_property_values, max_properties))
+		result["resource_details"] = resource_details
+
+	return result
+
+# ============================================================================
+# inspect_project_resource - 检查单个项目资源
+# ============================================================================
+
+func _register_inspect_project_resource(server_core: RefCounted) -> void:
+	var tool_name: String = "inspect_project_resource"
+	var description: String = "Inspect a single project resource with truthful load errors and a bounded property summary."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"resource_path": {
+				"type": "string",
+				"description": "Resource path to inspect, such as 'res://resources/example.tres'."
+			},
+			"include_property_values": {
+				"type": "boolean",
+				"description": "Whether to serialize property values in returned property entries. Default is false.",
+				"default": false
+			},
+			"property_filter": {
+				"type": "string",
+				"description": "Optional case-insensitive substring filter applied to property names."
+			},
+			"max_properties": {
+				"type": "integer",
+				"description": "Maximum matching properties to return. Default is 40.",
+				"default": 40
+			}
+		},
+		"required": ["resource_path"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"resource_path": {"type": "string"},
+			"is_loadable": {"type": "boolean"},
+			"class_name": {"type": "string"},
+			"script_path": {"type": "string"},
+			"property_filter_applied": {"type": "string"},
+			"include_property_values": {"type": "boolean"},
+			"property_count": {"type": "integer"},
+			"returned_property_count": {"type": "integer"},
+			"properties": {"type": "array"},
+			"properties_truncated": {"type": "boolean"},
+			"has_more_properties": {"type": "boolean"},
+			"max_properties_applied": {"type": "integer"},
+			"next_max_properties": {"type": "integer"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": true,
+		"destructiveHint": false,
+		"idempotentHint": true,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_inspect_project_resource"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_inspect_project_resource(params: Dictionary) -> Dictionary:
+	var resource_path: String = str(params.get("resource_path", "")).strip_edges()
+	if resource_path.is_empty():
+		return {"error": "Missing required parameter: resource_path"}
+
+	var validation: Dictionary = PathValidator.validate_path(resource_path)
+	if not validation["valid"]:
+		return {"error": "Invalid path: " + validation["error"]}
+	resource_path = validation["sanitized"]
+
+	if not FileAccess.file_exists(resource_path):
+		return {"error": "File not found: " + resource_path}
+
+	var include_property_values: bool = bool(params.get("include_property_values", false))
+	var property_filter: String = str(params.get("property_filter", "")).strip_edges().to_lower()
+	var max_properties: int = max(1, int(params.get("max_properties", 40)))
+	var detail: Dictionary = _build_project_resource_detail(resource_path, property_filter, include_property_values, max_properties)
+	if not bool(detail.get("is_loadable", false)):
+		return {"error": "Failed to load resource: " + resource_path}
+
+	detail["property_filter_applied"] = property_filter
+	detail["include_property_values"] = include_property_values
+	return detail
+
+# ============================================================================
+# update_project_resource_properties - 更新单个项目资源属性并原地保存
+# ============================================================================
+
+func _register_update_project_resource_properties(server_core: RefCounted) -> void:
+	var tool_name: String = "update_project_resource_properties"
+	var description: String = "Update provided properties on one existing resource and save it in place."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"resource_path": {
+				"type": "string",
+				"description": "Existing resource path to update, such as 'res://resources/example.tres'."
+			},
+			"properties": {
+				"type": "object",
+				"description": "Property values to update before saving the resource in place."
+			}
+		},
+		"required": ["resource_path", "properties"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"status": {"type": "string"},
+			"resource_path": {"type": "string"},
+			"class_name": {"type": "string"},
+			"updated_properties": {"type": "array"},
+			"updated_property_count": {"type": "integer"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": false,
+		"idempotentHint": false,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_update_project_resource_properties"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_update_project_resource_properties(params: Dictionary) -> Dictionary:
+	var resource_path: String = str(params.get("resource_path", "")).strip_edges()
+	if resource_path.is_empty():
+		return {"error": "Missing required parameter: resource_path"}
+
+	var properties: Dictionary = params.get("properties", {})
+	if properties.is_empty():
+		return {"error": "Missing required parameter: properties"}
+
+	var validation: Dictionary = PathValidator.validate_file_path(resource_path, [".tres", ".res"])
+	if not validation["valid"]:
+		return {"error": "Invalid path: " + validation["error"]}
+	resource_path = validation["sanitized"]
+
+	if not FileAccess.file_exists(resource_path):
+		return {"error": "File not found: " + resource_path}
+
+	var resource: Resource = ResourceLoader.load(resource_path)
+	if not resource:
+		return {"error": "Failed to load resource: " + resource_path}
+
+	var property_info_by_name: Dictionary = {}
+	for property_info_variant in resource.get_property_list():
+		var property_info: Dictionary = property_info_variant
+		var property_name: String = str(property_info.get("name", ""))
+		if property_name.is_empty():
+			continue
+		property_info_by_name[property_name] = property_info
+
+	var updated_properties: Array[String] = []
+	for property_name in properties.keys():
+		var property_name_text: String = str(property_name)
+		if not property_info_by_name.has(property_name_text):
+			return {"error": "Unknown resource property: " + property_name_text}
+		var property_info: Dictionary = property_info_by_name[property_name_text]
+		var coerced: Dictionary = _coerce_project_resource_value(properties[property_name], int(property_info.get("type", TYPE_NIL)))
+		if not bool(coerced.get("ok", false)):
+			return {"error": "Unsupported value for property '%s': %s" % [property_name_text, str(coerced.get("error", "unknown error"))]}
+		resource.set(property_name_text, coerced.get("value"))
+		updated_properties.append(property_name_text)
+
+	var save_error: Error = ResourceSaver.save(resource, resource_path)
+	if save_error != OK:
+		return {"error": "Failed to save resource: " + error_string(save_error)}
+
+	updated_properties.sort()
+	return {
+		"status": "success",
+		"resource_path": resource_path,
+		"class_name": resource.get_class(),
+		"updated_properties": updated_properties,
+		"updated_property_count": updated_properties.size()
+	}
+
+# ============================================================================
+# duplicate_project_resource - 复制单个项目资源到新路径
+# ============================================================================
+
+func _register_duplicate_project_resource(server_core: RefCounted) -> void:
+	var tool_name: String = "duplicate_project_resource"
+	var description: String = "Duplicate one existing .tres/.res resource to a new path without mutating the source."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"source_path": {
+				"type": "string",
+				"description": "Existing .tres/.res resource path to duplicate."
+			},
+			"destination_path": {
+				"type": "string",
+				"description": "New .tres/.res resource path that will receive the duplicated resource."
+			}
+		},
+		"required": ["source_path", "destination_path"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"status": {"type": "string"},
+			"source_path": {"type": "string"},
+			"destination_path": {"type": "string"},
+			"class_name": {"type": "string"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": false,
+		"idempotentHint": false,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_duplicate_project_resource"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_duplicate_project_resource(params: Dictionary) -> Dictionary:
+	var source_path: String = str(params.get("source_path", "")).strip_edges()
+	if source_path.is_empty():
+		return {"error": "Missing required parameter: source_path"}
+	var destination_path: String = str(params.get("destination_path", "")).strip_edges()
+	if destination_path.is_empty():
+		return {"error": "Missing required parameter: destination_path"}
+
+	var source_validation: Dictionary = PathValidator.validate_file_path(source_path, [".tres", ".res"])
+	if not source_validation["valid"]:
+		return {"error": "Invalid source path: " + source_validation["error"]}
+	source_path = source_validation["sanitized"]
+
+	var destination_validation: Dictionary = PathValidator.validate_file_path(destination_path, [".tres", ".res"])
+	if not destination_validation["valid"]:
+		return {"error": "Invalid destination path: " + destination_validation["error"]}
+	destination_path = destination_validation["sanitized"]
+
+	if source_path == destination_path:
+		return {"error": "Destination path must differ from source path"}
+	if not FileAccess.file_exists(source_path):
+		return {"error": "File not found: " + source_path}
+	if FileAccess.file_exists(destination_path):
+		return {"error": "File already exists: " + destination_path}
+
+	var source_resource: Resource = ResourceLoader.load(source_path)
+	if not source_resource:
+		return {"error": "Failed to load resource: " + source_path}
+
+	var destination_dir: String = destination_path.get_base_dir()
+	if not destination_dir.is_empty():
+		var make_dir_error: Error = DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(destination_dir))
+		if make_dir_error != OK:
+			return {"error": "Failed to create destination directory: " + destination_dir}
+
+	var duplicated_resource: Resource = source_resource.duplicate(true)
+	if not duplicated_resource:
+		return {"error": "Failed to duplicate resource: " + source_path}
+
+	var save_error: Error = ResourceSaver.save(duplicated_resource, destination_path)
+	if save_error != OK:
+		return {"error": "Failed to save duplicated resource: " + error_string(save_error)}
+
+	return {
+		"status": "success",
+		"source_path": source_path,
+		"destination_path": destination_path,
+		"class_name": duplicated_resource.get_class()
+	}
+
+# ============================================================================
+# delete_project_resource - 删除单个项目资源
+# ============================================================================
+
+func _register_delete_project_resource(server_core: RefCounted) -> void:
+	var tool_name: String = "delete_project_resource"
+	var description: String = "Delete one existing .tres/.res project resource file."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"resource_path": {
+				"type": "string",
+				"description": "Existing .tres/.res resource path to delete."
+			}
+		},
+		"required": ["resource_path"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"status": {"type": "string"},
+			"resource_path": {"type": "string"},
+			"removed": {"type": "boolean"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": true,
+		"idempotentHint": false,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_delete_project_resource"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_delete_project_resource(params: Dictionary) -> Dictionary:
+	var resource_path: String = str(params.get("resource_path", "")).strip_edges()
+	if resource_path.is_empty():
+		return {"error": "Missing required parameter: resource_path"}
+
+	var validation: Dictionary = PathValidator.validate_file_path(resource_path, [".tres", ".res"])
+	if not validation["valid"]:
+		return {"error": "Invalid path: " + validation["error"]}
+	resource_path = validation["sanitized"]
+
+	if not FileAccess.file_exists(resource_path):
+		return {"error": "File not found: " + resource_path}
+
+	var remove_error: Error = DirAccess.remove_absolute(ProjectSettings.globalize_path(resource_path))
+	if remove_error != OK:
+		return {"error": "Failed to delete resource: " + error_string(remove_error)}
+
+	var editor_interface = _get_editor_interface()
+	if editor_interface:
+		var fs: EditorFileSystem = editor_interface.get_resource_filesystem()
+		if fs:
+			fs.update_file(resource_path)
+
+	return {
+		"status": "success",
+		"resource_path": resource_path,
+		"removed": true
+	}
+
+# ============================================================================
+# move_project_resource - 移动或重命名单个项目资源
+# ============================================================================
+
+func _register_move_project_resource(server_core: RefCounted) -> void:
+	var tool_name: String = "move_project_resource"
+	var description: String = "Move or rename one existing .tres/.res resource to a new path."
+
+	var input_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"source_path": {
+				"type": "string",
+				"description": "Existing .tres/.res resource path to move."
+			},
+			"destination_path": {
+				"type": "string",
+				"description": "New .tres/.res resource path that will receive the moved resource."
+			}
+		},
+		"required": ["source_path", "destination_path"]
+	}
+
+	var output_schema: Dictionary = {
+		"type": "object",
+		"properties": {
+			"status": {"type": "string"},
+			"source_path": {"type": "string"},
+			"destination_path": {"type": "string"},
+			"moved": {"type": "boolean"}
+		}
+	}
+
+	var annotations: Dictionary = {
+		"readOnlyHint": false,
+		"destructiveHint": true,
+		"idempotentHint": false,
+		"openWorldHint": false
+	}
+
+	server_core.register_tool(tool_name, description, input_schema,
+						  Callable(self, "_tool_move_project_resource"),
+						  output_schema, annotations,
+						  "supplementary", "Project-Advanced")
+
+func _tool_move_project_resource(params: Dictionary) -> Dictionary:
+	var source_path: String = str(params.get("source_path", "")).strip_edges()
+	if source_path.is_empty():
+		return {"error": "Missing required parameter: source_path"}
+	var destination_path: String = str(params.get("destination_path", "")).strip_edges()
+	if destination_path.is_empty():
+		return {"error": "Missing required parameter: destination_path"}
+
+	var source_validation: Dictionary = PathValidator.validate_file_path(source_path, [".tres", ".res"])
+	if not source_validation["valid"]:
+		return {"error": "Invalid source path: " + source_validation["error"]}
+	source_path = source_validation["sanitized"]
+
+	var destination_validation: Dictionary = PathValidator.validate_file_path(destination_path, [".tres", ".res"])
+	if not destination_validation["valid"]:
+		return {"error": "Invalid destination path: " + destination_validation["error"]}
+	destination_path = destination_validation["sanitized"]
+
+	if source_path == destination_path:
+		return {"error": "Destination path must differ from source path"}
+	if not FileAccess.file_exists(source_path):
+		return {"error": "File not found: " + source_path}
+	if FileAccess.file_exists(destination_path):
+		return {"error": "File already exists: " + destination_path}
+
+	var destination_dir: String = destination_path.get_base_dir()
+	if not destination_dir.is_empty():
+		var make_dir_error: Error = DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(destination_dir))
+		if make_dir_error != OK:
+			return {"error": "Failed to create destination directory: " + destination_dir}
+
+	var move_error: Error = DirAccess.rename_absolute(
+		ProjectSettings.globalize_path(source_path),
+		ProjectSettings.globalize_path(destination_path)
+	)
+	if move_error != OK:
+		return {"error": "Failed to move resource: " + error_string(move_error)}
+
+	var editor_interface = _get_editor_interface()
+	if editor_interface:
+		var fs: EditorFileSystem = editor_interface.get_resource_filesystem()
+		if fs:
+			fs.update_file(destination_path)
+
+	return {
+		"status": "success",
+		"source_path": source_path,
+		"destination_path": destination_path,
+		"moved": true
 	}
 
 # 辅助函数：递归收集资源文件
 func _collect_resources(directory_path: String, extensions: Array[String], result: Array[String]) -> void:
 	var dir: DirAccess = DirAccess.open(directory_path)
-	
+
 	if not dir:
 		return
-	
+
 	# 列出所有文件和目录
 	dir.list_dir_begin()
 	var file_name: String = dir.get_next()
-	
+
 	while not file_name.is_empty():
 		# 跳过特殊目录
 		if file_name != "." and file_name != "..":
@@ -1281,7 +3061,7 @@ func _collect_resources(directory_path: String, extensions: Array[String], resul
 			if not full_path.ends_with("/"):
 				full_path += "/"
 			full_path += file_name
-			
+
 			if dir.current_is_dir():
 				# 递归处理子目录
 				_collect_resources(full_path, extensions, result)
@@ -1291,9 +3071,9 @@ func _collect_resources(directory_path: String, extensions: Array[String], resul
 					if file_name.ends_with(ext):
 						result.append(full_path)
 						break
-		
+
 		file_name = dir.get_next()
-	
+
 	dir.list_dir_end()
 
 # ============================================================================
@@ -1303,7 +3083,7 @@ func _collect_resources(directory_path: String, extensions: Array[String], resul
 func _register_create_resource(server_core: RefCounted) -> void:
 	var tool_name: String = "create_resource"
 	var description: String = "Create a new Godot resource file (.tres). Supports common resource types."
-	
+
 	# inputSchema
 	var input_schema: Dictionary = {
 		"type": "object",
@@ -1323,7 +3103,7 @@ func _register_create_resource(server_core: RefCounted) -> void:
 		},
 		"required": ["resource_path", "resource_type"]
 	}
-	
+
 	# outputSchema
 	var output_schema: Dictionary = {
 		"type": "object",
@@ -1333,7 +3113,7 @@ func _register_create_resource(server_core: RefCounted) -> void:
 			"resource_type": {"type": "string"}
 		}
 	}
-	
+
 	# annotations
 	var annotations: Dictionary = {
 		"readOnlyHint": false,
@@ -1341,7 +3121,7 @@ func _register_create_resource(server_core: RefCounted) -> void:
 		"idempotentHint": false,
 		"openWorldHint": false
 	}
-	
+
 	# 注册工具
 	server_core.register_tool(tool_name, description, input_schema,
 						  Callable(self, "_tool_create_resource"),
@@ -1353,45 +3133,45 @@ func _tool_create_resource(params: Dictionary) -> Dictionary:
 	var resource_path: String = params.get("resource_path", "")
 	var resource_type: String = params.get("resource_type", "")
 	var properties: Dictionary = params.get("properties", {})
-	
+
 	# 参数验证
 	if resource_path.is_empty():
 		return {"error": "Missing required parameter: resource_path"}
 	if resource_type.is_empty():
 		return {"error": "Missing required parameter: resource_type"}
-	
+
 	# 使用PathValidator验证路径安全性
 	var validation: Dictionary = PathValidator.validate_file_path(resource_path, [".tres", ".res"])
 	if not validation["valid"]:
 		return {"error": "Invalid path: " + validation["error"]}
-	
+
 	# 使用清理后的路径
 	resource_path = validation["sanitized"]
-	
+
 	# 验证资源类型
 	if not ClassDB.class_exists(resource_type):
 		return {"error": "Invalid resource type: " + resource_type}
-	
+
 	if not ClassDB.is_parent_class(resource_type, "Resource"):
 		return {"error": "Type '%s' is not a Resource type" % resource_type}
-	
+
 	# 创建资源实例
 	var resource: RefCounted = ClassDB.instantiate(resource_type)
-	
+
 	if not resource:
 		return {"error": "Failed to create resource of type: " + resource_type}
-	
+
 	# 设置属性（如果有）
 	for prop_name in properties:
 		if prop_name in resource:
 			resource.set(prop_name, properties[prop_name])
-	
+
 	# 保存资源
 	var error: Error = ResourceSaver.save(resource, resource_path)
-	
+
 	if error != OK:
 		return {"error": "Failed to save resource: " + error_string(error)}
-	
+
 	return {
 		"status": "success",
 		"resource_path": resource_path,
@@ -1537,7 +3317,7 @@ func _tool_reimport_resources(params: Dictionary) -> Dictionary:
 		return {"error": "Missing required parameter: resource_paths"}
 
 	var refresh_metadata: bool = params.get("refresh_metadata", true)
-	var editor_interface: EditorInterface = _get_editor_interface()
+	var editor_interface = _get_editor_interface()
 	if not editor_interface:
 		return {"error": "Editor interface not available"}
 
@@ -1848,7 +3628,7 @@ func _tool_fix_resource_uid(params: Dictionary) -> Dictionary:
 	if set_error != OK:
 		return {"error": "Failed to persist resource UID: " + error_string(set_error)}
 
-	var editor_interface: EditorInterface = _get_editor_interface()
+	var editor_interface = _get_editor_interface()
 	if editor_interface:
 		var fs: EditorFileSystem = editor_interface.get_resource_filesystem()
 		if fs:
@@ -1953,7 +3733,11 @@ func _register_scan_missing_resource_dependencies(server_core: RefCounted) -> vo
 			"search_path": {"type": "string"},
 			"scanned_resources": {"type": "integer"},
 			"issue_count": {"type": "integer"},
-			"issues": {"type": "array"}
+			"issues": {"type": "array"},
+			"truncated": {"type": "boolean"},
+			"has_more": {"type": "boolean"},
+			"max_results_applied": {"type": "integer"},
+			"next_max_results": {"type": "integer"}
 		}
 	}
 
@@ -1985,31 +3769,16 @@ func _tool_scan_missing_resource_dependencies(params: Dictionary) -> Dictionary:
 	_collect_resources(search_path, dependency_extensions, resources)
 	resources.sort()
 
-	var issues: Array = []
-	for resource_path in resources:
-		var dependencies: Array = _parse_resource_dependencies(resource_path)
-		for dependency in dependencies:
-			if bool(dependency.get("missing", false)):
-				issues.append({
-					"owner_path": resource_path,
-					"dependency": dependency
-				})
-				if issues.size() >= max_results:
-					return {
-						"search_path": search_path,
-						"scanned_resources": resources.size(),
-						"issue_count": issues.size(),
-						"issues": issues,
-						"truncated": true
-					}
+	var sampled_issues: Array = _collect_missing_resource_dependency_issues(resources, max_results + 1)
+	var truncated: bool = sampled_issues.size() > max_results
+	var issues: Array = sampled_issues.slice(0, max_results)
 
-	return {
+	return _with_max_results_continuation({
 		"search_path": search_path,
 		"scanned_resources": resources.size(),
 		"issue_count": issues.size(),
-		"issues": issues,
-		"truncated": false
-	}
+		"issues": issues
+	}, max_results, truncated)
 
 func _register_scan_cyclic_resource_dependencies(server_core: RefCounted) -> void:
 	var tool_name: String = "scan_cyclic_resource_dependencies"
@@ -2038,7 +3807,10 @@ func _register_scan_cyclic_resource_dependencies(server_core: RefCounted) -> voi
 			"scanned_resources": {"type": "integer"},
 			"issue_count": {"type": "integer"},
 			"issues": {"type": "array"},
-			"truncated": {"type": "boolean"}
+			"truncated": {"type": "boolean"},
+			"has_more": {"type": "boolean"},
+			"max_results_applied": {"type": "integer"},
+			"next_max_results": {"type": "integer"}
 		}
 	}
 
@@ -2074,35 +3846,16 @@ func _tool_scan_cyclic_resource_dependencies(params: Dictionary) -> Dictionary:
 	for resource_path in resources:
 		graph[resource_path] = _collect_existing_dependency_paths(resource_path)
 
-	var issues: Array = []
-	var seen_cycles: Dictionary = {}
-	for resource_path in resources:
-		var stack: Array = []
-		var visiting: Dictionary = {}
-		var cycle_paths: Array = []
-		_find_cycles_from_resource(resource_path, graph, stack, visiting, seen_cycles, cycle_paths, max_results - issues.size())
-		for cycle_path in cycle_paths:
-			issues.append({
-				"owner_path": resource_path,
-				"cycle_path": cycle_path,
-				"cycle_length": cycle_path.size() - 1
-			})
-			if issues.size() >= max_results:
-				return {
-					"search_path": search_path,
-					"scanned_resources": resources.size(),
-					"issue_count": issues.size(),
-					"issues": issues,
-					"truncated": true
-				}
+	var sampled_issues: Array = _collect_cyclic_dependency_issues(resources, graph, max_results + 1)
+	var truncated: bool = sampled_issues.size() > max_results
+	var issues: Array = sampled_issues.slice(0, max_results)
 
-	return {
+	return _with_max_results_continuation({
 		"search_path": search_path,
 		"scanned_resources": resources.size(),
 		"issue_count": issues.size(),
-		"issues": issues,
-		"truncated": false
-	}
+		"issues": issues
+	}, max_results, truncated)
 
 func _parse_resource_dependencies(resource_path: String) -> Array:
 	var dependencies: Array = []
@@ -2157,6 +3910,26 @@ func _collect_existing_dependency_paths(resource_path: String) -> Array:
 		if not paths.has(effective_path):
 			paths.append(effective_path)
 	return paths
+
+func _collect_cyclic_dependency_issues(resources: Array[String], graph: Dictionary, max_results: int) -> Array:
+	var issues: Array = []
+	var seen_cycles: Dictionary = {}
+	for resource_path in resources:
+		if issues.size() >= max_results:
+			break
+		var stack: Array = []
+		var visiting: Dictionary = {}
+		var cycle_paths: Array = []
+		_find_cycles_from_resource(resource_path, graph, stack, visiting, seen_cycles, cycle_paths, max_results - issues.size())
+		for cycle_path in cycle_paths:
+			issues.append({
+				"owner_path": resource_path,
+				"cycle_path": cycle_path,
+				"cycle_length": cycle_path.size() - 1
+			})
+			if issues.size() >= max_results:
+				break
+	return issues
 
 func _find_cycles_from_resource(current_path: String, graph: Dictionary, stack: Array, visiting: Dictionary, seen_cycles: Dictionary, issues: Array, remaining_budget: int) -> void:
 	if remaining_budget <= 0:
@@ -2237,7 +4010,11 @@ func _register_detect_broken_scripts(server_core: RefCounted) -> void:
 			"scanned_scripts": {"type": "integer"},
 			"broken_count": {"type": "integer"},
 			"warning_count": {"type": "integer"},
-			"issues": {"type": "array"}
+			"issues": {"type": "array"},
+			"truncated": {"type": "boolean"},
+			"has_more": {"type": "boolean"},
+			"max_results_applied": {"type": "integer"},
+			"next_max_results": {"type": "integer"}
 		}
 	}
 
@@ -2267,46 +4044,18 @@ func _tool_detect_broken_scripts(params: Dictionary) -> Dictionary:
 	_collect_resources(search_path, [".gd"], scripts)
 	scripts.sort()
 
-	var issues: Array = []
-	var broken_count: int = 0
-	var warning_count: int = 0
+	var sampled_issues: Array = _collect_broken_script_issues(scripts, include_warnings, max_results + 1)
+	var truncated: bool = sampled_issues.size() > max_results
+	var issues: Array = sampled_issues.slice(0, max_results)
+	var severity_counts: Dictionary = _count_broken_script_severities(issues)
 
-	for script_path in scripts:
-		var diagnostics: Dictionary = _analyze_script_diagnostics(script_path, include_warnings)
-		if diagnostics.has("error"):
-			issues.append({
-				"script_path": script_path,
-				"severity": "error",
-				"errors": [{"line": 0, "column": 0, "message": str(diagnostics["error"])}],
-				"warnings": []
-			})
-			broken_count += 1
-		else:
-			var has_errors: bool = int(diagnostics.get("error_count", 0)) > 0
-			var has_warnings: bool = int(diagnostics.get("warning_count", 0)) > 0
-			if has_errors or has_warnings:
-				issues.append({
-					"script_path": script_path,
-					"severity": "error" if has_errors else "warning",
-					"errors": diagnostics.get("errors", []),
-					"warnings": diagnostics.get("warnings", [])
-				})
-				if has_errors:
-					broken_count += 1
-				if has_warnings:
-					warning_count += 1
-
-		if issues.size() >= max_results:
-			break
-
-	return {
+	return _with_max_results_continuation({
 		"search_path": search_path,
 		"scanned_scripts": scripts.size(),
-		"broken_count": broken_count,
-		"warning_count": warning_count,
-		"issues": issues,
-		"truncated": issues.size() >= max_results and scripts.size() > issues.size()
-	}
+		"broken_count": int(severity_counts.get("broken_count", 0)),
+		"warning_count": int(severity_counts.get("warning_count", 0)),
+		"issues": issues
+	}, max_results, truncated)
 
 # ============================================================================
 # audit_project_health - 汇总项目健康诊断
@@ -2345,7 +4094,11 @@ func _register_audit_project_health(server_core: RefCounted) -> void:
 			"summary": {"type": "object"},
 			"broken_scripts": {"type": "array"},
 			"missing_dependencies": {"type": "array"},
-			"cyclic_dependencies": {"type": "array"}
+			"cyclic_dependencies": {"type": "array"},
+			"truncated": {"type": "boolean"},
+			"has_more": {"type": "boolean"},
+			"max_results_applied": {"type": "integer"},
+			"next_max_results": {"type": "integer"}
 		}
 	}
 
@@ -2403,14 +4156,82 @@ func _tool_audit_project_health(params: Dictionary) -> Dictionary:
 	elif summary["script_warnings"] > 0:
 		status = "warning"
 
-	return {
+	return _with_max_results_continuation({
 		"status": status,
 		"search_path": broken_scripts_result.get("search_path", search_path),
 		"summary": summary,
 		"broken_scripts": broken_scripts_result.get("issues", []),
 		"missing_dependencies": missing_dependencies_result.get("issues", []),
-		"cyclic_dependencies": cyclic_dependencies_result.get("issues", []),
-		"truncated": bool(broken_scripts_result.get("truncated", false)) or bool(missing_dependencies_result.get("truncated", false)) or bool(cyclic_dependencies_result.get("truncated", false))
+		"cyclic_dependencies": cyclic_dependencies_result.get("issues", [])
+	}, max_results, bool(broken_scripts_result.get("truncated", false)) or bool(missing_dependencies_result.get("truncated", false)) or bool(cyclic_dependencies_result.get("truncated", false)))
+
+func _with_max_results_continuation(result: Dictionary, max_results: int, truncated: bool) -> Dictionary:
+	result["truncated"] = truncated
+	result["has_more"] = truncated
+	result["max_results_applied"] = max_results
+	if truncated:
+		result["next_max_results"] = max_results * 2
+	return result
+
+func _collect_missing_resource_dependency_issues(resources: Array[String], max_results: int) -> Array:
+	var issues: Array = []
+	for resource_path in resources:
+		if issues.size() >= max_results:
+			break
+		var dependencies: Array = _parse_resource_dependencies(resource_path)
+		for dependency_variant in dependencies:
+			if issues.size() >= max_results:
+				break
+			if not (dependency_variant is Dictionary):
+				continue
+			var dependency: Dictionary = dependency_variant
+			if bool(dependency.get("missing", false)):
+				issues.append({
+					"owner_path": resource_path,
+					"dependency": dependency
+				})
+	return issues
+
+func _collect_broken_script_issues(scripts: Array[String], include_warnings: bool, max_results: int) -> Array:
+	var issues: Array = []
+	for script_path in scripts:
+		if issues.size() >= max_results:
+			break
+		var diagnostics: Dictionary = _analyze_script_diagnostics(script_path, include_warnings)
+		if diagnostics.has("error"):
+			issues.append({
+				"script_path": script_path,
+				"severity": "error",
+				"errors": [{"line": 0, "column": 0, "message": str(diagnostics["error"])}],
+				"warnings": []
+			})
+			continue
+		var has_errors: bool = int(diagnostics.get("error_count", 0)) > 0
+		var has_warnings: bool = int(diagnostics.get("warning_count", 0)) > 0
+		if has_errors or has_warnings:
+			issues.append({
+				"script_path": script_path,
+				"severity": "error" if has_errors else "warning",
+				"errors": diagnostics.get("errors", []),
+				"warnings": diagnostics.get("warnings", [])
+			})
+	return issues
+
+func _count_broken_script_severities(issues: Array) -> Dictionary:
+	var broken_count: int = 0
+	var warning_count: int = 0
+	for issue_variant in issues:
+		if not (issue_variant is Dictionary):
+			continue
+		var issue: Dictionary = issue_variant
+		var severity: String = str(issue.get("severity", ""))
+		if severity == "error":
+			broken_count += 1
+		if not Array(issue.get("warnings", [])).is_empty():
+			warning_count += 1
+	return {
+		"broken_count": broken_count,
+		"warning_count": warning_count
 	}
 
 func _analyze_script_diagnostics(script_path: String, include_warnings: bool) -> Dictionary:
@@ -2627,6 +4448,52 @@ func _normalize_typed_value_info_array(entries: Array) -> Array:
 	for entry in entries:
 		normalized.append(_normalize_typed_value_info(entry))
 	return normalized
+
+func _is_valid_plugin_config_path(plugin_path: String) -> bool:
+	return plugin_path.begins_with("res://addons/") and plugin_path.ends_with("/plugin.cfg")
+
+func _get_plugin_name_from_path(plugin_path: String) -> String:
+	return plugin_path.get_base_dir().get_file()
+
+func _get_feature_profile_path(config_dir: String, profile_name: String) -> String:
+	return config_dir.path_join("feature_profiles").path_join(profile_name + ".profile")
+
+func _load_plugin_config_metadata(plugin_path: String) -> Dictionary:
+	var config := ConfigFile.new()
+	var load_result: Error = config.load(plugin_path)
+	if load_result != OK:
+		return {"error": "Failed to read plugin config: " + plugin_path}
+	return {
+		"display_name": str(config.get_value("plugin", "name", "")),
+		"description": str(config.get_value("plugin", "description", "")),
+		"author": str(config.get_value("plugin", "author", "")),
+		"version": str(config.get_value("plugin", "version", "")),
+		"script": str(config.get_value("plugin", "script", ""))
+	}
+
+func _compare_feature_profile_entries(left: Dictionary, right: Dictionary) -> bool:
+	return str(left.get("name", "")) < str(right.get("name", ""))
+
+func _collect_project_plugins() -> Array:
+	var plugins: Array = []
+	var addons_dir: DirAccess = DirAccess.open("res://addons")
+	if addons_dir == null:
+		return plugins
+	addons_dir.list_dir_begin()
+	var entry_name: String = addons_dir.get_next()
+	while not entry_name.is_empty():
+		if addons_dir.current_is_dir():
+			var plugin_path: String = "res://addons/%s/plugin.cfg" % entry_name
+			if FileAccess.file_exists(plugin_path):
+				plugins.append({
+					"name": entry_name,
+					"plugin_path": plugin_path,
+					"enabled": false
+				})
+		entry_name = addons_dir.get_next()
+	addons_dir.list_dir_end()
+	plugins.sort_custom(Callable(self, "_compare_feature_profile_entries"))
+	return plugins
 
 func _normalize_typed_value_info(entry: Variant) -> Dictionary:
 	if not (entry is Dictionary):
@@ -2936,6 +4803,223 @@ func _serialize_rect2i(value: Rect2i) -> Dictionary:
 		"position": _serialize_vector2i(value.position),
 		"size": _serialize_vector2i(value.size)
 	}
+
+func _serialize_project_resource_value(value: Variant) -> Variant:
+	match typeof(value):
+		TYPE_NIL, TYPE_BOOL, TYPE_INT, TYPE_FLOAT, TYPE_STRING:
+			return value
+		TYPE_STRING_NAME:
+			return String(value)
+		TYPE_VECTOR2:
+			return {"x": value.x, "y": value.y}
+		TYPE_VECTOR2I:
+			return _serialize_vector2i(value)
+		TYPE_VECTOR3:
+			return {"x": value.x, "y": value.y, "z": value.z}
+		TYPE_VECTOR3I:
+			return {"x": value.x, "y": value.y, "z": value.z}
+		TYPE_VECTOR4:
+			return {"x": value.x, "y": value.y, "z": value.z, "w": value.w}
+		TYPE_VECTOR4I:
+			return {"x": value.x, "y": value.y, "z": value.z, "w": value.w}
+		TYPE_COLOR:
+			return {"r": value.r, "g": value.g, "b": value.b, "a": value.a}
+		TYPE_RECT2:
+			return {
+				"position": _serialize_project_resource_value(value.position),
+				"size": _serialize_project_resource_value(value.size)
+			}
+		TYPE_RECT2I:
+			return _serialize_rect2i(value)
+		TYPE_ARRAY:
+			var array_result: Array = []
+			for item in value:
+				array_result.append(_serialize_project_resource_value(item))
+			return array_result
+		TYPE_DICTIONARY:
+			var dict_result: Dictionary = {}
+			for key in value.keys():
+				dict_result[str(key)] = _serialize_project_resource_value(value[key])
+			return dict_result
+		TYPE_OBJECT:
+			if value is Resource:
+				return {
+					"class_name": value.get_class(),
+					"resource_path": String((value as Resource).resource_path)
+				}
+			return {
+				"class_name": value.get_class(),
+				"instance_id": value.get_instance_id()
+			}
+		_:
+			return String(value)
+
+func _validate_project_setting_name(setting_name: String) -> Dictionary:
+	if setting_name.is_empty():
+		return {"ok": false, "error": "Invalid setting_name: value must not be empty"}
+	if not setting_name.contains("/"):
+		return {"ok": false, "error": "Invalid setting_name: expected slash-delimited project setting key"}
+	if setting_name.begins_with("/") or setting_name.ends_with("/"):
+		return {"ok": false, "error": "Invalid setting_name: leading or trailing slashes are not allowed"}
+	if setting_name.contains(".."):
+		return {"ok": false, "error": "Invalid setting_name: parent traversal segments are not allowed"}
+	for segment in setting_name.split("/"):
+		if String(segment).strip_edges().is_empty():
+			return {"ok": false, "error": "Invalid setting_name: empty path segments are not allowed"}
+	if ProjectSettings.has_setting(setting_name):
+		return {"ok": true}
+	if setting_name.begins_with("mcp/"):
+		return {"ok": true}
+	return {"ok": false, "error": "Invalid setting_name: only existing project settings or custom mcp/* keys are supported"}
+
+func _coerce_project_setting_value(raw_value: Variant, expected_type: int, setting_exists: bool) -> Dictionary:
+	if not setting_exists:
+		var raw_type: int = typeof(raw_value)
+		if raw_type in [TYPE_BOOL, TYPE_INT, TYPE_FLOAT]:
+			return {"ok": true, "value": raw_value}
+		if raw_value is String or raw_value is StringName:
+			return {"ok": true, "value": String(raw_value)}
+		return {"ok": false, "error": "new custom settings only support boolean, integer, float, or string values"}
+
+	match expected_type:
+		TYPE_BOOL:
+			if raw_value is bool:
+				return {"ok": true, "value": raw_value}
+			return {"ok": false, "error": "expected boolean"}
+		TYPE_INT:
+			if raw_value is int:
+				return {"ok": true, "value": int(raw_value)}
+			if raw_value is float:
+				return {"ok": true, "value": int(raw_value)}
+			return {"ok": false, "error": "expected integer-compatible value"}
+		TYPE_FLOAT:
+			if raw_value is int or raw_value is float:
+				return {"ok": true, "value": float(raw_value)}
+			return {"ok": false, "error": "expected numeric value"}
+		TYPE_STRING:
+			if raw_value is String or raw_value is StringName:
+				return {"ok": true, "value": String(raw_value)}
+			return {"ok": false, "error": "expected string"}
+		TYPE_STRING_NAME:
+			if raw_value is String or raw_value is StringName:
+				return {"ok": true, "value": StringName(str(raw_value))}
+			return {"ok": false, "error": "expected string"}
+		_:
+			return {"ok": false, "error": "unsupported project setting type " + type_string(expected_type)}
+
+func _coerce_project_resource_value(raw_value: Variant, expected_type: int) -> Dictionary:
+	match expected_type:
+		TYPE_NIL:
+			return {"ok": true, "value": null}
+		TYPE_BOOL:
+			if raw_value is bool:
+				return {"ok": true, "value": raw_value}
+			return {"ok": false, "error": "expected boolean"}
+		TYPE_INT:
+			if raw_value is int:
+				return {"ok": true, "value": int(raw_value)}
+			if raw_value is float:
+				return {"ok": true, "value": int(raw_value)}
+			return {"ok": false, "error": "expected integer-compatible value"}
+		TYPE_FLOAT:
+			if raw_value is int or raw_value is float:
+				return {"ok": true, "value": float(raw_value)}
+			return {"ok": false, "error": "expected numeric value"}
+		TYPE_STRING:
+			if raw_value is String or raw_value is StringName:
+				return {"ok": true, "value": String(raw_value)}
+			return {"ok": false, "error": "expected string"}
+		TYPE_STRING_NAME:
+			if raw_value is String or raw_value is StringName:
+				return {"ok": true, "value": StringName(str(raw_value))}
+			return {"ok": false, "error": "expected string"}
+		TYPE_COLOR:
+			if raw_value is Dictionary:
+				var color_dict: Dictionary = raw_value
+				if not (color_dict.has("r") and color_dict.has("g") and color_dict.has("b")):
+					return {"ok": false, "error": "color dictionaries must include r, g, and b"}
+				return {
+					"ok": true,
+					"value": Color(
+						float(color_dict.get("r", 0.0)),
+						float(color_dict.get("g", 0.0)),
+						float(color_dict.get("b", 0.0)),
+						float(color_dict.get("a", 1.0))
+					)
+				}
+			return {"ok": false, "error": "expected color dictionary"}
+		TYPE_VECTOR2:
+			return _coerce_project_resource_vector2(raw_value, false)
+		TYPE_VECTOR2I:
+			return _coerce_project_resource_vector2(raw_value, true)
+		TYPE_VECTOR3:
+			return _coerce_project_resource_vector3(raw_value, false)
+		TYPE_VECTOR3I:
+			return _coerce_project_resource_vector3(raw_value, true)
+		TYPE_VECTOR4:
+			return _coerce_project_resource_vector4(raw_value, false)
+		TYPE_VECTOR4I:
+			return _coerce_project_resource_vector4(raw_value, true)
+		TYPE_RECT2:
+			return _coerce_project_resource_rect2(raw_value, false)
+		TYPE_RECT2I:
+			return _coerce_project_resource_rect2(raw_value, true)
+		TYPE_ARRAY:
+			if raw_value is Array:
+				return {"ok": true, "value": raw_value}
+			return {"ok": false, "error": "expected array"}
+		TYPE_DICTIONARY:
+			if raw_value is Dictionary:
+				return {"ok": true, "value": raw_value}
+			return {"ok": false, "error": "expected dictionary"}
+		_:
+			return {"ok": false, "error": "unsupported property type " + str(expected_type)}
+
+func _coerce_project_resource_vector2(raw_value: Variant, integer_components: bool) -> Dictionary:
+	if not (raw_value is Dictionary):
+		return {"ok": false, "error": "expected dictionary with x and y"}
+	var value_dict: Dictionary = raw_value
+	if not (value_dict.has("x") and value_dict.has("y")):
+		return {"ok": false, "error": "vector dictionaries must include x and y"}
+	if integer_components:
+		return {"ok": true, "value": Vector2i(int(value_dict.get("x", 0)), int(value_dict.get("y", 0)))}
+	return {"ok": true, "value": Vector2(float(value_dict.get("x", 0.0)), float(value_dict.get("y", 0.0)))}
+
+func _coerce_project_resource_vector3(raw_value: Variant, integer_components: bool) -> Dictionary:
+	if not (raw_value is Dictionary):
+		return {"ok": false, "error": "expected dictionary with x, y, and z"}
+	var value_dict: Dictionary = raw_value
+	if not (value_dict.has("x") and value_dict.has("y") and value_dict.has("z")):
+		return {"ok": false, "error": "vector dictionaries must include x, y, and z"}
+	if integer_components:
+		return {"ok": true, "value": Vector3i(int(value_dict.get("x", 0)), int(value_dict.get("y", 0)), int(value_dict.get("z", 0)))}
+	return {"ok": true, "value": Vector3(float(value_dict.get("x", 0.0)), float(value_dict.get("y", 0.0)), float(value_dict.get("z", 0.0)))}
+
+func _coerce_project_resource_vector4(raw_value: Variant, integer_components: bool) -> Dictionary:
+	if not (raw_value is Dictionary):
+		return {"ok": false, "error": "expected dictionary with x, y, z, and w"}
+	var value_dict: Dictionary = raw_value
+	if not (value_dict.has("x") and value_dict.has("y") and value_dict.has("z") and value_dict.has("w")):
+		return {"ok": false, "error": "vector dictionaries must include x, y, z, and w"}
+	if integer_components:
+		return {"ok": true, "value": Vector4i(int(value_dict.get("x", 0)), int(value_dict.get("y", 0)), int(value_dict.get("z", 0)), int(value_dict.get("w", 0)))}
+	return {"ok": true, "value": Vector4(float(value_dict.get("x", 0.0)), float(value_dict.get("y", 0.0)), float(value_dict.get("z", 0.0)), float(value_dict.get("w", 0.0)))}
+
+func _coerce_project_resource_rect2(raw_value: Variant, integer_components: bool) -> Dictionary:
+	if not (raw_value is Dictionary):
+		return {"ok": false, "error": "expected dictionary with position and size"}
+	var value_dict: Dictionary = raw_value
+	if not (value_dict.has("position") and value_dict.has("size")):
+		return {"ok": false, "error": "rect dictionaries must include position and size"}
+	var position_result: Dictionary = _coerce_project_resource_vector2(value_dict.get("position"), integer_components)
+	if not bool(position_result.get("ok", false)):
+		return position_result
+	var size_result: Dictionary = _coerce_project_resource_vector2(value_dict.get("size"), integer_components)
+	if not bool(size_result.get("ok", false)):
+		return size_result
+	if integer_components:
+		return {"ok": true, "value": Rect2i(position_result.get("value"), size_result.get("value"))}
+	return {"ok": true, "value": Rect2(position_result.get("value"), size_result.get("value"))}
 
 func _compare_autoload_entries(left: Dictionary, right: Dictionary) -> bool:
 	var left_order: int = int(left.get("order", 0))

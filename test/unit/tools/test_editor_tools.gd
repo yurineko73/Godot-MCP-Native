@@ -1,12 +1,15 @@
 extends "res://addons/gut/test.gd"
 
 var _editor_tools: RefCounted = null
+var _generated_scene_helper = null
 
 func before_each() -> void:
 	_editor_tools = load("res://addons/godot_mcp/tools/editor_tools_native.gd").new()
+	_generated_scene_helper = load("res://addons/godot_mcp/utils/generated_scene_screenshot_helper.gd")
 
 func after_each() -> void:
 	_editor_tools = null
+	_generated_scene_helper = null
 	if Engine.has_meta("GodotMCPPlugin"):
 		Engine.remove_meta("GodotMCPPlugin")
 
@@ -72,6 +75,26 @@ func test_execute_script_result_format():
 	var error: Dictionary = {"status": "error", "error": "Parse failed"}
 	assert_has(success, "status", "Should have status")
 	assert_has(error, "error", "Error should have error message")
+
+func test_generated_scene_screenshot_helper_rejects_missing_scene():
+	var result: Dictionary = _generated_scene_helper.capture_scene("res://missing_scene_for_capture.tscn", "res://capture.png")
+	assert_string_contains(result.get("error", ""), "Failed to load scene", "Missing scene should be reported clearly")
+
+func test_generated_scene_screenshot_helper_rejects_tiny_viewport():
+	var result: Dictionary = _generated_scene_helper.capture_scene("res://missing_scene_for_capture.tscn", "res://capture.png", "png", Vector2i.ONE)
+	assert_string_contains(result.get("error", ""), "Viewport size must be at least 2x2", "Tiny viewport should be rejected before capture")
+
+func test_get_editor_screenshot_registration_includes_generated_scene_fields():
+	var server_core: RefCounted = load("res://addons/godot_mcp/native_mcp/mcp_server_core.gd").new()
+	_editor_tools._register_get_editor_screenshot(server_core)
+	var tool = server_core.get_tool("get_editor_screenshot")
+	assert_not_null(tool, "get_editor_screenshot should register successfully")
+	var output_schema: Dictionary = tool.output_schema
+	var properties: Dictionary = output_schema.get("properties", {})
+	assert_has(properties, "width", "Output schema should expose width")
+	assert_has(properties, "height", "Output schema should expose height")
+	assert_has(properties, "scene_path", "Output schema should expose offscreen scene_path")
+	assert_has(properties, "render_mode", "Output schema should expose render_mode")
 
 # --- Vibe Coding policy guard tests ---
 

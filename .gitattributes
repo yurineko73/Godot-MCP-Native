@@ -5,3 +5,28 @@
 /**        export-ignore
 /addons    !export-ignore
 /addons/** !export-ignore
+
+# Common binary assets and archives.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.7z binary
+*.gz binary
+*.mp3 binary
+*.wav binary
+*.ogg binary
+*.mp4 binary
+*.mov binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.dll binary
+*.exe binary
+*.so binary
+*.dylib binary

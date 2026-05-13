@@ -128,6 +128,22 @@ def main() -> int:
             raise AssertionError(f"Expected cycle to include both temporary scenes: {first_issue}")
         if cycle_path[0] != cycle_path[-1]:
             raise AssertionError(f"Expected cycle path to close back to the start: {first_issue}")
+        if cycle_scan.get("truncated") is not False or cycle_scan.get("has_more") is not False:
+            raise AssertionError(f"Expected complete cyclic scan metadata for single-cycle fixture: {cycle_scan}")
+        if cycle_scan.get("max_results_applied") != 10 or "next_max_results" in cycle_scan:
+            raise AssertionError(f"Expected stable rerun metadata for non-truncated cyclic scan: {cycle_scan}")
+
+        exact_fit_cycle_scan = tool_call(
+            "scan_cyclic_resource_dependencies",
+            {"search_path": "res://.tmp_cyclic_resource_dependencies", "max_results": 1},
+            request_id=21,
+        )
+        if exact_fit_cycle_scan.get("issue_count") != 1:
+            raise AssertionError(f"Expected exact-fit cyclic dependency count of 1: {exact_fit_cycle_scan}")
+        if exact_fit_cycle_scan.get("truncated") is not False or exact_fit_cycle_scan.get("has_more") is not False:
+            raise AssertionError(f"Exact-fit cyclic scan should not report truncation: {exact_fit_cycle_scan}")
+        if "next_max_results" in exact_fit_cycle_scan:
+            raise AssertionError(f"Exact-fit cyclic scan should not advertise next_max_results: {exact_fit_cycle_scan}")
 
         audit = tool_call(
             "audit_project_health",
@@ -140,6 +156,10 @@ def main() -> int:
             raise AssertionError(f"Expected cyclic dependency summary count: {audit}")
         if not audit.get("cyclic_dependencies"):
             raise AssertionError(f"Expected cyclic dependency details in audit payload: {audit}")
+        if audit.get("truncated") is not False or audit.get("has_more") is not False:
+            raise AssertionError(f"Expected complete audit metadata for single-cycle fixture: {audit}")
+        if audit.get("max_results_applied") != 10 or "next_max_results" in audit:
+            raise AssertionError(f"Expected stable rerun metadata for non-truncated cyclic audit: {audit}")
 
         print("cyclic resource dependency flow verified")
         return 0

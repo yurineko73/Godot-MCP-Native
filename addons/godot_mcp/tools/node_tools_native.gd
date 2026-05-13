@@ -746,6 +746,14 @@ func _register_get_node_properties(server_core: RefCounted) -> void:
 				"node_path": {
 					"type": "string",
 					"description": "Path to the node (e.g. '/root/MainScene/Player')"
+				},
+				"max_properties": {
+					"type": "integer",
+					"description": "Optional maximum number of properties to return. Omit or use 0 for no limit."
+				},
+				"cursor": {
+					"type": "integer",
+					"description": "Optional zero-based offset for continuing a previous truncated result."
 				}
 			},
 			"required": ["node_path"]
@@ -756,7 +764,12 @@ func _register_get_node_properties(server_core: RefCounted) -> void:
 			"properties": {
 				"node_path": {"type": "string"},
 				"node_type": {"type": "string"},
-				"properties": {"type": "object"}
+				"properties": {"type": "object"},
+				"count": {"type": "integer"},
+				"total_available": {"type": "integer"},
+				"truncated": {"type": "boolean"},
+				"has_more": {"type": "boolean"},
+				"next_cursor": {"type": "integer"}
 			}
 		},
 		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
@@ -765,6 +778,8 @@ func _register_get_node_properties(server_core: RefCounted) -> void:
 
 func _tool_get_node_properties(params: Dictionary) -> Dictionary:
 	var node_path: String = params.get("node_path", "")
+	var max_properties: int = int(params.get("max_properties", 0))
+	var cursor: int = int(params.get("cursor", 0))
 	
 	if node_path.is_empty():
 		return {"error": "Missing required parameter: node_path"}
@@ -779,6 +794,7 @@ func _tool_get_node_properties(params: Dictionary) -> Dictionary:
 		return {"error": "Node not found: " + node_path}
 	
 	var properties: Dictionary = {}
+	var property_names: Array[String] = []
 	var property_list: Array = target_node.get_property_list()
 	
 	for property_dict in property_list:
@@ -790,12 +806,11 @@ func _tool_get_node_properties(params: Dictionary) -> Dictionary:
 			continue
 		var value = target_node.get(prop_name)
 		properties[prop_name] = _serialize_value(value)
-	
-	return {
-		"node_path": node_path,
-		"node_type": target_node.get_class(),
-		"properties": properties
-	}
+		property_names.append(prop_name)
+
+	property_names.sort()
+
+	return _build_node_properties_result(node_path, target_node.get_class(), properties, property_names, max_properties, cursor)
 
 func _register_list_nodes(server_core: RefCounted) -> void:
 	server_core.register_tool(
@@ -811,6 +826,14 @@ func _register_list_nodes(server_core: RefCounted) -> void:
 				"recursive": {
 					"type": "boolean",
 					"description": "Whether to list nodes recursively. Default is true."
+				},
+				"max_items": {
+					"type": "integer",
+					"description": "Optional maximum number of node paths to return. Omit or use 0 for no limit."
+				},
+				"cursor": {
+					"type": "integer",
+					"description": "Optional zero-based offset for continuing a previous truncated result."
 				}
 			}
 		},
@@ -819,7 +842,11 @@ func _register_list_nodes(server_core: RefCounted) -> void:
 			"type": "object",
 			"properties": {
 				"nodes": {"type": "array", "items": {"type": "string"}},
-				"count": {"type": "integer"}
+				"count": {"type": "integer"},
+				"total_available": {"type": "integer"},
+				"truncated": {"type": "boolean"},
+				"has_more": {"type": "boolean"},
+				"next_cursor": {"type": "integer"}
 			}
 		},
 		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
@@ -829,6 +856,8 @@ func _register_list_nodes(server_core: RefCounted) -> void:
 func _tool_list_nodes(params: Dictionary) -> Dictionary:
 	var parent_path: String = params.get("parent_path", "")
 	var recursive: bool = params.get("recursive", true)
+	var max_items: int = int(params.get("max_items", 0))
+	var cursor: int = int(params.get("cursor", 0))
 	
 	var editor_interface: EditorInterface = _get_editor_interface()
 	if not editor_interface:
@@ -850,10 +879,7 @@ func _tool_list_nodes(params: Dictionary) -> Dictionary:
 	var nodes_list: Array[String] = []
 	_collect_nodes(start_node, "", recursive, nodes_list, scene_root)
 	
-	return {
-		"nodes": nodes_list,
-		"count": nodes_list.size()
-	}
+	return _build_list_nodes_result(nodes_list, max_items, cursor)
 
 func _register_get_scene_tree(server_core: RefCounted) -> void:
 	server_core.register_tool(
@@ -874,7 +900,10 @@ func _register_get_scene_tree(server_core: RefCounted) -> void:
 			"properties": {
 				"scene_name": {"type": "string"},
 				"tree": {"type": "object"},
-				"total_nodes": {"type": "integer"}
+				"total_nodes": {"type": "integer"},
+				"truncated": {"type": "boolean"},
+				"max_depth_applied": {"type": "integer"},
+				"next_max_depth": {"type": "integer"}
 			}
 		},
 		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
@@ -892,14 +921,7 @@ func _tool_get_scene_tree(params: Dictionary) -> Dictionary:
 	if not scene_root:
 		return {"error": "No scene is currently open"}
 	
-	var tree: Dictionary = _build_scene_tree_node(scene_root, 0, max_depth, scene_root)
-	var total_nodes: int = _count_all_nodes(scene_root)
-	
-	return {
-		"scene_name": scene_root.name,
-		"tree": tree,
-		"total_nodes": total_nodes
-	}
+	return _build_scene_tree_result(scene_root, max_depth)
 
 func _get_editor_interface() -> EditorInterface:
 	if _editor_interface:
@@ -929,9 +951,13 @@ func _get_user_scene_root() -> Node:
 
 static func _make_friendly_path(node: Node, scene_root: Node) -> String:
 	if not scene_root:
-		return str(node.get_path())
+		if node.is_inside_tree():
+			return str(node.get_path())
+		return "/" + node.name
 	if node == scene_root:
 		return "/root/" + scene_root.name
+	if not node.is_inside_tree() or not scene_root.is_inside_tree():
+		return "/" + node.name
 	var node_path: String = str(node.get_path())
 	var root_path: String = str(scene_root.get_path())
 	if node_path.begins_with(root_path + "/"):
@@ -1209,6 +1235,91 @@ static func _count_all_nodes(node: Node) -> int:
 		var child: Node = node.get_child(child_index)
 		count += _count_all_nodes(child)
 	return count
+
+static func _tree_has_truncation(node_info: Dictionary) -> bool:
+	if node_info.get("children_truncated", false):
+		return true
+	for child in node_info.get("children", []):
+		if child is Dictionary and _tree_has_truncation(child):
+			return true
+	return false
+
+static func _build_scene_tree_result(scene_root: Node, max_depth: int) -> Dictionary:
+	var tree: Dictionary = _build_scene_tree_node(scene_root, 0, max_depth, scene_root)
+	var total_nodes: int = _count_all_nodes(scene_root)
+	var truncated: bool = max_depth >= 0 and _tree_has_truncation(tree)
+	var result: Dictionary = {
+		"scene_name": scene_root.name,
+		"tree": tree,
+		"total_nodes": total_nodes,
+		"truncated": truncated,
+		"max_depth_applied": max_depth
+	}
+	if truncated:
+		result["next_max_depth"] = max_depth + 1
+	return result
+
+static func _build_list_nodes_result(nodes_list: Array[String], max_items: int, cursor: int) -> Dictionary:
+	var total_available: int = nodes_list.size()
+	var start_index: int = maxi(0, cursor)
+	if start_index > total_available:
+		start_index = total_available
+
+	var window: Array[String] = nodes_list.slice(start_index, total_available)
+	var truncated: bool = false
+	var has_more: bool = false
+	var next_cursor: int = -1
+
+	if max_items > 0 and window.size() > max_items:
+		window = window.slice(0, max_items)
+		truncated = true
+		has_more = true
+		next_cursor = start_index + window.size()
+
+	var result: Dictionary = {
+		"nodes": window,
+		"count": window.size(),
+		"total_available": total_available,
+		"truncated": truncated,
+		"has_more": has_more
+	}
+	if has_more:
+		result["next_cursor"] = next_cursor
+	return result
+
+static func _build_node_properties_result(node_path: String, node_type: String, all_properties: Dictionary, property_names: Array[String], max_properties: int, cursor: int) -> Dictionary:
+	var total_available: int = property_names.size()
+	var start_index: int = maxi(0, cursor)
+	if start_index > total_available:
+		start_index = total_available
+
+	var window_names: Array[String] = property_names.slice(start_index, total_available)
+	var truncated: bool = false
+	var has_more: bool = false
+	var next_cursor: int = -1
+
+	if max_properties > 0 and window_names.size() > max_properties:
+		window_names = window_names.slice(0, max_properties)
+		truncated = true
+		has_more = true
+		next_cursor = start_index + window_names.size()
+
+	var properties: Dictionary = {}
+	for prop_name in window_names:
+		properties[prop_name] = all_properties.get(prop_name)
+
+	var result: Dictionary = {
+		"node_path": node_path,
+		"node_type": node_type,
+		"properties": properties,
+		"count": properties.size(),
+		"total_available": total_available,
+		"truncated": truncated,
+		"has_more": has_more
+	}
+	if has_more:
+		result["next_cursor"] = next_cursor
+	return result
 
 # ===========================================
 # 节点工具增强 - 新增工具
@@ -1813,6 +1924,14 @@ func _register_get_node_groups(server_core: RefCounted) -> void:
 				"node_path": {
 					"type": "string",
 					"description": "Path to the node (e.g. '/root/MainScene/Player')"
+				},
+				"max_items": {
+					"type": "integer",
+					"description": "Optional maximum number of groups to return. Omit or use 0 for no limit."
+				},
+				"cursor": {
+					"type": "integer",
+					"description": "Optional zero-based offset for continuing a previous truncated result."
 				}
 			},
 			"required": ["node_path"]
@@ -1823,7 +1942,11 @@ func _register_get_node_groups(server_core: RefCounted) -> void:
 			"properties": {
 				"node_path": {"type": "string"},
 				"groups": {"type": "array", "items": {"type": "string"}},
-				"group_count": {"type": "integer"}
+				"group_count": {"type": "integer"},
+				"total_available": {"type": "integer"},
+				"truncated": {"type": "boolean"},
+				"has_more": {"type": "boolean"},
+				"next_cursor": {"type": "integer"}
 			}
 		},
 		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
@@ -1832,6 +1955,8 @@ func _register_get_node_groups(server_core: RefCounted) -> void:
 
 func _tool_get_node_groups(params: Dictionary) -> Dictionary:
 	var node_path: String = params.get("node_path", "")
+	var max_items: int = int(params.get("max_items", 0))
+	var cursor: int = int(params.get("cursor", 0))
 
 	if node_path.is_empty():
 		return {"error": "Missing required parameter: node_path"}
@@ -1845,15 +1970,12 @@ func _tool_get_node_groups(params: Dictionary) -> Dictionary:
 		return {"error": "Node not found: " + node_path}
 
 	var groups: Array[StringName] = target_node.get_groups()
-	var groups_array: Array = []
+	var groups_array: Array[String] = []
 	for group in groups:
 		groups_array.append(str(group))
+	groups_array.sort()
 
-	return {
-		"node_path": node_path,
-		"groups": groups_array,
-		"group_count": groups_array.size()
-	}
+	return _build_get_node_groups_result(node_path, groups_array, max_items, cursor)
 
 func _register_set_node_groups(server_core: RefCounted) -> void:
 	server_core.register_tool(
@@ -1966,6 +2088,14 @@ func _register_find_nodes_in_group(server_core: RefCounted) -> void:
 				"node_type": {
 					"type": "string",
 					"description": "Optional filter by node type (e.g. 'Node2D', 'CharacterBody2D')"
+				},
+				"max_items": {
+					"type": "integer",
+					"description": "Optional maximum number of matching nodes to return. Omit or use 0 for no limit."
+				},
+				"cursor": {
+					"type": "integer",
+					"description": "Optional zero-based offset for continuing a previous truncated result."
 				}
 			},
 			"required": ["group"]
@@ -1976,7 +2106,11 @@ func _register_find_nodes_in_group(server_core: RefCounted) -> void:
 			"properties": {
 				"group": {"type": "string"},
 				"nodes": {"type": "array"},
-				"node_count": {"type": "integer"}
+				"node_count": {"type": "integer"},
+				"total_available": {"type": "integer"},
+				"truncated": {"type": "boolean"},
+				"has_more": {"type": "boolean"},
+				"next_cursor": {"type": "integer"}
 			}
 		},
 		{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
@@ -1986,6 +2120,8 @@ func _register_find_nodes_in_group(server_core: RefCounted) -> void:
 func _tool_find_nodes_in_group(params: Dictionary) -> Dictionary:
 	var group: String = params.get("group", "")
 	var node_type: String = params.get("node_type", "")
+	var max_items: int = int(params.get("max_items", 0))
+	var cursor: int = int(params.get("cursor", 0))
 
 	if group.is_empty():
 		return {"error": "Missing required parameter: group"}
@@ -2014,8 +2150,62 @@ func _tool_find_nodes_in_group(params: Dictionary) -> Dictionary:
 		}
 		result_nodes.append(node_info)
 
-	return {
+	return _build_find_nodes_in_group_result(group, result_nodes, max_items, cursor)
+
+static func _build_find_nodes_in_group_result(group: String, result_nodes: Array, max_items: int, cursor: int) -> Dictionary:
+	var total_available: int = result_nodes.size()
+	var start_index: int = maxi(0, cursor)
+	if start_index > total_available:
+		start_index = total_available
+
+	var window: Array = result_nodes.slice(start_index, total_available)
+	var truncated: bool = false
+	var has_more: bool = false
+	var next_cursor: int = -1
+
+	if max_items > 0 and window.size() > max_items:
+		window = window.slice(0, max_items)
+		truncated = true
+		has_more = true
+		next_cursor = start_index + window.size()
+
+	var result: Dictionary = {
 		"group": group,
-		"nodes": result_nodes,
-		"node_count": result_nodes.size()
+		"nodes": window,
+		"node_count": window.size(),
+		"total_available": total_available,
+		"truncated": truncated,
+		"has_more": has_more
 	}
+	if has_more:
+		result["next_cursor"] = next_cursor
+	return result
+
+static func _build_get_node_groups_result(node_path: String, groups_array: Array[String], max_items: int, cursor: int) -> Dictionary:
+	var total_available: int = groups_array.size()
+	var start_index: int = maxi(0, cursor)
+	if start_index > total_available:
+		start_index = total_available
+
+	var window: Array[String] = groups_array.slice(start_index, total_available)
+	var truncated: bool = false
+	var has_more: bool = false
+	var next_cursor: int = -1
+
+	if max_items > 0 and window.size() > max_items:
+		window = window.slice(0, max_items)
+		truncated = true
+		has_more = true
+		next_cursor = start_index + window.size()
+
+	var result: Dictionary = {
+		"node_path": node_path,
+		"groups": window,
+		"group_count": window.size(),
+		"total_available": total_available,
+		"truncated": truncated,
+		"has_more": has_more
+	}
+	if has_more:
+		result["next_cursor"] = next_cursor
+	return result

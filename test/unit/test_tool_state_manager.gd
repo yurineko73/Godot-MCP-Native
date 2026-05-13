@@ -73,6 +73,19 @@ func test_apply_states_ignores_unregistered_tools():
 	var tools: Array = _server_core.get_registered_tools()
 	assert_eq(tools.size(), 1, "Only real tool should exist")
 
+func test_apply_states_leaves_omitted_tools_enabled_by_default():
+	_server_core.register_tool("tool_a", "A", {"type": "object"}, func(args): return {})
+	_server_core.register_tool("tool_b", "B", {"type": "object"}, func(args): return {})
+
+	_state_manager.apply_states_to_server(_server_core, {"tool_a": false})
+
+	var tools_by_name := {}
+	for tool_info in _server_core.get_registered_tools():
+		tools_by_name[tool_info["name"]] = tool_info
+
+	assert_false(tools_by_name["tool_a"]["enabled"], "Explicitly configured tool should reflect saved disabled state")
+	assert_true(tools_by_name["tool_b"]["enabled"], "Omitted tool should remain enabled by default")
+
 func test_capture_states_from_server():
 	_server_core.register_tool("tool_a", "A", {"type": "object"}, func(args): return {})
 	_server_core.register_tool("tool_b", "B", {"type": "object"}, func(args): return {})
@@ -91,7 +104,30 @@ func test_validate_core_tool_limit():
 	assert_has(result, "enabled_core_count", "Result should have enabled_core_count")
 	assert_has(result, "core_limit", "Result should have core_limit")
 	assert_has(result, "message", "Result should have message")
-	assert_eq(result["core_limit"], 40, "Core limit should be 40")
+	assert_eq(result["core_limit"], 46, "Core limit should be 46")
+
+func test_validate_core_tool_limit_defaults_missing_core_states_to_enabled():
+	var classifier = _state_manager._classifier
+	var core_tools: Array[String] = classifier.get_core_tools()
+	var result: Dictionary = _state_manager.validate_core_tool_limit({})
+
+	assert_eq(result["enabled_core_count"], core_tools.size(), "Missing core states should count as enabled by default")
+	assert_eq(result["core_limit"], classifier.get_core_max_count(), "Core limit should match classifier truth")
+	assert_eq(result["over_limit"], core_tools.size() > classifier.get_core_max_count(), "Over-limit truth should derive from default-enabled core count")
+
+func test_validate_core_tool_limit_respects_explicit_core_disables():
+	var classifier = _state_manager._classifier
+	var core_tools: Array[String] = classifier.get_core_tools()
+	assert_gt(core_tools.size(), 1, "Need at least two core tools to verify explicit disables")
+
+	var states: Dictionary = {
+		core_tools[0]: false,
+		core_tools[1]: false
+	}
+	var result: Dictionary = _state_manager.validate_core_tool_limit(states)
+
+	assert_eq(result["enabled_core_count"], core_tools.size() - 2, "Explicitly disabled core tools should reduce the enabled-core count")
+	assert_false(result["over_limit"], "Disabling core tools should not report over-limit when the classifier default is within the cap")
 
 func test_get_storage_path():
 	var path: String = _state_manager.get_storage_path()

@@ -112,17 +112,26 @@ func get_latest_evaluation(expression: String = "") -> Variant:
 	keys.sort()
 	return _latest_evaluations[keys[keys.size() - 1]]
 
+func _build_paginated_result(items_key: String, items: Array, count: int, offset: int) -> Dictionary:
+	var start: int = clampi(offset, 0, items.size())
+	var end: int = clampi(start + max(count, 0), start, items.size())
+	var has_more: bool = count > 0 and end < items.size()
+	var result := {
+		items_key: items.slice(start, end),
+		"count": end - start,
+		"total_available": items.size(),
+		"truncated": has_more,
+		"has_more": has_more
+	}
+	if has_more:
+		result["next_cursor"] = end
+	return result
+
 func get_state_events(count: int = 100, offset: int = 0, order: String = "desc") -> Dictionary:
 	var events: Array = _state_events.duplicate(true)
 	if order == "desc":
 		events.reverse()
-	var start: int = clampi(offset, 0, events.size())
-	var end: int = clampi(start + max(count, 0), start, events.size())
-	return {
-		"events": events.slice(start, end),
-		"count": end - start,
-		"total_available": events.size()
-	}
+	return _build_paginated_result("events", events, count, offset)
 
 func get_output_events(count: int = 100, offset: int = 0, order: String = "desc", category: String = "") -> Dictionary:
 	var events: Array = []
@@ -131,13 +140,7 @@ func get_output_events(count: int = 100, offset: int = 0, order: String = "desc"
 			events.append(entry.duplicate(true))
 	if order == "desc":
 		events.reverse()
-	var start: int = clampi(offset, 0, events.size())
-	var end: int = clampi(start + max(count, 0), start, events.size())
-	return {
-		"events": events.slice(start, end),
-		"count": end - start,
-		"total_available": events.size()
-	}
+	return _build_paginated_result("events", events, count, offset)
 
 func get_threads() -> Array[Dictionary]:
 	var threads: Array[Dictionary] = []
@@ -190,14 +193,9 @@ func get_evaluation_variables_reference(expression: String) -> int:
 
 func get_variables_by_reference(variables_reference: int, count: int = 100, offset: int = 0) -> Dictionary:
 	var entries: Array = _variable_references.get(variables_reference, []).duplicate(true)
-	var start: int = clampi(offset, 0, entries.size())
-	var end: int = clampi(start + max(count, 0), start, entries.size())
-	return {
-		"variables_reference": variables_reference,
-		"variables": entries.slice(start, end),
-		"count": end - start,
-		"total_available": entries.size()
-	}
+	var result: Dictionary = _build_paginated_result("variables", entries, count, offset)
+	result["variables_reference"] = variables_reference
+	return result
 
 func toggle_profiler(profiler: String, enabled: bool, data: Array, session_id: int = -1) -> Dictionary:
 	var action: Callable = func(session: EditorDebuggerSession) -> void:
@@ -209,13 +207,7 @@ func get_captured_messages(count: int = 100, offset: int = 0, order: String = "d
 	var messages: Array = _captured_messages.duplicate()
 	if order == "desc":
 		messages.reverse()
-	var start: int = clampi(offset, 0, messages.size())
-	var end: int = clampi(start + max(count, 0), start, messages.size())
-	return {
-		"messages": messages.slice(start, end),
-		"count": end - start,
-		"total_available": messages.size()
-	}
+	return _build_paginated_result("messages", messages, count, offset)
 
 func get_capture_prefixes() -> Array[String]:
 	return _capture_prefixes.duplicate()

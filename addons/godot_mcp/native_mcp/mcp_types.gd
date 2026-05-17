@@ -165,11 +165,22 @@ class MCPPrompt:
 # 工具函数
 # ============================================================================
 
+# 规范化 JSON-RPC id。
+# Godot 的 JSON 解析会把整数 id 读成 float，例如 0 -> 0.0。
+# JSON-RPC id 不应包含小数部分，部分 MCP 客户端会拒绝反序列化 0.0。
+static func normalize_jsonrpc_id(id: Variant) -> Variant:
+	if typeof(id) == TYPE_FLOAT:
+		var integer_id: int = int(id)
+		if is_equal_approx(id, float(integer_id)):
+			return integer_id
+	
+	return id
+
 # 创建标准JSON-RPC响应
 static func create_response(id: Variant, result: Variant) -> Dictionary:
 	return {
 		"jsonrpc": JSONRPC_VERSION,
-		"id": id,
+		"id": normalize_jsonrpc_id(id),
 		"result": result
 	}
 
@@ -185,7 +196,7 @@ static func create_error_response(id: Variant, code: int, message: String, data:
 	
 	return {
 		"jsonrpc": JSONRPC_VERSION,
-		"id": id,
+		"id": normalize_jsonrpc_id(id),
 		"error": error
 	}
 

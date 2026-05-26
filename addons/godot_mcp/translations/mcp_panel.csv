@@ -1,5 +1,5 @@
 key,source,en,zh
-ui.settings,Settings,Settings,Settings
+ui.settings,Settings,Settings,设置
 ui.server_log,Server Log,Server Log,服务器日志
 ui.tool_manager,Tool Manager,Tool Manager,工具管理器
 ui.status_unknown,Status: Unknown,Status: Unknown,状态：未知
@@ -13,7 +13,7 @@ ui.transport_settings,Transport Settings,Transport Settings,传输设置
 ui.transport_mode,Transport Mode,Transport Mode,传输模式
 ui.http_port,Port,Port,端口
 ui.enable_auth,Enable Auth,Enable Auth,启用认证
-ui.auth_token,Token:,Token:,Token:
+ui.auth_token,Token:,Token:,令牌：
 ui.token_placeholder,Enter auth token,Enter auth token,输入认证令牌
 ui.enable_sse,Enable SSE,Enable SSE,启用 SSE
 ui.allow_remote,Allow Remote Access,Allow Remote Access,允许远程访问

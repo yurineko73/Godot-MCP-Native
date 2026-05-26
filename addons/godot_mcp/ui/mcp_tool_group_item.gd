@@ -49,6 +49,10 @@ func setup(group_name: String, items: Array, translation_manager = null) -> void
 		var enabled: bool = item.get("enabled", true)
 		var category: String = item.get("category", "core")
 
+		var translated_desc: String = _tr(tool_name)
+		if translated_desc != tool_name:
+			description = translated_desc
+
 		var tool_item: MCPToolItem = MCPToolItem.new()
 		tool_item.setup(tool_name, description, enabled, category, _group_name)
 		tool_item.tool_toggled.connect(_on_tool_item_toggled)

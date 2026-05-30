@@ -238,7 +238,7 @@ func _register_upsert_project_input_action(server_core: RefCounted) -> void:
 			"action_name": {"type": "string"},
 			"deadzone": {"type": "number", "default": 0.5},
 			"erase_existing": {"type": "boolean", "default": false},
-			"events": {"type": "array", "description": "Optional structured input event payloads to store on the action."}
+			"events": {"type": "array", "items": {"type": "object"}, "description": "Optional structured input event payloads to store on the action."}
 		},
 		"required": ["action_name"]
 	}

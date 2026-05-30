@@ -1976,7 +1976,7 @@ func _register_upsert_runtime_input_action(server_core: RefCounted) -> void:
 				"action_name": {"type": "string"},
 				"deadzone": {"type": "number", "default": 0.5},
 				"erase_existing": {"type": "boolean", "default": false},
-				"events": {"type": "array", "description": "Optional structured input event payloads to add to the action."},
+				"events": {"type": "array", "items": {"type": "object"}, "description": "Optional structured input event payloads to add to the action."},
 				"session_id": {"type": "integer"},
 				"timeout_ms": {"type": "integer", "default": 1500}
 			},

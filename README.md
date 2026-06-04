@@ -66,7 +66,7 @@ npm install mcp-remote
       "command": "npx",
       "args": [
         "mcp-remote",
-        "http://localhost:19080/mcp"
+        "http://localhost:9080/mcp"
       ]
     }
   }
@@ -141,7 +141,7 @@ With authentication:
 
 [mcp_servers.godot-mcp]
 type = "streamableHttp"
-url = "http://localhost:19080/mcp"
+url = "http://localhost:9080/mcp"
 ```
 
 ## 💬 Example Prompts

@@ -51,6 +51,28 @@ The plugin provides two transport modes:
 - Configuration: Set `transport_mode = "http"` and configure `http_port` (default: 9080)
 - Optional: Enable `auth_enabled` and set `auth_token` for security
 
+#### Headless / Command-line Launch
+Launch the editor in headless MCP-server mode:
+```bash
+godot --editor --path /path/to/project -- --mcp-server
+```
+Settings changed in the panel persist to `user://mcp_settings.cfg`. Headless
+`--mcp-server` mode **honors this file**, so the `http_port` / `transport_mode`
+/ auth options configured via the editor UI are respected when running headlessly.
+
+To run **multiple instances in parallel** (several projects, or isolated test
+instances), override the port per launch with command-line flags — the command
+line takes precedence over the persisted config:
+```bash
+godot --editor --path /path/to/projectA -- --mcp-server --mcp-port=19080
+godot --editor --path /path/to/projectB -- --mcp-server --mcp-port=19081
+```
+
+| Flag | Value | Effect |
+| --- | --- | --- |
+| `--mcp-port=N` | `1024`–`65535` | Override `http_port` (out-of-range values ignored) |
+| `--mcp-transport=MODE` | `http` \| `stdio` | Override `transport_mode` (unknown values ignored) |
+
 ### Connecting with Claude Desktop
 
 First, install the `mcp-remote` package:

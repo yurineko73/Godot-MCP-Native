@@ -51,6 +51,24 @@
 - 配置：在插件设置中设置 `transport_mode = "http"` 并配置 `http_port`（默认：9080）
 - 可选：启用 `auth_enabled` 并设置 `auth_token` 以保障安全
 
+#### 无头 / 命令行启动
+以无头 MCP 服务器模式启动编辑器：
+```bash
+godot --editor --path /path/to/project -- --mcp-server
+```
+面板中修改的设置会保存到 `user://mcp_settings.cfg`。无头 `--mcp-server` 模式会**读取并应用此文件**，因此你在编辑器 UI 中配置的 `http_port` / `transport_mode` / 认证等选项在无头运行时同样生效。
+
+若要**并行运行多个实例**（多个项目，或隔离的测试实例），可通过命令行参数按实例覆盖端口——命令行参数优先级高于配置文件：
+```bash
+godot --editor --path /path/to/projectA -- --mcp-server --mcp-port=19080
+godot --editor --path /path/to/projectB -- --mcp-server --mcp-port=19081
+```
+
+| 参数 | 取值 | 作用 |
+| --- | --- | --- |
+| `--mcp-port=N` | `1024`–`65535` | 覆盖 `http_port`（超出范围的值将被忽略） |
+| `--mcp-transport=MODE` | `http` \| `stdio` | 覆盖 `transport_mode`（未知值将被忽略） |
+
 ### 连接 Claude Desktop
 
 首先安装 `mcp-remote` 包：

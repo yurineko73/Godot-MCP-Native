@@ -115,15 +115,19 @@ const TOOL_SCRIPT_PATHS: Dictionary = {
 func _enter_tree() -> void:
 	_log_info("Godot Native MCP Plugin entering tree...")
 
-	# Apply persisted config and command-line overrides before creating the
-	# server so headless `--mcp-server` mode honors mcp_settings.cfg (port,
-	# transport, auth, ...) and so --mcp-port / --mcp-transport can launch
-	# parallel instances on distinct ports. Every @export setter guards on
-	# `_native_server` (still null here), so assigning properties only stores
-	# values; the set_* calls below apply them to the server.
-	# Precedence: @export default < persisted cfg < command line.
+	# Load persisted config (mcp_settings.cfg) onto the exported properties
+	# before the server is created, so headless `--mcp-server` mode honors the
+	# port/transport/auth set via the editor UI. The @export setters guard on
+	# `_native_server` (still null here), so this only stores values; the
+	# set_* calls below apply them to the server.
+	#
+	# Command-line overrides (--mcp-port / --mcp-transport) are NOT applied
+	# here: the main-screen panel created below runs _load_settings() during
+	# _enter_tree, which re-assigns the persisted port to the server through
+	# the http_port setter and would clobber an override applied this early.
+	# Overrides are applied last, inside _start_native_server(), right before
+	# the port is bound. Precedence: @export default < persisted cfg < cmd line.
 	_apply_persisted_settings()
-	_apply_cmdline_overrides()
 
 	Engine.set_meta("GodotMCPPlugin", self)
 	
@@ -479,7 +483,16 @@ func _start_native_server() -> bool:
 	if _native_server.is_running():
 		_log_warn("MCP Server already running")
 		return false
-	
+
+	# Apply command-line overrides (--mcp-port / --mcp-transport) last, right
+	# before binding. The main-screen panel's _load_settings() runs during
+	# _enter_tree and re-pushes the persisted port onto the server via the
+	# http_port setter; applying the override here makes --mcp-port
+	# authoritative at bind time, so parallel headless instances can coexist on
+	# distinct ports regardless of mcp_settings.cfg. A pure no-op without
+	# overrides (parse_mcp_overrides returns -1 / "").
+	_apply_cmdline_overrides()
+
 	_log_info("Starting native MCP server...")
 	var success: bool = _native_server.start()
 	

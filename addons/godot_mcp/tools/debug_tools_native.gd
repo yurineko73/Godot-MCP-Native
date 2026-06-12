@@ -2563,7 +2563,7 @@ func _register_get_runtime_screenshot(server_core: RefCounted) -> void:
 			"type": "object",
 			"properties": {
 				"save_path": {"type": "string", "description": "Output path for the screenshot. Must use res:// or user://."},
-				"format": {"type": "string", "enum": ["png", "jpg"], "default": "png"},
+				"format": {"type": "string", "enum": ["png", "jpg"], "default": "jpg"},
 				"viewport_path": {"type": "string", "description": "Optional runtime node path to a Viewport or SubViewport to capture instead of the active root viewport."},
 				"session_id": {"type": "integer"},
 				"timeout_ms": {"type": "integer", "default": 1500}
@@ -2576,13 +2576,13 @@ func _register_get_runtime_screenshot(server_core: RefCounted) -> void:
 	)
 
 func _tool_get_runtime_screenshot(params: Dictionary) -> Dictionary:
-	var save_path: String = params.get("save_path", "user://mcp_runtime_capture.png")
+	var save_path: String = params.get("save_path", "user://mcp_runtime_capture.jpg")
 	var path_validation: Dictionary = PathValidator.validate_file_path(save_path, [".png", ".jpg", ".jpeg"])
 	if not path_validation.get("valid", false):
 		return {"error": "Invalid save path: " + str(path_validation.get("error", "unknown error"))}
 	save_path = path_validation["sanitized"]
 
-	var format: String = String(params.get("format", "png")).to_lower()
+	var format: String = String(params.get("format", "jpg")).to_lower()
 	if not ["png", "jpg"].has(format):
 		return {"error": "Unsupported format: " + format}
 	if format == "png" and not save_path.to_lower().ends_with(".png"):
@@ -2748,13 +2748,11 @@ func _request_runtime_probe(command: String, payload: Array, response_messages: 
 	}
 
 func _make_runtime_probe_request_key(command: String, payload: Array, session_id: int, response_messages: Array, match_fields: Dictionary) -> String:
-	return JSON.stringify({
-		"command": command,
-		"payload": payload,
-		"session_id": session_id,
-		"response_messages": response_messages,
-		"match_fields": match_fields
-	}, "", false)
+	# Use str() concatenation instead of JSON.stringify for lower overhead per call.
+	var key: String = command + "|" + str(session_id) + "|" + str(response_messages)
+	if not match_fields.is_empty():
+		key += "|" + str(match_fields)
+	return key
 
 func _extract_pending_runtime_probe_response(bridge: RefCounted, pending_entry: Dictionary, response_messages: Array, match_fields: Dictionary) -> Dictionary:
 	# Force the debugger bridge to refresh captured message visibility before querying
@@ -2805,8 +2803,12 @@ func _request_runtime_probe_poll(
 	var bridge: RefCounted = _get_debugger_bridge()
 	if bridge and bridge.has_method("wait_for_probe_ready"):
 		var probe_session_id: int = int(params.get("session_id", -1))
-		var probe_timeout: int = 2000
-		await bridge.wait_for_probe_ready(probe_session_id, probe_timeout)
+		# Fast path: skip await (and its coroutine overhead) when probe is already ready.
+		# This saves ~1 frame (~16ms) per runtime tool call after the first.
+		if bridge.has_method("is_probe_ready") and bridge.is_probe_ready(probe_session_id):
+			pass  # Already ready — no await needed
+		else:
+			await bridge.wait_for_probe_ready(probe_session_id, 2000)
 	# Wraps _request_runtime_probe with a poll loop that retries when pending.
 	# Uses await get_tree().process_frame to let the editor main loop advance
 	# so EngineDebugger IPC messages are dispatched to _capture().

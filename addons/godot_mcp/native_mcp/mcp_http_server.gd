@@ -292,7 +292,7 @@ func _http_server_loop() -> void:
 			last_keepalive = current_time
 		
 		# 避免 CPU 占用过高
-		OS.delay_msec(10)
+		OS.delay_msec(2)
 	
 	# 清理所有 SSE 连接
 	_cleanup_all_sse_connections()

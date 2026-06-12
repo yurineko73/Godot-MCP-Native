@@ -1163,7 +1163,7 @@ func _register_get_editor_screenshot(server_core: RefCounted) -> void:
 			},
 			"format": {
 				"type": "string",
-				"description": "Image format: 'png' or 'jpg'. Default is 'png'.",
+				"description": "Image format: 'png' or 'jpg'. Default is 'jpg'.",
 				"enum": ["png", "jpg"]
 			}
 		}
@@ -1194,7 +1194,7 @@ func _tool_get_editor_screenshot(params: Dictionary) -> Dictionary:
 	var viewport_type: String = params.get("viewport_type", "3d")
 	var viewport_index: int = params.get("viewport_index", 0)
 	var save_path: String = params.get("save_path", "res://screenshot_editor.png")
-	var format: String = params.get("format", "png")
+	var format: String = params.get("format", "jpg")
 
 	var editor_interface: EditorInterface = _get_editor_interface()
 	if not editor_interface:

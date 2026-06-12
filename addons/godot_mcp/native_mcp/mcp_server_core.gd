@@ -244,14 +244,17 @@ func start() -> bool:
 func stop() -> void:
 	if not _active:
 		return
-	
+
 	_log_info("Stopping MCP Server...")
-	
+
+	# Flush buffered tool logs before shutdown
+	flush_tool_log()
+
 	# 停止传输层
 	if _transport:
 		_transport.stop()
 		_transport = null
-	
+
 	_active = false
 	_log_info("MCP Server stopped")
 
@@ -890,10 +893,35 @@ func cleanup() -> void:
 
 var _tool_log_path: String = "user://mcp_tool_verification_log.json"
 
+## In-memory log buffer to avoid per-call disk I/O.
+var _tool_log_buffer: Array = []
+## Maximum entries before auto-flushing to disk.
+const TOOL_LOG_FLUSH_THRESHOLD: int = 20
+
 func clear_tool_log() -> void:
+	_tool_log_buffer.clear()
 	var file: FileAccess = FileAccess.open(_tool_log_path, FileAccess.WRITE)
 	if file:
 		file.store_string("[]")
+		file.close()
+
+## Flush buffered tool log entries to disk.
+func flush_tool_log() -> void:
+	if _tool_log_buffer.is_empty():
+		return
+	var existing: Array = []
+	if FileAccess.file_exists(_tool_log_path):
+		var file: FileAccess = FileAccess.open(_tool_log_path, FileAccess.READ)
+		if file:
+			var json: JSON = JSON.new()
+			if json.parse(file.get_as_text()) == OK:
+				existing = json.get_data()
+			file.close()
+	existing.append_array(_tool_log_buffer)
+	_tool_log_buffer.clear()
+	var file: FileAccess = FileAccess.open(_tool_log_path, FileAccess.WRITE)
+	if file:
+		file.store_string(JSON.stringify(existing, "\t"))
 		file.close()
 
 
@@ -951,19 +979,8 @@ func _append_tool_log(tool_name: String, result: Variant, error: String) -> void
 		if preview.length() > 200:
 			preview = preview.substr(0, 200)
 		log_entry["result_preview"] = preview
-	
-	var existing: Array = []
-	if FileAccess.file_exists(_tool_log_path):
-		var file: FileAccess = FileAccess.open(_tool_log_path, FileAccess.READ)
-		if file:
-			var json: JSON = JSON.new()
-			if json.parse(file.get_as_text()) == OK:
-				existing = json.get_data()
-			file.close()
-	
-	existing.append(log_entry)
-	
-	var file: FileAccess = FileAccess.open(_tool_log_path, FileAccess.WRITE)
-	if file:
-		file.store_string(JSON.stringify(existing, "\t"))
-		file.close()
+
+	# Buffer in memory; auto-flush when threshold reached.
+	_tool_log_buffer.append(log_entry)
+	if _tool_log_buffer.size() >= TOOL_LOG_FLUSH_THRESHOLD:
+		flush_tool_log()

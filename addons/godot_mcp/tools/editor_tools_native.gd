@@ -22,6 +22,25 @@ func _get_editor_interface() -> EditorInterface:
 			return plugin.get_editor_interface()
 	return null
 
+func _get_debugger_bridge() -> RefCounted:
+	if Engine.has_meta("GodotMCPPlugin"):
+		var plugin = Engine.get_meta("GodotMCPPlugin")
+		if plugin and plugin.has_method("get_debugger_bridge"):
+			return plugin.get_debugger_bridge()
+	return null
+
+# True once a played game child has connected back to the editor's debug server.
+# The editor only reports an active session when the play actually spawned and
+# connected a child process — a missing/failed scene leaves it inactive.
+func _has_active_debugger_session() -> bool:
+	var bridge: RefCounted = _get_debugger_bridge()
+	if not bridge:
+		return false
+	for session in bridge.get_sessions_info():
+		if bool(session.get("active", false)):
+			return true
+	return false
+
 func _get_export_templates_root() -> String:
 	var editor_interface: EditorInterface = _get_editor_interface()
 	if editor_interface:
@@ -203,10 +222,13 @@ func _register_run_project(server_core: RefCounted) -> void:
 		"type": "object",
 		"properties": {
 			"status": {"type": "string"},
-			"mode": {"type": "string"}
+			"mode": {"type": "string"},
+			"scene": {"type": "string"},
+			"session_active": {"type": "boolean"},
+			"probe_ready": {"type": "boolean"}
 		}
 	}
-	
+
 	# annotations
 	var annotations: Dictionary = {
 		"readOnlyHint": false,
@@ -229,26 +251,63 @@ func _tool_run_project(params: Dictionary) -> Dictionary:
 	var editor_interface: EditorInterface = _get_editor_interface()
 	if not editor_interface:
 		return {"error": "Editor interface not available"}
-	
+
 	if editor_interface.is_playing_scene():
 		return {"error": "Project is already running. Stop it first with stop_project."}
-	
+
 	var scene_path: String = params.get("scene_path", "")
-	
+	var played_scene: String = ""
+
 	if not scene_path.is_empty():
 		if not FileAccess.file_exists(scene_path):
 			return {"error": "Scene file not found: " + scene_path}
+		played_scene = scene_path
 		editor_interface.play_custom_scene(scene_path)
 	else:
 		var scene_root: Node = _get_user_scene_root()
 		if scene_root:
+			played_scene = scene_root.scene_file_path
 			editor_interface.play_current_scene()
 		else:
+			played_scene = String(ProjectSettings.get_setting("application/run/main_scene", ""))
 			editor_interface.play_main_scene()
-	
+
+	# Verify the play actually launched a debuggable child. Without this guard a
+	# failed play (e.g. application/run/main_scene pointing at a missing file)
+	# reports a fake success and leaves callers stuck retrying runtime tools (#172).
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var connected: bool = false
+	var connect_deadline: int = Time.get_ticks_msec() + 5000
+	while Time.get_ticks_msec() < connect_deadline:
+		if _has_active_debugger_session():
+			connected = true
+			break
+		if tree:
+			await tree.process_frame
+		else:
+			break
+	if not connected:
+		return {
+			"status": "error",
+			"error": "Play was requested but no debugger session became active within the timeout. The scene likely failed to load — check ProjectSettings application/run/main_scene.",
+			"scene": played_scene
+		}
+
+	# Give the runtime probe a brief window to signal ready so callers can use
+	# runtime tools (scene tree, screenshot, expression eval) right away.
+	var bridge: RefCounted = _get_debugger_bridge()
+	var probe_ready: bool = bridge.is_probe_ready() if bridge else false
+	var probe_deadline: int = Time.get_ticks_msec() + 2000
+	while not probe_ready and tree and Time.get_ticks_msec() < probe_deadline:
+		await tree.process_frame
+		probe_ready = bridge.is_probe_ready() if bridge else false
+
 	return {
 		"status": "success",
-		"mode": "playing"
+		"mode": "playing",
+		"scene": played_scene,
+		"session_active": true,
+		"probe_ready": probe_ready
 	}
 
 # ============================================================================

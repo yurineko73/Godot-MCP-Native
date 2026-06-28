@@ -142,6 +142,7 @@ With authentication:
 ### Connecting with OpenCode
 
 #### HTTP Mode Configuration
+Remarks: If OpenCode is running in Windows Subsystem for Linux (WSL), you might need to configure the url to "http://<ip addresss of your host machine>:9080/mcp".  WSL guide: https://learn.microsoft.com/en-us/windows/wsl/networking#accessing-windows-networking-apps-from-linux-host-ip
 
 ```json
 {

@@ -115,7 +115,12 @@ pub enum EditorCommand {
 #[derive(Debug, Subcommand)]
 pub enum ScenesCommand {
     Current,
-    List,
+    List {
+        #[arg(long)]
+        limit: Option<usize>,
+        #[arg(long)]
+        cursor: Option<String>,
+    },
     Tree {
         #[arg(long)]
         depth: Option<i32>,
@@ -138,6 +143,10 @@ pub enum NodesCommand {
     List {
         #[arg(long, default_value = ".")]
         parent_path: String,
+        #[arg(long)]
+        limit: Option<usize>,
+        #[arg(long)]
+        cursor: Option<String>,
     },
     Create {
         #[arg(long)]
@@ -165,7 +174,12 @@ pub enum NodesCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum ScriptsCommand {
-    List,
+    List {
+        #[arg(long)]
+        limit: Option<usize>,
+        #[arg(long)]
+        cursor: Option<String>,
+    },
     Read {
         path: String,
     },
@@ -190,13 +204,18 @@ pub enum ResourcesCommand {
         resource_types: Vec<String>,
         #[arg(long)]
         limit: Option<usize>,
+        #[arg(long)]
+        cursor: Option<String>,
     },
 }
 
 #[derive(Debug, Subcommand)]
 pub enum ProjectCommand {
     Info,
-    Settings,
+    Settings {
+        #[arg(long)]
+        filter: Option<String>,
+    },
     Run,
     Stop,
 }

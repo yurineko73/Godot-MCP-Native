@@ -53,11 +53,33 @@ gdmcp --json tools schema get_runtime_scene_tree
 ```bash
 gdmcp --json editor state
 gdmcp --json scenes current
+gdmcp --json scenes list --limit 20
 gdmcp --json scenes tree --depth 4
+gdmcp --json nodes list --limit 20
+gdmcp --json scripts list --limit 20
 gdmcp --json scripts read res://player.gd
+gdmcp --json resources list --limit 20
+gdmcp --json project settings --filter display/
 gdmcp --json debug logs --limit 50
 gdmcp --json runtime tree --depth 4
 ```
+
+`scripts list` supports `--limit` and `--cursor` for progressive discovery. Project settings require a prefix filter because the complete settings set can be large.
+
+Batch files use raw registered tool names and object arguments:
+
+```json
+{
+  "operations": [
+    {
+      "tool": "get_project_info",
+      "arguments": {}
+    }
+  ]
+}
+```
+
+Use `batch preview` before `batch apply`; applying a batch requires `--apply`.
 
 Destructive domain commands require `--apply`:
 

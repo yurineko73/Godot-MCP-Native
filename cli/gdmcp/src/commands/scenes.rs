@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 
 use crate::{cli::ScenesCommand, client::ApiClient, error::CliError};
 
-use super::tool_call::call;
+use super::tool_call::{call, call_with_options};
 
 pub fn run(client: &ApiClient, command: ScenesCommand) -> Result<Value, CliError> {
     match command {
@@ -16,13 +16,15 @@ pub fn run(client: &ApiClient, command: ScenesCommand) -> Result<Value, CliError
             None,
             None,
         ),
-        ScenesCommand::List => call(
+        ScenesCommand::List { limit, cursor } => call_with_options(
             client,
             "list_project_scenes",
             json!({"search_path": "res://"}),
             false,
             false,
             None,
+            limit,
+            cursor,
             None,
             None,
         ),

@@ -47,6 +47,39 @@ Supported output controls are `--fields`, `--limit`, `--cursor`, `--depth`, `--m
 
 The first release includes commands for editor state, scenes, nodes, scripts, project operations, logs, runtime inspection, and batch preview/apply.
 
+Use bounds when listing project content:
+
+```powershell
+gdmcp --json scenes list --limit 20
+gdmcp --json nodes list --limit 20
+gdmcp --json scripts list --limit 20
+gdmcp --json scripts list --limit 20 --cursor 20
+gdmcp --json resources list --limit 20 --cursor 20
+```
+
+Project settings can be large, so the high-level command requires a prefix filter:
+
+```powershell
+gdmcp --json project settings --filter display/
+```
+
+Do not request the complete settings set without a filter. Use `tools schema get_project_settings` and a raw call only when a different filter is required.
+
+Batch files use registered tool names and object arguments:
+
+```json
+{
+  "operations": [
+    {
+      "tool": "get_project_info",
+      "arguments": {}
+    }
+  ]
+}
+```
+
+Run `batch preview` before `batch apply`; `batch apply` still requires `--apply`.
+
 ## Safety
 
 The server derives policy from MCP annotations and category metadata:

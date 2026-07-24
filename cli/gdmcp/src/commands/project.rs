@@ -16,16 +16,28 @@ pub fn run(client: &ApiClient, command: ProjectCommand) -> Result<Value, CliErro
             None,
             None,
         ),
-        ProjectCommand::Settings => call(
-            client,
-            "get_project_settings",
-            json!({}),
-            false,
-            false,
-            None,
-            None,
-            None,
-        ),
+        ProjectCommand::Settings { filter } => {
+            let filter = filter.ok_or_else(|| {
+                CliError::InvalidArguments(
+                    "project settings requires --filter <prefix> because the full settings set can be large".to_string(),
+                )
+            })?;
+            if filter.trim().is_empty() {
+                return Err(CliError::InvalidArguments(
+                    "project settings requires a non-empty --filter <prefix>".to_string(),
+                ));
+            }
+            call(
+                client,
+                "get_project_settings",
+                json!({"filter": filter}),
+                false,
+                false,
+                None,
+                None,
+                None,
+            )
+        }
         ProjectCommand::Run => call(
             client,
             "run_project",

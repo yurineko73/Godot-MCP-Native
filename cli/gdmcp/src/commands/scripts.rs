@@ -4,17 +4,19 @@ use serde_json::{json, Value};
 
 use crate::{cli::ScriptsCommand, client::ApiClient, error::CliError};
 
-use super::tool_call::call;
+use super::tool_call::{call, call_with_options};
 
 pub fn run(client: &ApiClient, command: ScriptsCommand) -> Result<Value, CliError> {
     match command {
-        ScriptsCommand::List => call(
+        ScriptsCommand::List { limit, cursor } => call_with_options(
             client,
             "list_project_scripts",
             json!({"search_path": "res://"}),
             false,
             false,
             None,
+            limit,
+            cursor,
             None,
             None,
         ),

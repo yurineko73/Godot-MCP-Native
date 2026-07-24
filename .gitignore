@@ -25,6 +25,7 @@ dist/
 Thumbs.db
 
 # Build artifacts
+cli/gdmcp/target/
 *.o
 *.os
 *.obj

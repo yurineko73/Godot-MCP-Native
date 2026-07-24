@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 
 use crate::{args::parse_value, cli::NodesCommand, client::ApiClient, error::CliError};
 
-use super::tool_call::call;
+use super::tool_call::{call, call_with_options};
 
 pub fn run(client: &ApiClient, command: NodesCommand) -> Result<Value, CliError> {
     match command {
@@ -16,13 +16,19 @@ pub fn run(client: &ApiClient, command: NodesCommand) -> Result<Value, CliError>
             None,
             None,
         ),
-        NodesCommand::List { parent_path } => call(
+        NodesCommand::List {
+            parent_path,
+            limit,
+            cursor,
+        } => call_with_options(
             client,
             "list_nodes",
             json!({"parent_path": parent_path}),
             false,
             false,
             None,
+            limit,
+            cursor,
             None,
             None,
         ),

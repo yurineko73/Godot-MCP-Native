@@ -40,6 +40,33 @@ pub fn call(
     limit: Option<usize>,
     depth: Option<i32>,
 ) -> Result<Value, CliError> {
+    call_with_options(
+        client,
+        name,
+        arguments,
+        apply,
+        allow_open_world,
+        fields,
+        limit,
+        None,
+        depth,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn call_with_options(
+    client: &ApiClient,
+    name: &str,
+    arguments: Value,
+    apply: bool,
+    allow_open_world: bool,
+    fields: Option<Vec<String>>,
+    limit: Option<usize>,
+    cursor: Option<String>,
+    depth: Option<i32>,
+    max_bytes: Option<usize>,
+) -> Result<Value, CliError> {
     client.post(
         &format!("/cli/v1/tools/{name}/execute"),
         &ExecuteRequest {
@@ -49,9 +76,9 @@ pub fn call(
             allow_open_world,
             fields,
             limit,
-            cursor: None,
+            cursor,
             depth,
-            max_bytes: None,
+            max_bytes,
         },
     )
 }

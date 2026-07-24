@@ -572,7 +572,7 @@ gdmcp nodes resolve|get|create|delete|move|rename
 gdmcp nodes properties set
 gdmcp scripts list|resolve|read|create|replace|validate
 gdmcp resources list|resolve|get|create
-gdmcp project info|run|stop
+gdmcp project info|settings|run|stop
 gdmcp debug logs|clear
 gdmcp runtime info|tree
 gdmcp runtime nodes get|set|call
@@ -668,6 +668,7 @@ The first release implements the commands that cover the most common workflows.
 | `scripts validate` | `validate_script` |
 | `resources list` | `list_project_resources` |
 | `project info` | `get_project_info` |
+| `project settings --filter <prefix>` | `get_project_settings` with `filter` |
 | `project run` | `run_project` |
 | `project stop` | `stop_project` |
 | `debug logs` | `get_editor_logs` |
@@ -688,16 +689,16 @@ Batch input:
 {
   "operations": [
     {
-      "command": "nodes.properties.set",
-      "target": "/root/Main/Player",
-      "property": "speed",
-      "value": 300
+      "tool": "get_project_info",
+      "arguments": {}
     }
   ]
 }
 ```
 
-`batch preview` validates every operation, resolves mappings, checks policy, and returns the calls that would be made without invoking write handlers.
+The first release uses raw registered tool names and JSON object arguments in batch files. It does not accept high-level domain command objects such as `command`, `target`, or `property`; use a domain command directly for one high-level operation, or resolve the underlying tool first with `tools schema`.
+
+`batch preview` validates every operation, checks tool policy, and returns the calls that would be made without invoking write handlers.
 
 `batch apply` requires `--apply`, executes operations sequentially, and stops at the first failure by default. A later `--continue-on-error` option is not part of the first release.
 

@@ -18,8 +18,13 @@ Prefer narrow domain commands for common operations:
 
 ```bash
 gdmcp --json scenes current
+gdmcp --json scenes list --limit 20
 gdmcp --json scenes tree --depth 4
+gdmcp --json nodes list --limit 20
+gdmcp --json scripts list --limit 20
 gdmcp --json scripts read res://player.gd
+gdmcp --json resources list --limit 20
+gdmcp --json project settings --filter display/
 gdmcp --json debug logs --limit 50
 gdmcp --json runtime tree --depth 4
 ```
@@ -38,10 +43,26 @@ Rules:
 - Prefer domain commands over raw `tool-call`.
 - Do not request the complete catalog with full schemas.
 - Bound output with `--limit`, `--depth`, `--fields`, `--max-bytes`, or `--out`.
+- Use `scripts list --limit <n> [--cursor <cursor>]` for progressive script discovery.
+- Bound `scenes list`, `nodes list`, and `resources list` with `--limit`; use `--cursor` when continuing a result set.
+- Always pass `project settings --filter <prefix>`; the unfiltered settings set can be too large.
 - Use `batch preview` before `batch apply`.
+- Batch files use registered tool names and object arguments, for example:
+
+  ```json
+  {
+    "operations": [
+      {
+        "tool": "get_project_info",
+        "arguments": {}
+      }
+    ]
+  }
+  ```
 - Destructive domain commands require `--apply`.
 - Raw destructive calls require `--apply` after reviewing the selected tool schema.
 - Runtime and other open-world raw calls require `--allow-open-world`.
 - Never print or request the bearer token. Configure it through `GODOT_MCP_TOKEN` or another environment variable selected with `--token-env`.
+- Use only output options shown by a command's `--help`; not every command supports every generic output option.
 
 See `references/command-workflows.md` for copyable task flows.

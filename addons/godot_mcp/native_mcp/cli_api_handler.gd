@@ -10,10 +10,12 @@ var _plugin: Object = null
 var _registry := ToolRegistry.new()
 var _executor := ToolExecutor.new(_registry)
 var _limiter := CliResultLimiter.new()
+var _auth_required: bool = false
 
-func configure(server_core: RefCounted, plugin: Object = null) -> void:
+func configure(server_core: RefCounted, plugin: Object = null, auth_required: bool = false) -> void:
 	_server_core = server_core
 	_plugin = plugin
+	_auth_required = auth_required
 	refresh_registry()
 
 func refresh_registry() -> void:
@@ -112,7 +114,7 @@ func _doctor() -> Dictionary:
 		"editor_connected": _plugin != null,
 		"runtime_running": runtime_running,
 		"catalog_hash": _registry.get_catalog_hash(),
-		"auth": {"required": false, "source": "localhost"},
+		"auth": {"required": _auth_required, "source": "bearer" if _auth_required else "localhost"},
 	}
 
 func _parse_path(raw_path: String) -> Dictionary:

@@ -63,6 +63,24 @@ High-level destructive commands require `--apply` locally before any network req
 
 Precedence is command-line options, environment variables, the OS-specific config file, then defaults. Supported environment variables are `GODOT_MCP_URL`, `GODOT_MCP_TOKEN`, and `GODOT_MCP_TIMEOUT`. `--token-env` selects a different token variable.
 
+## Development and release distribution
+
+The repository separates contributor tooling from end-user distribution:
+
+- `cli/gdmcp/scripts/install-dev.ps1` and `install-dev.sh` bootstrap or reuse a project-local Rust toolchain under `.gdmcp/`, run the locked checks, and install a development binary under `.gdmcp/bin/`.
+- `cli/gdmcp/scripts/package.ps1` and `package.sh` build a versioned archive under `dist/`. The archive contains `gdmcp`, `install.ps1`, `install.sh`, `README.md`, `LICENSE`, `SHA256SUMS`, and `release-manifest.json`.
+- Release users run the installer from the archive. A release archive contains a prebuilt binary and does not require Rust. The installer verifies SHA-256 before copying the executable and leaves persistent PATH unchanged unless the user adds it manually.
+
+PowerShell packaging example:
+
+```powershell
+./cli/gdmcp/scripts/package.ps1 -Version 0.1.0 -Target x86_64-pc-windows-msvc
+```
+
+The checked-in `cli/gdmcp/Cargo.lock` and `cli/gdmcp/rust-toolchain.toml` make the development and packaging inputs explicit.
+
+Windows PowerShell development, packaging, and release installation flows have been validated. Linux and macOS POSIX shell flows are included but remain unverified end-to-end.
+
 ## Exit codes
 
 | Code | Meaning |

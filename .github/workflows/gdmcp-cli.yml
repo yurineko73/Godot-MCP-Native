@@ -10,6 +10,8 @@ on:
       - "addons/godot_mcp/native_mcp/mcp_http_server*.gd"
       - "test/unit/native_mcp/**"
       - "test/integration/test_cli_api_flow.py"
+      - "test/integration/test_gdmcp_packaging.py"
+      - "docs/current/gdmcp-cli-reference.md"
       - ".github/workflows/gdmcp-cli.yml"
   pull_request:
     paths:
@@ -20,6 +22,8 @@ on:
       - "addons/godot_mcp/native_mcp/mcp_http_server*.gd"
       - "test/unit/native_mcp/**"
       - "test/integration/test_cli_api_flow.py"
+      - "test/integration/test_gdmcp_packaging.py"
+      - "docs/current/gdmcp-cli-reference.md"
       - ".github/workflows/gdmcp-cli.yml"
 
 jobs:
@@ -35,9 +39,9 @@ jobs:
       - name: Clippy
         run: cargo clippy --manifest-path cli/gdmcp/Cargo.toml --all-targets -- -D warnings
       - name: Test
-        run: cargo test --manifest-path cli/gdmcp/Cargo.toml
+        run: cargo test --manifest-path cli/gdmcp/Cargo.toml --locked
       - name: Build release
-        run: cargo build --manifest-path cli/gdmcp/Cargo.toml --release
+        run: cargo build --manifest-path cli/gdmcp/Cargo.toml --release --locked
 
   python-syntax:
     runs-on: ubuntu-latest
@@ -47,4 +51,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile integration test
-        run: python -m py_compile test/integration/test_cli_api_flow.py
+        run: python -m py_compile test/integration/test_cli_api_flow.py test/integration/test_gdmcp_packaging.py
+      - name: Packaging contract tests
+        run: python test/integration/test_gdmcp_packaging.py
+      - name: POSIX script syntax
+        run: bash -n cli/gdmcp/scripts/install-dev.sh cli/gdmcp/scripts/package.sh cli/gdmcp/packaging/install.sh

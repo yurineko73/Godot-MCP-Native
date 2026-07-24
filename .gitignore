@@ -18,6 +18,7 @@ mono_crash.*.json
 node_modules/
 npm-debug.log
 dist/
+.gdmcp/
 
 # System files
 .DS_Store

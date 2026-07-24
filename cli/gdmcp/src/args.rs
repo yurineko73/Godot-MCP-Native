@@ -4,10 +4,7 @@ use serde_json::Value;
 
 use crate::error::CliError;
 
-pub fn parse_json_input(
-    inline: Option<String>,
-    file: Option<PathBuf>,
-) -> Result<Value, CliError> {
+pub fn parse_json_input(inline: Option<String>, file: Option<PathBuf>) -> Result<Value, CliError> {
     let value = match (inline, file) {
         (Some(_), Some(_)) => {
             return Err(CliError::InvalidArguments(

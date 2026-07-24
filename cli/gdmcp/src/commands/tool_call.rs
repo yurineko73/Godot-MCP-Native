@@ -1,12 +1,8 @@
 use serde_json::Value;
 
 use crate::{
-    args::parse_json_input,
-    cli::ToolCallArgs,
-    client::ApiClient,
-    contracts::ExecuteRequest,
-    error::CliError,
-    output::write_output,
+    args::parse_json_input, cli::ToolCallArgs, client::ApiClient, contracts::ExecuteRequest,
+    error::CliError, output::write_output,
 };
 
 const OUTPUT_FILE_MAX_BYTES: usize = 4 * 1024 * 1024;

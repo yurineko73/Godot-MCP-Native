@@ -3,7 +3,11 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
-#[command(name = "gdmcp", version, about = "Agent-friendly CLI for Godot MCP Native")]
+#[command(
+    name = "gdmcp",
+    version,
+    about = "Agent-friendly CLI for Godot MCP Native"
+)]
 pub struct Cli {
     #[arg(long, global = true)]
     pub json: bool,

@@ -2,15 +2,24 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum CliError {
-    #[error("invalid arguments: {0}")] InvalidArguments(String),
-    #[error("configuration error: {0}")] Configuration(String),
-    #[error("Godot service is unreachable: {0}")] Unreachable(String),
-    #[error("API request failed: {0}")] Api(String),
-    #[error("operation requires explicit permission: {0}")] Permission(String),
-    #[error("API version mismatch: {0}")] VersionMismatch(String),
-    #[error("I/O error: {0}")] Io(#[from] std::io::Error),
-    #[error("JSON error: {0}")] Json(#[from] serde_json::Error),
-    #[error("HTTP error: {0}")] Http(#[from] reqwest::Error),
+    #[error("invalid arguments: {0}")]
+    InvalidArguments(String),
+    #[error("configuration error: {0}")]
+    Configuration(String),
+    #[error("Godot service is unreachable: {0}")]
+    Unreachable(String),
+    #[error("API request failed: {0}")]
+    Api(String),
+    #[error("operation requires explicit permission: {0}")]
+    Permission(String),
+    #[error("API version mismatch: {0}")]
+    VersionMismatch(String),
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("HTTP error: {0}")]
+    Http(#[from] reqwest::Error),
 }
 
 impl CliError {

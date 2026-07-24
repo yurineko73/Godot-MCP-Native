@@ -3,12 +3,7 @@ use std::fs;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::{
-    cli::BatchCommand,
-    client::ApiClient,
-    contracts::ExecuteRequest,
-    error::CliError,
-};
+use crate::{cli::BatchCommand, client::ApiClient, contracts::ExecuteRequest, error::CliError};
 
 #[derive(Debug, Deserialize)]
 struct BatchFile {

@@ -1,11 +1,6 @@
 use serde_json::{json, Value};
 
-use crate::{
-    args::parse_value,
-    cli::NodesCommand,
-    client::ApiClient,
-    error::CliError,
-};
+use crate::{args::parse_value, cli::NodesCommand, client::ApiClient, error::CliError};
 
 use super::tool_call::call;
 
@@ -88,8 +83,6 @@ fn require_apply(apply: bool, command: &str) -> Result<(), CliError> {
     if apply {
         Ok(())
     } else {
-        Err(CliError::Permission(format!(
-            "{command} requires --apply"
-        )))
+        Err(CliError::Permission(format!("{command} requires --apply")))
     }
 }

@@ -66,8 +66,6 @@ fn require_apply(apply: bool, command: &str) -> Result<(), CliError> {
     if apply {
         Ok(())
     } else {
-        Err(CliError::Permission(format!(
-            "{command} requires --apply"
-        )))
+        Err(CliError::Permission(format!("{command} requires --apply")))
     }
 }

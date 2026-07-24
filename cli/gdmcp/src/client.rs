@@ -85,9 +85,7 @@ impl ApiClient {
             return Err(CliError::VersionMismatch(message));
         }
         match status {
-            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
-                Err(CliError::Permission(message))
-            }
+            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => Err(CliError::Permission(message)),
             _ => Err(CliError::Api(message)),
         }
     }

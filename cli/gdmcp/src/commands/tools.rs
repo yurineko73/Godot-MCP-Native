@@ -8,9 +8,7 @@ pub fn run(client: &ApiClient, command: ToolsCommand) -> Result<Value, CliError>
             "/cli/v1/tools/search",
             &[("q", query), ("limit", limit.clamp(1, 20).to_string())],
         ),
-        ToolsCommand::Schema { name } => {
-            client.get(&format!("/cli/v1/tools/{name}"), &[])
-        }
+        ToolsCommand::Schema { name } => client.get(&format!("/cli/v1/tools/{name}"), &[]),
         ToolsCommand::Catalog => client.get("/cli/v1/catalog", &[]),
     }
 }

@@ -54,7 +54,11 @@ func handle_request(method: String, raw_path: String, headers: Dictionary, body:
 		})
 	if method == "GET" and path == "/cli/v1/tools/search":
 		var search_query: String = str(query.get("q", ""))
-		var limit: int = clampi(int(query.get("limit", "5")), 1, 20)
+		var raw_limit: String = str(query.get("limit", "5"))
+		var limit: int = int(raw_limit)
+		if limit <= 0 or str(limit) != raw_limit:
+			return _error_response(400, "INVALID_ARGUMENT", "limit must be a positive integer")
+		limit = mini(limit, 20)
 		return _json_response(200, _envelope("tools.search", {
 			"query": search_query,
 			"tools": _registry.search_tools(search_query, limit),
@@ -87,6 +91,11 @@ func _execute(tool_name: String, body: String) -> Dictionary:
 	context.apply_confirmed = bool(parsed_body.get("apply_confirmed", false))
 	context.allow_open_world = bool(parsed_body.get("allow_open_world", false))
 	context.max_bytes = int(parsed_body.get("max_bytes", CliResultLimiter.DEFAULT_MAX_BYTES))
+	var limit: int = CliResultLimiter.DEFAULT_LIST_LIMIT
+	if parsed_body.has("limit"):
+		limit = int(parsed_body["limit"])
+		if limit <= 0:
+			return _error_response(400, "INVALID_ARGUMENT", "limit must be greater than zero")
 	var raw_arguments: Variant = parsed_body.get("arguments", {})
 	if not (raw_arguments is Dictionary):
 		return _error_response(400, "INVALID_ARGUMENTS", "arguments must be a JSON object")
@@ -94,7 +103,7 @@ func _execute(tool_name: String, body: String) -> Dictionary:
 	if result.ok:
 		var limited: Dictionary = _limiter.apply(result.data, {
 			"fields": parsed_body.get("fields", PackedStringArray()),
-			"limit": parsed_body.get("limit", 0),
+			"limit": limit,
 			"cursor": parsed_body.get("cursor", "0"),
 			"depth": parsed_body.get("depth", -1),
 			"max_bytes": context.max_bytes,

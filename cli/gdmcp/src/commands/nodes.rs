@@ -27,7 +27,7 @@ pub fn run(client: &ApiClient, command: NodesCommand) -> Result<Value, CliError>
             false,
             false,
             None,
-            limit,
+            Some(limit),
             cursor,
             None,
             None,

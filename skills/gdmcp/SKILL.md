@@ -45,8 +45,11 @@ Rules:
 - Bound output with `--limit`, `--depth`, `--fields`, `--max-bytes`, or `--out`.
 - Use `scripts list --limit <n> [--cursor <cursor>]` for progressive script discovery.
 - Bound `scenes list`, `nodes list`, and `resources list` with `--limit`; use `--cursor` when continuing a result set.
+- `scenes list`, `nodes list`, `scripts list`, `resources list`, and `debug logs` default to 50 items; use a positive `--limit` and never pass zero.
+- Use `debug logs --cursor <offset>` to continue log pages; add `--out <file>` when the received result is large.
 - Always pass `project settings --filter <prefix>`; the unfiltered settings set can be too large.
 - Use `batch preview` before `batch apply`.
+- Batch validation completes before any request is sent; execution is sequential and non-atomic, so a later failure does not roll back earlier operations.
 - Batch files use registered tool names and object arguments, for example:
 
   ```json

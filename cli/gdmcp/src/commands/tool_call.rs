@@ -5,7 +5,7 @@ use crate::{
     error::CliError, output::write_output,
 };
 
-const OUTPUT_FILE_MAX_BYTES: usize = 4 * 1024 * 1024;
+pub const OUTPUT_FILE_MAX_BYTES: usize = 4 * 1024 * 1024;
 
 pub fn execute(client: &ApiClient, args: ToolCallArgs) -> Result<Value, CliError> {
     let max_bytes = args

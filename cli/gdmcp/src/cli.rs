@@ -71,7 +71,7 @@ pub enum Commands {
 pub enum ToolsCommand {
     Search {
         query: String,
-        #[arg(long, default_value_t = 5)]
+        #[arg(long, default_value_t = 5, value_parser = parse_positive_limit)]
         limit: usize,
     },
     Schema {
@@ -95,7 +95,7 @@ pub struct ToolCallArgs {
     pub allow_open_world: bool,
     #[arg(long, value_delimiter = ',')]
     pub fields: Option<Vec<String>>,
-    #[arg(long)]
+    #[arg(long, value_parser = parse_positive_limit)]
     pub limit: Option<usize>,
     #[arg(long)]
     pub cursor: Option<String>,
@@ -116,8 +116,8 @@ pub enum EditorCommand {
 pub enum ScenesCommand {
     Current,
     List {
-        #[arg(long)]
-        limit: Option<usize>,
+        #[arg(long, default_value_t = DEFAULT_LIST_LIMIT, value_parser = parse_positive_limit)]
+        limit: usize,
         #[arg(long)]
         cursor: Option<String>,
     },
@@ -143,8 +143,8 @@ pub enum NodesCommand {
     List {
         #[arg(long, default_value = ".")]
         parent_path: String,
-        #[arg(long)]
-        limit: Option<usize>,
+        #[arg(long, default_value_t = DEFAULT_LIST_LIMIT, value_parser = parse_positive_limit)]
+        limit: usize,
         #[arg(long)]
         cursor: Option<String>,
     },
@@ -175,8 +175,8 @@ pub enum NodesCommand {
 #[derive(Debug, Subcommand)]
 pub enum ScriptsCommand {
     List {
-        #[arg(long)]
-        limit: Option<usize>,
+        #[arg(long, default_value_t = DEFAULT_LIST_LIMIT, value_parser = parse_positive_limit)]
+        limit: usize,
         #[arg(long)]
         cursor: Option<String>,
     },
@@ -202,8 +202,8 @@ pub enum ResourcesCommand {
         search_path: String,
         #[arg(long = "type")]
         resource_types: Vec<String>,
-        #[arg(long)]
-        limit: Option<usize>,
+        #[arg(long, default_value_t = DEFAULT_LIST_LIMIT, value_parser = parse_positive_limit)]
+        limit: usize,
         #[arg(long)]
         cursor: Option<String>,
     },
@@ -225,8 +225,10 @@ pub enum DebugCommand {
     Logs {
         #[arg(long)]
         level: Option<String>,
+        #[arg(long, default_value_t = DEFAULT_LOG_LIMIT, value_parser = parse_positive_limit)]
+        limit: usize,
         #[arg(long)]
-        limit: Option<usize>,
+        cursor: Option<String>,
         #[arg(long)]
         out: Option<PathBuf>,
     },
@@ -234,6 +236,19 @@ pub enum DebugCommand {
         #[arg(long)]
         apply: bool,
     },
+}
+
+pub const DEFAULT_LIST_LIMIT: usize = 50;
+pub const DEFAULT_LOG_LIMIT: usize = 50;
+
+fn parse_positive_limit(value: &str) -> Result<usize, String> {
+    let parsed = value
+        .parse::<usize>()
+        .map_err(|_| "limit must be a positive integer".to_string())?;
+    if parsed == 0 {
+        return Err("limit must be greater than zero".to_string());
+    }
+    Ok(parsed)
 }
 
 #[derive(Debug, Subcommand)]

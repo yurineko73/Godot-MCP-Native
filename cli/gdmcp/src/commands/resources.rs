@@ -23,7 +23,7 @@ pub fn run(client: &ApiClient, command: ResourcesCommand) -> Result<Value, CliEr
                 false,
                 false,
                 None,
-                limit,
+                Some(limit),
                 cursor,
                 None,
                 None,

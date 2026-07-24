@@ -34,3 +34,25 @@ func test_oversized_output_returns_structured_error() -> void:
 	var result: Dictionary = _limiter.apply({"text": "x".repeat(4096)}, {"max_bytes": 1024})
 	assert_true(result.has("error"))
 	assert_eq(result["error"]["code"], "OUTPUT_TOO_LARGE")
+
+func test_missing_limit_defaults_to_fifty_items() -> void:
+	var value: Array = []
+	for index in range(60):
+		value.append(index)
+	var result: Dictionary = _limiter.apply(value)
+	assert_eq((result["data"] as Array).size(), 50)
+	assert_true(result["truncated"])
+	assert_eq(result["next_cursor"], "50")
+
+func test_zero_limit_returns_invalid_argument_error() -> void:
+	var result: Dictionary = _limiter.apply([1, 2, 3], {"limit": 0})
+	assert_eq(result["error"]["code"], "INVALID_ARGUMENT")
+
+func test_logs_use_total_available_for_next_cursor() -> void:
+	var result: Dictionary = _limiter.apply({
+		"logs": [1, 2, 3, 4, 5],
+		"count": 5,
+		"total_available": 10,
+	}, {"limit": 5})
+	assert_true(result["truncated"])
+	assert_eq(result["next_cursor"], "5")

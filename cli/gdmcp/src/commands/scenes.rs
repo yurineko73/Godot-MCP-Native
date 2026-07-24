@@ -23,7 +23,7 @@ pub fn run(client: &ApiClient, command: ScenesCommand) -> Result<Value, CliError
             false,
             false,
             None,
-            limit,
+            Some(limit),
             cursor,
             None,
             None,

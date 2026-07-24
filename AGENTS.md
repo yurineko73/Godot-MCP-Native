@@ -8,6 +8,11 @@
 - **许可证**：MIT
 - **渲染器**：GL Compatibility
 
+## gdmcp CLI Skill
+When using the shell-oriented `gdmcp` companion for Godot editor operations,
+read `skills/gdmcp/SKILL.md` first. Use the high-level bounded commands before
+progressive discovery with `tools search`, `tools schema`, and `tool-call`.
+
 ## PowerShell 7.x 路径
 系统 PowerShell 版本可能变化，每次会话请验证确切的版本号：
 ```

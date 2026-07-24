@@ -27,6 +27,7 @@ pub fn run(client: &ApiClient, command: ProjectCommand) -> Result<Value, CliErro
                     "project settings requires a non-empty --filter <prefix>".to_string(),
                 ));
             }
+            let filter = filter.trim().to_string();
             call(
                 client,
                 "get_project_settings",

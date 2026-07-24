@@ -57,6 +57,9 @@ gdmcp --json scripts list --limit 20 --cursor 20
 gdmcp --json resources list --limit 20 --cursor 20
 ```
 
+Generic lists and logs default to 50 items. `--limit` must be a positive
+integer; use `--cursor` (or the log-specific offset cursor) to continue.
+
 Project settings can be large, so the high-level command requires a prefix filter:
 
 ```powershell
@@ -79,6 +82,9 @@ Batch files use registered tool names and object arguments:
 ```
 
 Run `batch preview` before `batch apply`; `batch apply` still requires `--apply`.
+The CLI validates the complete batch before sending requests, then executes it
+sequentially and non-atomically. A later failure does not roll back earlier
+operations.
 
 ## Safety
 

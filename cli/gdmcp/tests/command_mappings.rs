@@ -69,6 +69,29 @@ fn project_settings_sends_the_filter_to_the_cli_api() {
 }
 
 #[test]
+fn project_settings_trims_the_filter_before_network_access() {
+    let (url, request_rx, server_thread) = spawn_mock_server();
+    let mut command = Command::cargo_bin("gdmcp").unwrap();
+    command
+        .args([
+            "--json",
+            "--url",
+            &url,
+            "project",
+            "settings",
+            "--filter",
+            " display/ ",
+        ])
+        .assert()
+        .success();
+
+    let request = request_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert!(request.contains("\"filter\":\"display/\""));
+    assert!(!request.contains("\"filter\":\" display/ \""));
+    server_thread.join().unwrap();
+}
+
+#[test]
 fn batch_preview_uses_tool_and_arguments_operations() {
     let (url, request_rx, server_thread) = spawn_mock_server();
     let temp_dir = tempfile::tempdir().unwrap();
@@ -80,15 +103,93 @@ fn batch_preview_uses_tool_and_arguments_operations() {
     .unwrap();
 
     let mut command = Command::cargo_bin("gdmcp").unwrap();
-    command
+    let output = command
         .args(["--json", "--url", &url, "batch", "preview"])
         .arg(&batch_path)
-        .assert()
-        .success();
+        .output()
+        .expect("batch command should have produced output");
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("\"execution\":\"sequential\""));
+    assert!(stdout.contains("\"atomic\":false"));
 
     let request = request_rx.recv_timeout(Duration::from_secs(5)).unwrap();
     assert!(request.contains("/cli/v1/tools/get_project_info/execute"));
     assert!(request.contains("\"arguments\":{}"));
+    server_thread.join().unwrap();
+}
+
+#[test]
+fn batch_prevalidates_all_operations_before_network_access() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let batch_path = temp_dir.path().join("operations.json");
+    std::fs::write(
+        &batch_path,
+        r#"{"operations":[{"tool":"get_project_info","arguments":{}},{"tool":"bad","arguments":[] }]}"#,
+    )
+    .unwrap();
+
+    let mut command = Command::cargo_bin("gdmcp").unwrap();
+    command
+        .args(["--json", "--url", "http://127.0.0.1:1", "batch", "preview"])
+        .arg(&batch_path)
+        .assert()
+        .code(2)
+        .stdout(predicate::str::contains("arguments must be a JSON object"));
+}
+
+#[test]
+fn batch_rejects_unknown_fields_and_missing_arguments() {
+    for contents in [
+        r#"{"operations":[{"tool":"get_project_info","arguments":{},"extra":true}]}"#,
+        r#"{"operations":[{"tool":"get_project_info"}]}"#,
+        r#"{"operations":[{"tool":"   ","arguments":{}}]}"#,
+    ] {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let batch_path = temp_dir.path().join("operations.json");
+        std::fs::write(&batch_path, contents).unwrap();
+        let mut command = Command::cargo_bin("gdmcp").unwrap();
+        command
+            .args(["--json", "--url", "http://127.0.0.1:1", "batch", "preview"])
+            .arg(&batch_path)
+            .assert()
+            .code(2);
+    }
+}
+
+#[test]
+fn debug_logs_sends_cursor_offset_and_larger_output_limit_for_files() {
+    let (url, request_rx, server_thread) = spawn_mock_server();
+    let temp_dir = tempfile::tempdir().unwrap();
+    let output_path = temp_dir.path().join("logs.json");
+    let mut command = Command::cargo_bin("gdmcp").unwrap();
+    command
+        .args([
+            "--json", "--url", &url, "debug", "logs", "--limit", "5", "--cursor", "10", "--out",
+        ])
+        .arg(&output_path)
+        .assert()
+        .success();
+
+    let request = request_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert!(request.contains("/cli/v1/tools/get_editor_logs/execute"));
+    assert!(request.contains("\"count\":5"));
+    assert!(request.contains("\"offset\":10"));
+    assert!(request.contains("\"max_bytes\":4194304"));
+    server_thread.join().unwrap();
+}
+
+#[test]
+fn list_commands_send_the_default_limit() {
+    let (url, request_rx, server_thread) = spawn_mock_server();
+    let mut command = Command::cargo_bin("gdmcp").unwrap();
+    command
+        .args(["--json", "--url", &url, "scripts", "list"])
+        .assert()
+        .success();
+    let request = request_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert!(request.contains("\"limit\":50"));
     server_thread.join().unwrap();
 }
 

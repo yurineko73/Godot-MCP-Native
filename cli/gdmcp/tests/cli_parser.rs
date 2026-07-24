@@ -141,3 +141,21 @@ fn resources_list_accepts_a_cursor() {
         .assert()
         .code(4);
 }
+
+#[test]
+fn list_commands_reject_zero_limit() {
+    for args in [
+        vec!["scenes", "list", "--limit", "0"],
+        vec!["nodes", "list", "--limit", "0"],
+        vec!["scripts", "list", "--limit", "0"],
+        vec!["resources", "list", "--limit", "0"],
+        vec!["debug", "logs", "--limit", "0"],
+        vec!["tools", "search", "query", "--limit", "0"],
+    ] {
+        Command::cargo_bin("gdmcp")
+            .unwrap()
+            .args(args)
+            .assert()
+            .code(2);
+    }
+}

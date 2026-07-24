@@ -15,7 +15,7 @@ pub fn run(client: &ApiClient, command: ScriptsCommand) -> Result<Value, CliErro
             false,
             false,
             None,
-            limit,
+            Some(limit),
             cursor,
             None,
             None,

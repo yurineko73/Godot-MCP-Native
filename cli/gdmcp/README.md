@@ -66,6 +66,10 @@ gdmcp --json runtime tree --depth 4
 
 `scripts list` supports `--limit` and `--cursor` for progressive discovery. Project settings require a prefix filter because the complete settings set can be large.
 
+Generic list commands and `debug logs` default to 50 items. Limits must be
+positive; use the cursor options to request subsequent pages. Log output can be
+continued with `debug logs --cursor <offset>` or written with `--out <file>`.
+
 Batch files use raw registered tool names and object arguments:
 
 ```json
@@ -80,6 +84,8 @@ Batch files use raw registered tool names and object arguments:
 ```
 
 Use `batch preview` before `batch apply`; applying a batch requires `--apply`.
+The complete batch is validated before any request is sent. Operations then run
+sequentially and are not atomic.
 
 Destructive domain commands require `--apply`:
 

@@ -30,14 +30,23 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - name: Format
-        run: cargo fmt --manifest-path cli/gdmcp/Cargo.toml --check
+      - name: Format workspace
+        run: cargo fmt --manifest-path cli/gdmcp/Cargo.toml
       - name: Clippy
         run: cargo clippy --manifest-path cli/gdmcp/Cargo.toml --all-targets -- -D warnings
       - name: Test
         run: cargo test --manifest-path cli/gdmcp/Cargo.toml
       - name: Build release
         run: cargo build --manifest-path cli/gdmcp/Cargo.toml --release
+      - name: Check committed formatting
+        run: git diff --exit-code -- cli/gdmcp
+      - name: Upload formatted CLI
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gdmcp-formatted-source
+          path: cli/gdmcp
+          if-no-files-found: error
 
   python-syntax:
     runs-on: ubuntu-latest

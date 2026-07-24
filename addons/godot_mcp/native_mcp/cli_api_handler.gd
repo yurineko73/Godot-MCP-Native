@@ -33,8 +33,7 @@ func refresh_registry() -> void:
 		return
 	var tools: Dictionary = _server_core.get_all_tools()
 	for tool_name in tools:
-		var definition := ToolDefinition.from_legacy(tools[tool_name])
-		_registry.register_tool(definition)
+		_registry.register_tool(ToolDefinition.from_legacy(tools[tool_name]))
 
 func handle_request(method: String, raw_path: String, headers: Dictionary, body: String) -> Dictionary:
 	var requested_version: String = str(headers.get(API_HEADER, str(API_VERSION)))
@@ -62,10 +61,8 @@ func handle_request(method: String, raw_path: String, headers: Dictionary, body:
 		}))
 	if path.begins_with("/cli/v1/tools/"):
 		var suffix: String = path.trim_prefix("/cli/v1/tools/")
-		var execute_suffix: String = "/execute"
-		if method == "POST" and suffix.ends_with(execute_suffix):
-			var tool_name: String = suffix.trim_suffix(execute_suffix)
-			return await _execute(tool_name, body)
+		if method == "POST" and suffix.ends_with("/execute"):
+			return await _execute(suffix.trim_suffix("/execute"), body)
 		if method == "GET" and not suffix.contains("/"):
 			var definition: ToolDefinition = _registry.get_tool(suffix)
 			if definition == null:
@@ -87,8 +84,10 @@ func _execute(tool_name: String, body: String) -> Dictionary:
 	context.apply_confirmed = bool(parsed_body.get("apply_confirmed", false))
 	context.allow_open_world = bool(parsed_body.get("allow_open_world", false))
 	context.max_bytes = int(parsed_body.get("max_bytes", CliResultLimiter.DEFAULT_MAX_BYTES))
-	var arguments: Dictionary = parsed_body.get("arguments", {})
-	var result: ToolExecutionResult = await _executor.execute(tool_name, arguments, context)
+	var raw_arguments: Variant = parsed_body.get("arguments", {})
+	if not (raw_arguments is Dictionary):
+		return _error_response(400, "INVALID_ARGUMENTS", "arguments must be a JSON object")
+	var result: ToolExecutionResult = await _executor.execute(tool_name, raw_arguments, context)
 	if result.ok:
 		var limited: Dictionary = _limiter.apply(result.data, {
 			"fields": parsed_body.get("fields", PackedStringArray()),
@@ -118,7 +117,7 @@ func _doctor() -> Dictionary:
 		"api_version": API_VERSION,
 		"schema_version": SCHEMA_VERSION,
 		"plugin_version": "1.0.7",
-		"godot_version": str(version.get("string", Engine.get_version_info())),
+		"godot_version": str(version.get("string", version)),
 		"project_path": ProjectSettings.globalize_path("res://"),
 		"editor_connected": _plugin != null,
 		"runtime_running": runtime_running,
@@ -140,38 +139,16 @@ func _parse_path(raw_path: String) -> Dictionary:
 	return {"path": path, "query": query}
 
 func _envelope(command: String, data: Variant) -> Dictionary:
-	return {
-		"schema_version": SCHEMA_VERSION,
-		"api_version": API_VERSION,
-		"ok": true,
-		"command": command,
-		"data": data,
-		"meta": {"truncated": false, "next_cursor": null},
-	}
+	return {"schema_version": SCHEMA_VERSION, "api_version": API_VERSION, "ok": true, "command": command, "data": data, "meta": {"truncated": false, "next_cursor": null}}
 
 func _json_response(status: int, payload: Dictionary) -> Dictionary:
-	return {
-		"status": status,
-		"content_type": "application/json; charset=utf-8",
-		"body": payload,
-	}
+	return {"status": status, "content_type": "application/json; charset=utf-8", "body": payload}
 
 func _error_response(status: int, code: String, message: String, details: Dictionary = {}) -> Dictionary:
-	var error: Dictionary = {
-		"code": code,
-		"message": message,
-		"retryable": status >= 500,
-	}
+	var error: Dictionary = {"code": code, "message": message, "retryable": status >= 500}
 	if not details.is_empty():
 		error["details"] = details
-	return _json_response(status, {
-		"schema_version": SCHEMA_VERSION,
-		"api_version": API_VERSION,
-		"ok": false,
-		"data": null,
-		"error": error,
-		"meta": {"truncated": false, "next_cursor": null},
-	})
+	return _json_response(status, {"schema_version": SCHEMA_VERSION, "api_version": API_VERSION, "ok": false, "data": null, "error": error, "meta": {"truncated": false, "next_cursor": null}})
 
 func _status_for_error(code: String) -> int:
 	match code:

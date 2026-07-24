@@ -6,12 +6,20 @@ on:
       - "cli/gdmcp/**"
       - "addons/godot_mcp/native_mcp/cli_*.gd"
       - "addons/godot_mcp/native_mcp/tool_*.gd"
+      - "addons/godot_mcp/native_mcp/mcp_server_core*.gd"
+      - "addons/godot_mcp/native_mcp/mcp_http_server*.gd"
+      - "test/unit/native_mcp/**"
+      - "test/integration/test_cli_api_flow.py"
       - ".github/workflows/gdmcp-cli.yml"
   pull_request:
     paths:
       - "cli/gdmcp/**"
       - "addons/godot_mcp/native_mcp/cli_*.gd"
       - "addons/godot_mcp/native_mcp/tool_*.gd"
+      - "addons/godot_mcp/native_mcp/mcp_server_core*.gd"
+      - "addons/godot_mcp/native_mcp/mcp_http_server*.gd"
+      - "test/unit/native_mcp/**"
+      - "test/integration/test_cli_api_flow.py"
       - ".github/workflows/gdmcp-cli.yml"
 
 jobs:

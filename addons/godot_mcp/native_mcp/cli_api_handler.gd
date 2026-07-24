@@ -16,9 +16,18 @@ func configure(server_core: RefCounted, plugin: Object = null, auth_required: bo
 	_server_core = server_core
 	_plugin = plugin
 	_auth_required = auth_required
+	if _server_core != null and _server_core.has_method("get_tool_registry"):
+		_registry = _server_core.get_tool_registry()
+	if _server_core != null and _server_core.has_method("get_tool_executor"):
+		_executor = _server_core.get_tool_executor()
+	else:
+		_executor = ToolExecutor.new(_registry)
 	refresh_registry()
 
 func refresh_registry() -> void:
+	if _server_core != null and _server_core.has_method("get_tool_registry"):
+		_registry = _server_core.get_tool_registry()
+		return
 	_registry.clear()
 	if _server_core == null or not _server_core.has_method("get_all_tools"):
 		return
@@ -68,7 +77,7 @@ func _execute(tool_name: String, body: String) -> Dictionary:
 	var parsed_body: Dictionary = {}
 	if not body.is_empty():
 		var json := JSON.new()
-		if json.parse(body) != OK or not (json.get_data() is Dictionary):
+		if json.parse(body) != OK or not (json.data is Dictionary):
 			return _error_response(400, "INVALID_JSON", "Request body must be a JSON object")
 		parsed_body = json.get_data()
 	var context := ToolExecutionContext.new()
@@ -109,7 +118,7 @@ func _doctor() -> Dictionary:
 		"api_version": API_VERSION,
 		"schema_version": SCHEMA_VERSION,
 		"plugin_version": "1.0.7",
-		"godot_version": str(version.get("string", version)),
+		"godot_version": str(version.get("string", Engine.get_version_info())),
 		"project_path": ProjectSettings.globalize_path("res://"),
 		"editor_connected": _plugin != null,
 		"runtime_running": runtime_running,

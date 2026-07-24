@@ -26,10 +26,6 @@ func execute(tool_name: String, arguments: Dictionary, context: ToolExecutionCon
 		return _finish_failure(tool_name, started_at, "CLI_NOT_ALLOWED", "Tool is not allowed through the CLI: " + tool_name)
 	if context.caller == "mcp" and not definition.policy.mcp_visible:
 		return _finish_failure(tool_name, started_at, "MCP_NOT_VISIBLE", "Tool is not exposed through MCP: " + tool_name)
-	if definition.policy.requires_apply and not context.apply_confirmed:
-		return _finish_failure(tool_name, started_at, "APPLY_REQUIRED", "This operation requires explicit apply confirmation")
-	if definition.policy.requires_open_world_permission and not context.allow_open_world:
-		return _finish_failure(tool_name, started_at, "OPEN_WORLD_PERMISSION_REQUIRED", "This operation requires open-world permission")
 	if context.dry_run and definition.policy.risk_level != "read":
 		var preview := ToolExecutionResult.success({
 			"preview": true,
@@ -39,6 +35,10 @@ func execute(tool_name: String, arguments: Dictionary, context: ToolExecutionCon
 		})
 		preview.duration_ms = Time.get_ticks_msec() - started_at
 		return preview
+	if definition.policy.requires_apply and not context.apply_confirmed:
+		return _finish_failure(tool_name, started_at, "APPLY_REQUIRED", "This operation requires explicit apply confirmation")
+	if definition.policy.requires_open_world_permission and not context.allow_open_world:
+		return _finish_failure(tool_name, started_at, "OPEN_WORLD_PERMISSION_REQUIRED", "This operation requires open-world permission")
 	if not definition.callable.is_valid():
 		return _finish_failure(tool_name, started_at, "INVALID_CALLABLE", "Tool callable is invalid: " + tool_name)
 	execution_started.emit(tool_name, arguments)

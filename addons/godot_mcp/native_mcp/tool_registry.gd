@@ -10,7 +10,10 @@ func register_tool(definition: ToolDefinition) -> Error:
 	return OK
 
 func unregister_tool(name: String) -> bool:
-	return _tools.erase(name)
+	if not _tools.has(name):
+		return false
+	_tools.erase(name)
+	return true
 
 func get_tool(name: String) -> ToolDefinition:
 	return _tools.get(name, null)

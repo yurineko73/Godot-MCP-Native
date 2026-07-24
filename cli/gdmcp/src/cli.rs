@@ -151,8 +151,6 @@ pub enum NodesCommand {
         value: String,
         #[arg(long)]
         value_json: bool,
-        #[arg(long)]
-        apply: bool,
     },
     Delete {
         node_path: String,

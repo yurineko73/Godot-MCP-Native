@@ -74,9 +74,12 @@ func _execute(tool_name: String, body: String) -> Dictionary:
 	var parsed_body: Dictionary = {}
 	if not body.is_empty():
 		var json := JSON.new()
-		if json.parse(body) != OK or not (json.data is Dictionary):
+		if json.parse(body) != OK:
 			return _error_response(400, "INVALID_JSON", "Request body must be a JSON object")
-		parsed_body = json.get_data()
+		var json_data: Variant = json.get_data()
+		if not (json_data is Dictionary):
+			return _error_response(400, "INVALID_JSON", "Request body must be a JSON object")
+		parsed_body = json_data
 	var context := ToolExecutionContext.new()
 	context.caller = "cli"
 	context.request_id = str(parsed_body.get("request_id", ""))

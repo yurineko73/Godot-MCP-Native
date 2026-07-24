@@ -64,7 +64,10 @@ fn exit_with_error(error: CliError, json_mode: bool) -> ExitCode {
                     "message": error.to_string(),
                     "retryable": code == 4 || code == 5
                 },
-                "meta": {"truncated": false, "next_cursor": null}
+                "meta": {
+                    "truncated": false,
+                    "next_cursor": null
+                }
             })
         );
     } else {

@@ -34,8 +34,12 @@ func _dispatch_cli_request(peer: StreamPeerTCP, parsed: Dictionary) -> void:
 
 func _handle_cli_request_on_main(peer: StreamPeerTCP, parsed: Dictionary) -> void:
 	if _cli_api_handler == null:
-		var plugin: Object = Engine.get_meta("GodotMCPPlugin") if Engine.has_meta("GodotMCPPlugin") else null
-		var server_core: RefCounted = plugin.get("_native_server") as RefCounted if plugin != null else null
+		var plugin: Object = null
+		if Engine.has_meta("GodotMCPPlugin"):
+			plugin = Engine.get_meta("GodotMCPPlugin")
+		var server_core: RefCounted = null
+		if plugin != null:
+			server_core = plugin.get("_native_server") as RefCounted
 		_cli_api_handler = CliApiHandler.new()
 		_cli_api_handler.configure(server_core, plugin, _auth_manager != null)
 	var response: Dictionary = await _cli_api_handler.handle_request(

@@ -8,6 +8,9 @@ func _ensure_shared_tool_core() -> void:
 		_shared_tool_registry = ToolRegistry.new()
 	if _shared_tool_executor == null:
 		_shared_tool_executor = ToolExecutor.new(_shared_tool_registry)
+		_shared_tool_executor.execution_started.connect(Callable(self, "_on_shared_execution_started"))
+		_shared_tool_executor.execution_completed.connect(Callable(self, "_on_shared_execution_completed"))
+		_shared_tool_executor.execution_failed.connect(Callable(self, "_on_shared_execution_failed"))
 
 func _init_transport() -> bool:
 	match _transport_type:
@@ -93,7 +96,6 @@ func _handle_tool_call(message: Dictionary) -> Dictionary:
 	context.request_id = str(id)
 	context.apply_confirmed = true
 	context.allow_open_world = true
-	tool_execution_started.emit(tool_name, arguments)
 	var result: ToolExecutionResult = await _shared_tool_executor.execute(tool_name, arguments, context)
 	var response_result: Dictionary = {
 		"content": [{
@@ -105,11 +107,18 @@ func _handle_tool_call(message: Dictionary) -> Dictionary:
 	var definition: ToolDefinition = _shared_tool_registry.get_tool(tool_name)
 	if result.ok and definition != null and not definition.output_schema.is_empty():
 		response_result["structuredContent"] = result.data
-	_append_tool_log(tool_name, result.data, result.error_message)
-	if result.ok:
-		tool_execution_completed.emit(tool_name, result.data)
-		_log_info("Tool execution completed: " + tool_name)
-	else:
-		tool_execution_failed.emit(tool_name, result.error_message)
-		_log_error("Tool execution failed: " + tool_name + " - " + result.error_message)
 	return MCPTypes.create_response(id, response_result)
+
+func _on_shared_execution_started(tool_name: String, arguments: Dictionary) -> void:
+	tool_execution_started.emit(tool_name, arguments)
+
+func _on_shared_execution_completed(tool_name: String, result: ToolExecutionResult) -> void:
+	_append_tool_log(tool_name, result.data, "")
+	var signal_result: Dictionary = result.data if result.data is Dictionary else {"value": result.data}
+	tool_execution_completed.emit(tool_name, signal_result)
+	_log_info("Tool execution completed: " + tool_name)
+
+func _on_shared_execution_failed(tool_name: String, result: ToolExecutionResult) -> void:
+	_append_tool_log(tool_name, result.data, result.error_message)
+	tool_execution_failed.emit(tool_name, result.error_message)
+	_log_error("Tool execution failed: " + tool_name + " - " + result.error_message)

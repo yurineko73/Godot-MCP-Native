@@ -45,7 +45,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gdmcp-formatted-source
-          path: cli/gdmcp
+          path: |
+            cli/gdmcp/src
+            cli/gdmcp/tests
+            cli/gdmcp/Cargo.toml
+            cli/gdmcp/Cargo.lock
+            cli/gdmcp/README.md
           if-no-files-found: error
 
   python-syntax:

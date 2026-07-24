@@ -17,6 +17,8 @@ PACKAGING_ROOT = CLI_ROOT / "packaging"
 
 
 def run_powershell(script: Path, *arguments: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    if os.name != "nt":
+        raise unittest.SkipTest("Windows PowerShell packaging tests are Windows-only")
     powershell = shutil.which("pwsh") or shutil.which("powershell")
     if powershell is None:
         raise unittest.SkipTest("PowerShell is not available")

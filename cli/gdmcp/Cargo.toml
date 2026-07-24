@@ -1,0 +1,20 @@
+[package]
+name = "gdmcp"
+version = "0.1.0"
+edition = "2021"
+description = "Agent-friendly CLI for Godot MCP Native"
+license = "MIT"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+directories = "5.0"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+toml = "0.8"
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"
+tempfile = "3.12"

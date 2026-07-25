@@ -1,7 +1,7 @@
 # gdmcp Agent CLI Architecture Design
 
-**Status:** Approved for planning  
-**Date:** 2026-07-24  
+**Status:** Implemented  
+**Date:** 2026-07-24  **Last updated:** 2026-07-25  
 **Repository:** `yurineko73/Godot-MCP-Native`  
 **Target:** Godot 4.6.x editor plugin, Codex/Claude Code and other shell-capable coding agents
 
@@ -551,9 +551,11 @@ Connection and configuration:
 
 ```text
 gdmcp doctor
-gdmcp init
-gdmcp config show
 ```
+
+> **Note:** `gdmcp init` and `gdmcp config show` are specified in this design but not yet
+> implemented. Connection is currently configured through environment variables
+> `GODOT_MCP_URL` and `GODOT_MCP_TOKEN`.
 
 Discovery and raw access:
 
@@ -646,40 +648,83 @@ When both inline and file forms are present, the CLI returns argument error code
 ## 11. High-level Command Mapping
 
 The first release implements the commands that cover the most common workflows.
+All commands listed below are implemented and tested.
+
+### Scene commands
 
 | CLI command | Existing tool |
 |---|---|
-| `editor state` | `get_editor_state` |
-| `scenes list` | `list_project_scenes` |
 | `scenes current` | `get_current_scene` |
-| `scenes tree` | `get_scene_tree` or `get_scene_structure` according to requested fields |
-| `scenes open` | `open_scene` |
+| `scenes list [--limit] [--cursor]` | `list_project_scenes` |
+| `scenes tree [--depth] [--fields]` | `get_scene_structure` |
+| `scenes resolve <name>` | `list_project_scenes` + CLI-side name matching |
+| `scenes open <path>` | `open_scene` |
 | `scenes save` | `save_scene` |
-| `nodes get` | `get_node_properties` |
-| `nodes create` | `create_node` |
-| `nodes delete` | `delete_node` |
-| `nodes move` | `move_node` |
-| `nodes rename` | `rename_node` |
-| `nodes properties set` | `update_node_property` |
-| `scripts list` | `list_project_scripts` |
-| `scripts read` | `read_script` |
-| `scripts create` | `create_script` |
-| `scripts replace` | `modify_script` |
-| `scripts validate` | `validate_script` |
-| `resources list` | `list_project_resources` |
+
+### Node commands
+
+| CLI command | Existing tool |
+|---|---|
+| `nodes get <path> [--fields]` | `get_node_properties` |
+| `nodes list [--parent-path] [--limit] [--cursor]` | `list_nodes` |
+| `nodes resolve <name>` | `list_nodes` + CLI-side name matching |
+| `nodes create --parent --type --name` | `create_node` |
+| `nodes move --new-parent <path>` | `move_node` |
+| `nodes rename --new-name <path>` | `rename_node` |
+| `nodes properties set --property --value` | `update_node_property` |
+| `nodes delete [--apply]` | `delete_node` |
+
+### Script commands
+
+| CLI command | Existing tool |
+|---|---|
+| `scripts list [--limit] [--cursor]` | `list_project_scripts` |
+| `scripts read <path> [--lines]` | `read_script` + CLI-side line slicing |
+| `scripts resolve <name>` | `list_project_scripts` + CLI-side name matching |
+| `scripts create <path> [--script-type]` | `create_script` |
+| `scripts validate <path>` | `validate_script` |
+| `scripts replace <path> --content-file [--apply]` | `modify_script` |
+
+### Resource commands
+
+| CLI command | Existing tool |
+|---|---|
+| `resources list [--search-path] [--type] [--limit] [--cursor]` | `list_project_resources` |
+| `resources get <path> [--fields]` | `get_inspector_properties` |
+| `resources resolve <name>` | `list_project_resources` + CLI-side name matching |
+
+### Project commands
+
+| CLI command | Existing tool |
+|---|---|
 | `project info` | `get_project_info` |
-| `project settings --filter <prefix>` | `get_project_settings` with `filter` |
+| `project settings --filter <prefix>` | `get_project_settings` |
 | `project run` | `run_project` |
 | `project stop` | `stop_project` |
-| `debug logs` | `get_editor_logs` |
-| `debug clear` | `clear_output` |
-| `runtime info` | `get_runtime_info` |
-| `runtime tree` | `get_runtime_scene_tree` |
-| `runtime nodes get` | `inspect_runtime_node` |
-| `runtime nodes set` | `update_runtime_node_property` |
-| `runtime nodes call` | `call_runtime_node_method` |
 
-Resolve commands use project lists and exact-name/path matching in the CLI. They return a stable path and do not modify state.
+### Debug and runtime commands
+
+| CLI command | Existing tool |
+|---|---|
+| `debug logs [--level] [--limit] [--cursor] [--out]` | `get_editor_logs` |
+| `debug clear [--apply]` | `clear_output` |
+| `runtime info` | `get_runtime_info` |
+| `runtime tree [--depth] [--fields]` | `get_runtime_scene_tree` |
+| `runtime nodes get <path>` | `inspect_runtime_node` |
+| `runtime nodes set <path> --property --value` | `update_runtime_node_property` |
+| `runtime nodes call <path> --method [--arguments]` | `call_runtime_node_method` |
+
+### Batch commands
+
+| CLI command | Existing tool |
+|---|---|
+| `batch preview <file>` | Validates all operations; executes with `dry_run: true` |
+| `batch apply <file> --apply` | Executes operations sequentially; stops at first failure |
+
+Resolve commands use project lists and case-insensitive substring matching entirely in
+the CLI. They return `{"query": "...", "matches": [...], "count": N}` and do not
+modify state. For tools without a domain command (~120 supplementary tools), use
+`tools search` then `tools schema` then `tool-call`.
 
 ## 12. Batch Operations
 
@@ -815,15 +860,15 @@ Godot integration tests may remain on the repository's supported Windows runner 
 
 ## 17. Migration and Compatibility
 
-Migration is incremental:
+Migration is incremental. Current status (2026-07-25):
 
-1. Add protocol-neutral models and executor behind current MCP behavior.
-2. Switch MCP adapter to the shared executor without changing external responses.
-3. Add CLI API endpoints.
-4. Add the Rust CLI foundation and raw discovery/call workflow.
-5. Add high-level domain commands.
-6. Add output bounds, batch preview/apply, Skill, packaging, and documentation.
-7. After usage data confirms the CLI workflow, optionally reduce the default MCP-visible core set further.
+1. ✅ Add protocol-neutral models and executor behind current MCP behavior.
+2. ✅ Switch MCP adapter to the shared executor without changing external responses.
+3. ✅ Add CLI API endpoints (`/cli/v1/*`).
+4. ✅ Add the Rust CLI foundation and raw discovery/call workflow (`tools search/schema`, `tool-call`).
+5. ✅ Add high-level domain commands (~33 commands covering ~25 tools + resolve).
+6. ✅ Add output bounds (`--lines`, `--fields`, `--limit`, `--depth`, `--cursor`, `--out`, `--max-bytes`), batch preview/apply, Skill, packaging, and documentation.
+7. Future: After usage data confirms the CLI workflow, optionally reduce the default MCP-visible core set further.
 
 At no point does the first implementation require removal of an existing MCP tool.
 
@@ -857,15 +902,15 @@ The generated CLI `--help` is the command-line source of truth. `gdmcp-cli-refer
 
 The feature is complete when:
 
-1. A shell-capable agent can use `gdmcp` without loading the full MCP tool catalog.
-2. `gdmcp --json doctor` reports connection and version state without exposing secrets.
-3. Search, one-tool schema retrieval, and raw execution work through progressive discovery.
-4. The initial high-level domain command set maps to existing Godot tools.
-5. Supplementary CLI-allowed tools can remain hidden from MCP while being callable through CLI.
-6. Destructive and open-world policies are enforced server-side.
-7. All machine-readable commands return versioned stable JSON and deterministic exit codes.
-8. High-volume commands are bounded and can write full output to a file.
-9. Existing MCP integration tests remain green.
-10. Godot unit tests, Python integration tests, Rust tests, and CLI builds pass on supported environments.
-11. The companion Skill and project guidance document the progressive discovery workflow.
-12. No second hand-maintained copy of the complete tool catalog exists in Rust or documentation.
+1. ✅ A shell-capable agent can use `gdmcp` without loading the full MCP tool catalog.
+2. ✅ `gdmcp --json doctor` reports connection and version state without exposing secrets.
+3. ✅ Search, one-tool schema retrieval, and raw execution work through progressive discovery.
+4. ✅ The initial high-level domain command set maps to existing Godot tools (~33 commands).
+5. ✅ Supplementary CLI-allowed tools can remain hidden from MCP while being callable through CLI.
+6. ✅ Destructive and open-world policies are enforced server-side.
+7. ✅ All machine-readable commands return versioned stable JSON and deterministic exit codes.
+8. ✅ High-volume commands are bounded and can write full output to a file.
+9. ✅ Existing MCP integration tests remain green.
+10. ✅ Godot unit tests (25 GUT), Python integration tests, Rust tests (39), and CLI builds pass on Windows.
+11. ✅ The companion Skill and project guidance document the progressive discovery workflow.
+12. ✅ No second hand-maintained copy of the complete tool catalog exists in Rust or documentation.

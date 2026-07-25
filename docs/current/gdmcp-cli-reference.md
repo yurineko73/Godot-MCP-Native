@@ -45,26 +45,66 @@ Supported output controls are `--fields`, `--limit`, `--cursor`, `--depth`, `--m
 
 ## Domain commands
 
-The first release includes commands for editor state, scenes, nodes, scripts, project operations, logs, runtime inspection, and batch preview/apply.
+The CLI includes ~33 domain commands for editor state, scenes, nodes, scripts,
+resources, project operations, logs, runtime inspection, and batch preview/apply.
+All other registered tools (~120 supplementary) are reachable through progressive
+discovery: `tools search`, `tools schema`, `tool-call`.
 
-Use bounds when listing project content:
+### Scene operations
 
 ```powershell
+gdmcp --json scenes current
 gdmcp --json scenes list --limit 20
+gdmcp --json scenes tree --depth 4 --fields path,type
+gdmcp --json scenes resolve Player
+```
+
+### Node operations
+
+```powershell
 gdmcp --json nodes list --limit 20
+gdmcp --json nodes get /root/Main/Player --fields position,visible
+gdmcp --json nodes resolve Camera
+gdmcp --json nodes create --parent /root --type Node2D --name Enemy
+gdmcp --json nodes move /root/Main/Enemy --new-parent /root/World
+gdmcp --json nodes rename /root/Main/Enemy --new-name Boss
+gdmcp --json nodes properties set /root/Main/Player --property speed --value 300
+```
+
+### Script operations
+
+```powershell
 gdmcp --json scripts list --limit 20
 gdmcp --json scripts list --limit 20 --cursor 20
+gdmcp --json scripts read res://player.gd --lines 1:200
+gdmcp --json scripts resolve player
+gdmcp --json scripts create res://enemy.gd --script-type GDScript
+gdmcp --json scripts validate res://player.gd
+```
+
+### Resource operations
+
+```powershell
 gdmcp --json resources list --limit 20 --cursor 20
+gdmcp --json resources get res://player.tres
+gdmcp --json resources get res://player.tres --fields resource_path,resource_name
+gdmcp --json resources resolve icon
+```
+
+### Project and runtime
+
+```powershell
+gdmcp --json project info
+gdmcp --json project settings --filter display/
+gdmcp --json runtime tree --depth 3
+gdmcp --json runtime nodes get /root/Main/Player
 ```
 
 Generic lists and logs default to 50 items. `--limit` must be a positive
 integer; use `--cursor` (or the log-specific offset cursor) to continue.
-
-Project settings can be large, so the high-level command requires a prefix filter:
-
-```powershell
-gdmcp --json project settings --filter display/
-```
+`--fields` reduces output for node and resource property inspection.
+`--lines <start>:<end>` bounds script reads. Resolve commands convert
+human-readable names to stable paths.
 
 Do not request the complete settings set without a filter. Use `tools schema get_project_settings` and a raw call only when a different filter is required.
 

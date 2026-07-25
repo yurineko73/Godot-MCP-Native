@@ -1,3 +1,4 @@
+use serde_json::Value;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -18,6 +19,13 @@ pub enum CliError {
     Io(#[from] std::io::Error),
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("batch operation {failed_index} failed after {completed_count} completed operations: {message}")]
+    BatchFailed {
+        failed_index: usize,
+        completed_count: usize,
+        completed: Vec<Value>,
+        message: String,
+    },
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
 }
@@ -31,6 +39,7 @@ impl CliError {
             Self::Api(_) => 5,
             Self::Permission(_) => 6,
             Self::VersionMismatch(_) => 8,
+            Self::BatchFailed { .. } => 5,
             Self::Io(_) | Self::Json(_) | Self::Http(_) => 5,
         }
     }

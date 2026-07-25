@@ -54,7 +54,10 @@ func _paginate(value: Variant, limit: int, cursor: int) -> Dictionary:
 		var source: Dictionary = value
 		for key in COLLECTION_KEYS:
 			if source.get(key) is Array:
-				var sliced: Dictionary = _slice_array(source[key], limit, cursor)
+				var source_array: Array = source[key]
+				var backend_paged: bool = source.has("total_available") and int(source["total_available"]) > source_array.size()
+				var slice_cursor: int = 0 if backend_paged else cursor
+				var sliced: Dictionary = _slice_array(source_array, limit, slice_cursor)
 				var result: Dictionary = source.duplicate(true)
 				result[key] = sliced["data"]
 				if result.has("count"):

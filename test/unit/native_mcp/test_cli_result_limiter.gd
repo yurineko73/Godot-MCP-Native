@@ -56,3 +56,13 @@ func test_logs_use_total_available_for_next_cursor() -> void:
 	}, {"limit": 5})
 	assert_true(result["truncated"])
 	assert_eq(result["next_cursor"], "5")
+
+func test_backend_paged_logs_advance_a_nonzero_cursor() -> void:
+	var result: Dictionary = _limiter.apply({
+		"logs": [11, 12, 13, 14, 15],
+		"count": 5,
+		"total_available": 20,
+	}, {"limit": 5, "cursor": "10"})
+	assert_eq(result["data"]["logs"], [11, 12, 13, 14, 15])
+	assert_true(result["truncated"])
+	assert_eq(result["next_cursor"], "15")

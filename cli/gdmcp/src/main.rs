@@ -53,12 +53,27 @@ fn run(cli: Cli) -> Result<Value, CliError> {
 fn exit_with_error(error: CliError, json_mode: bool) -> ExitCode {
     let code = error.exit_code();
     if json_mode {
+        let data = match &error {
+            CliError::BatchFailed {
+                failed_index,
+                completed_count,
+                completed,
+                ..
+            } => json!({
+                "failed_index": failed_index,
+                "completed_count": completed_count,
+                "completed": completed,
+                "execution": "sequential",
+                "atomic": false
+            }),
+            _ => Value::Null,
+        };
         println!(
             "{}",
             json!({
                 "schema_version": 1,
                 "ok": false,
-                "data": null,
+                "data": data,
                 "error": {
                     "code": error_code(&error),
                     "message": error.to_string(),
@@ -84,6 +99,7 @@ fn error_code(error: &CliError) -> &'static str {
         CliError::Api(_) => "API_ERROR",
         CliError::Permission(_) => "PERMISSION_REQUIRED",
         CliError::VersionMismatch(_) => "API_VERSION_MISMATCH",
+        CliError::BatchFailed { .. } => "BATCH_PARTIAL_FAILURE",
         CliError::Io(_) => "IO_ERROR",
         CliError::Json(_) => "INVALID_JSON",
         CliError::Http(_) => "HTTP_ERROR",

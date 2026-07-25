@@ -943,10 +943,6 @@ func _create_cli_tab() -> VBoxContainer:
 	var skill_label: Label = Label.new()
 	skill_label.text = "Codex Skill: "
 	skill_hbox.add_child(skill_label)
-	_cli_skill_button = Button.new()
-	_cli_skill_button.text = "Install to ~/.codex/skills/gdmcp/"
-	_cli_skill_button.pressed.connect(_on_cli_skill_install_pressed)
-	skill_hbox.add_child(_cli_skill_button)
 
 	# AGENTS snippet section
 	var agents_hbox: HBoxContainer = HBoxContainer.new()
@@ -954,10 +950,6 @@ func _create_cli_tab() -> VBoxContainer:
 	var agents_label: Label = Label.new()
 	agents_label.text = "AGENTS.md: "
 	agents_hbox.add_child(agents_label)
-	_cli_agents_button = Button.new()
-	_cli_agents_button.text = "Copy Snippet to Clipboard"
-	_cli_agents_button.pressed.connect(_on_cli_agents_copy_pressed)
-	agents_hbox.add_child(_cli_agents_button)
 
 	return tab
 
@@ -983,7 +975,7 @@ func _refresh_cli_status() -> void:
 		project_path = ProjectSettings.globalize_path("res://")
 	var state: Dictionary = _cli_installer.detect_state(project_path)
 	if state.installed:
-		_cli_status_label.text = "Installed (%s)" % _cli_installer.CLI_VERSION
+		_cli_status_label.text = "Installed (%s)" % _cli_installer.cli_version()
 		_cli_status_label.add_theme_color_override("font_color", Color.GREEN)
 		_cli_install_button.text = "Reinstall CLI"
 	else:
@@ -1005,7 +997,7 @@ func _on_cli_install_pressed() -> void:
 func _on_cli_install_completed(success: bool, message: String) -> void:
 	_cli_install_button.disabled = false
 	if success:
-		_cli_status_label.text = "Installed (%s)" % _cli_installer.CLI_VERSION
+		_cli_status_label.text = "Installed (%s)" % _cli_installer.cli_version()
 		_cli_status_label.add_theme_color_override("font_color", Color.GREEN)
 		_cli_install_button.text = "Reinstall CLI"
 		_show_cli_message("CLI installed successfully:\n%s" % message)
@@ -1013,29 +1005,6 @@ func _on_cli_install_completed(success: bool, message: String) -> void:
 		_show_cli_message("Installation failed:\n%s" % message)
 	_refresh_cli_status()
 
-func _on_cli_skill_install_pressed() -> void:
-	_ensure_cli_installer()
-	if _cli_installer == null:
-		return
-	_cli_skill_button.disabled = true
-	_cli_skill_button.text = "Installing..."
-	_cli_installer.install_skill(_on_skill_install_completed)
-
-func _on_skill_install_completed(success: bool, message: String) -> void:
-	_cli_skill_button.disabled = false
-	_cli_skill_button.text = "Install to ~/.codex/skills/gdmcp/"
-	if success:
-		_show_cli_message("Skill installed:\n%s" % message)
-	else:
-		_show_cli_message("Skill installation failed:\n%s" % message)
-
-func _on_cli_agents_copy_pressed() -> void:
-	_ensure_cli_installer()
-	if _cli_installer == null:
-		return
-	var snippet: String = _cli_installer.get_agents_snippet()
-	DisplayServer.clipboard_set(snippet)
-	_show_cli_message("AGENTS.md snippet copied to clipboard.\n\nPaste it into your project AGENTS.md file.")
 
 func _show_cli_message(text: String) -> void:
 	var dialog: AcceptDialog = AcceptDialog.new()

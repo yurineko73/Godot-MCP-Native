@@ -1,6 +1,11 @@
 use serde_json::{json, Value};
 
-use crate::{cli::RuntimeCommand, client::ApiClient, error::CliError};
+use crate::{
+    args::parse_value,
+    cli::{RuntimeCommand, RuntimeNodesCommand},
+    client::ApiClient,
+    error::CliError,
+};
 
 use super::tool_call::call;
 
@@ -26,16 +31,66 @@ pub fn run(client: &ApiClient, command: RuntimeCommand) -> Result<Value, CliErro
             None,
             None,
         ),
-        RuntimeCommand::Node { node_path } => call(
-            client,
-            "inspect_runtime_node",
-            json!({"node_path": node_path}),
-            false,
-            true,
-            None,
-            None,
-            None,
-        ),
+        RuntimeCommand::Nodes(nodes) => match nodes {
+            RuntimeNodesCommand::Get { node_path } => call(
+                client,
+                "inspect_runtime_node",
+                json!({"node_path": node_path}),
+                false,
+                true,
+                None,
+                None,
+                None,
+            ),
+            RuntimeNodesCommand::Set {
+                node_path,
+                property,
+                value,
+                value_json,
+            } => call(
+                client,
+                "update_runtime_node_property",
+                json!({
+                    "node_path": node_path,
+                    "property_name": property,
+                    "property_value": parse_value(value, value_json)?
+                }),
+                false,
+                true,
+                None,
+                None,
+                None,
+            ),
+            RuntimeNodesCommand::Call {
+                node_path,
+                method,
+                arguments,
+            } => {
+                let parsed_args: Value = arguments
+                    .as_deref()
+                    .map(|s| {
+                        serde_json::from_str(s).map_err(|e| {
+                            CliError::InvalidArguments(format!("invalid JSON arguments: {e}"))
+                        })
+                    })
+                    .transpose()?
+                    .unwrap_or(Value::Array(vec![]));
+                call(
+                    client,
+                    "call_runtime_node_method",
+                    json!({
+                        "node_path": node_path,
+                        "method_name": method,
+                        "arguments": parsed_args
+                    }),
+                    false,
+                    true,
+                    None,
+                    None,
+                    None,
+                )
+            }
+        },
         RuntimeCommand::Screenshot {
             save_path,
             format,

@@ -159,3 +159,128 @@ fn list_commands_reject_zero_limit() {
             .code(2);
     }
 }
+
+#[test]
+fn scripts_read_accepts_line_range() {
+    let mut command = Command::cargo_bin("gdmcp").unwrap();
+    command
+        .args([
+            "--json",
+            "--url",
+            "http://127.0.0.1:1",
+            "--timeout",
+            "1",
+            "scripts",
+            "read",
+            "res://test.gd",
+            "--lines",
+            "10:50",
+        ])
+        .assert()
+        .code(4);
+}
+
+#[test]
+fn scripts_read_rejects_zero_start_line() {
+    Command::cargo_bin("gdmcp")
+        .unwrap()
+        .args(["scripts", "read", "res://test.gd", "--lines", "0:10"])
+        .assert()
+        .code(2);
+}
+
+#[test]
+fn scripts_read_rejects_inverted_line_range() {
+    Command::cargo_bin("gdmcp")
+        .unwrap()
+        .args(["scripts", "read", "res://test.gd", "--lines", "20:10"])
+        .assert()
+        .code(2);
+}
+
+#[test]
+fn scripts_read_allows_open_ended_range() {
+    let mut command = Command::cargo_bin("gdmcp").unwrap();
+    command
+        .args([
+            "--json",
+            "--url",
+            "http://127.0.0.1:1",
+            "--timeout",
+            "1",
+            "scripts",
+            "read",
+            "res://test.gd",
+            "--lines",
+            "50:",
+        ])
+        .assert()
+        .code(4);
+}
+
+#[test]
+fn nodes_properties_set_is_accepted() {
+    let mut command = Command::cargo_bin("gdmcp").unwrap();
+    command
+        .args([
+            "--json",
+            "--url",
+            "http://127.0.0.1:1",
+            "--timeout",
+            "1",
+            "nodes",
+            "properties",
+            "set",
+            "/root/Player",
+            "--property",
+            "speed",
+            "--value",
+            "300",
+        ])
+        .assert()
+        .code(4);
+}
+
+#[test]
+fn nodes_get_accepts_fields() {
+    let mut command = Command::cargo_bin("gdmcp").unwrap();
+    command
+        .args([
+            "--json",
+            "--url",
+            "http://127.0.0.1:1",
+            "--timeout",
+            "1",
+            "nodes",
+            "get",
+            "/root/Player",
+            "--fields",
+            "position,visible",
+        ])
+        .assert()
+        .code(4);
+}
+
+#[test]
+fn runtime_nodes_subcommands_are_accepted() {
+    for subcommand in ["get", "set", "call"] {
+        let mut command = Command::cargo_bin("gdmcp").unwrap();
+        let mut args = vec![
+            "--json",
+            "--url",
+            "http://127.0.0.1:1",
+            "--timeout",
+            "1",
+            "runtime",
+            "nodes",
+            subcommand,
+            "/root/Main",
+        ];
+        if subcommand == "set" {
+            args.extend_from_slice(&["--property", "speed", "--value", "100"]);
+        } else if subcommand == "call" {
+            args.extend_from_slice(&["--method", "queue_free"]);
+        }
+        command.args(args).assert().code(4);
+    }
+}

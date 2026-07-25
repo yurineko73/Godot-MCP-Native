@@ -21,6 +21,43 @@ pub struct Cli {
     pub command: Commands,
 }
 
+/// Parsed line range for `scripts read --lines`.
+#[derive(Debug, Clone)]
+pub struct LineRange {
+    pub start: usize,
+    pub end: Option<usize>,
+}
+
+impl std::str::FromStr for LineRange {
+    type Err = String;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let (start_str, end_str) = value.split_once(':').ok_or_else(|| {
+            "line range must be start:end or start: (e.g. 1:200 or 50:)".to_string()
+        })?;
+        let start = start_str
+            .parse::<usize>()
+            .map_err(|_| format!("invalid start line: {start_str}"))?;
+        if start == 0 {
+            return Err("start line must be greater than zero".to_string());
+        }
+        let end = if end_str.is_empty() {
+            None
+        } else {
+            Some(
+                end_str
+                    .parse::<usize>()
+                    .map_err(|_| format!("invalid end line: {end_str}"))?,
+            )
+        };
+        if let Some(end) = end {
+            if end < start {
+                return Err(format!("end line {end} is before start line {start}"));
+            }
+        }
+        Ok(LineRange { start, end })
+    }
+}
+
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     Doctor,
@@ -139,6 +176,8 @@ pub enum ScenesCommand {
 pub enum NodesCommand {
     Get {
         node_path: String,
+        #[arg(long, value_delimiter = ',')]
+        fields: Option<Vec<String>>,
     },
     List {
         #[arg(long, default_value = ".")]
@@ -156,6 +195,17 @@ pub enum NodesCommand {
         #[arg(long)]
         name: String,
     },
+    #[command(subcommand)]
+    Properties(NodesPropertiesCommand),
+    Delete {
+        node_path: String,
+        #[arg(long)]
+        apply: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum NodesPropertiesCommand {
     Set {
         node_path: String,
         #[arg(long)]
@@ -164,11 +214,6 @@ pub enum NodesCommand {
         value: String,
         #[arg(long)]
         value_json: bool,
-    },
-    Delete {
-        node_path: String,
-        #[arg(long)]
-        apply: bool,
     },
 }
 
@@ -182,6 +227,8 @@ pub enum ScriptsCommand {
     },
     Read {
         path: String,
+        #[arg(long, value_parser = parse_line_range)]
+        lines: Option<LineRange>,
     },
     Validate {
         path: String,
@@ -251,6 +298,10 @@ fn parse_positive_limit(value: &str) -> Result<usize, String> {
     Ok(parsed)
 }
 
+fn parse_line_range(value: &str) -> Result<LineRange, String> {
+    value.parse()
+}
+
 #[derive(Debug, Subcommand)]
 pub enum RuntimeCommand {
     Info,
@@ -260,9 +311,8 @@ pub enum RuntimeCommand {
         #[arg(long, value_delimiter = ',')]
         fields: Option<Vec<String>>,
     },
-    Node {
-        node_path: String,
-    },
+    #[command(subcommand)]
+    Nodes(RuntimeNodesCommand),
     Screenshot {
         #[arg(long, default_value = "user://mcp_runtime_capture.jpg")]
         save_path: String,
@@ -270,6 +320,29 @@ pub enum RuntimeCommand {
         format: String,
         #[arg(long)]
         viewport_path: Option<String>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum RuntimeNodesCommand {
+    Get {
+        node_path: String,
+    },
+    Set {
+        node_path: String,
+        #[arg(long)]
+        property: String,
+        #[arg(long)]
+        value: String,
+        #[arg(long)]
+        value_json: bool,
+    },
+    Call {
+        node_path: String,
+        #[arg(long)]
+        method: String,
+        #[arg(long)]
+        arguments: Option<String>,
     },
 }
 

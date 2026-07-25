@@ -21,12 +21,15 @@ gdmcp --json scenes current
 gdmcp --json scenes list --limit 20
 gdmcp --json scenes tree --depth 4
 gdmcp --json nodes list --limit 20
+gdmcp --json nodes get /root/Main/Player --fields position,visible
+gdmcp --json nodes properties set /root/Main/Player --property speed --value 300
 gdmcp --json scripts list --limit 20
-gdmcp --json scripts read res://player.gd
+gdmcp --json scripts read res://player.gd --lines 1:200
 gdmcp --json resources list --limit 20
 gdmcp --json project settings --filter display/
 gdmcp --json debug logs --limit 50
 gdmcp --json runtime tree --depth 4
+gdmcp --json runtime nodes get /root/Main/Player
 ```
 
 When a domain command is unavailable, use progressive discovery:
@@ -37,17 +40,29 @@ gdmcp --json tools schema <tool-name>
 gdmcp --json tool-call <tool-name> --args-file <request.json>
 ```
 
+Commands not yet available as domain commands (use `tool-call` instead):
+
+- `scenes resolve`, `nodes resolve`, `scripts resolve`, `resources resolve`
+- `nodes move`, `nodes rename`
+- `scripts create`
+- `resources get`, `resources create`
+- `runtime nodes set`, `runtime nodes call` (use `tool-call`
+
+with the underlying tool and `--allow-open-world`)
+
 Rules:
 
 - Use `--json` when the output will be analyzed programmatically.
 - Prefer domain commands over raw `tool-call`.
 - Do not request the complete catalog with full schemas.
-- Bound output with `--limit`, `--depth`, `--fields`, `--max-bytes`, or `--out`.
+- Bound output with `--limit`, `--depth`, `--fields`, `--lines`, `--max-bytes`, or `--out`.
 - Use `scripts list --limit <n> [--cursor <cursor>]` for progressive script discovery.
+- Use `scripts read --lines <start>:<end>` to read specific line ranges and avoid loading entire large scripts into context. Pass `--lines 50:` for everything from line 50 onward.
 - Bound `scenes list`, `nodes list`, and `resources list` with `--limit`; use `--cursor` when continuing a result set.
 - `scenes list`, `nodes list`, `scripts list`, `resources list`, and `debug logs` default to 50 items; use a positive `--limit` and never pass zero.
 - Use `debug logs --cursor <offset>` to continue log pages; add `--out <file>` when the received result is large.
 - Always pass `project settings --filter <prefix>`; the unfiltered settings set can be too large.
+- Use `nodes get --fields <field1,field2>` to retrieve only specific properties instead of the full property dictionary.
 - Use `batch preview` before `batch apply`.
 - Batch validation completes before any request is sent; execution is sequential and non-atomic, so a later failure does not roll back earlier operations.
 - Batch files use registered tool names and object arguments, for example:

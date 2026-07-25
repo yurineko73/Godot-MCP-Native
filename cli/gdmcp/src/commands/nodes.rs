@@ -1,21 +1,32 @@
 use serde_json::{json, Value};
 
-use crate::{args::parse_value, cli::NodesCommand, client::ApiClient, error::CliError};
+use crate::{
+    args::parse_value,
+    cli::{NodesCommand, NodesPropertiesCommand},
+    client::ApiClient,
+    error::CliError,
+};
 
 use super::tool_call::{call, call_with_options};
 
 pub fn run(client: &ApiClient, command: NodesCommand) -> Result<Value, CliError> {
     match command {
-        NodesCommand::Get { node_path } => call(
-            client,
-            "get_node_properties",
-            json!({"node_path": node_path}),
-            false,
-            false,
-            None,
-            None,
-            None,
-        ),
+        NodesCommand::Get { node_path, fields } => {
+            let mut value = call(
+                client,
+                "get_node_properties",
+                json!({"node_path": node_path}),
+                false,
+                false,
+                None,
+                None,
+                None,
+            )?;
+            if let Some(field_names) = fields {
+                filter_node_properties(&mut value, &field_names);
+            }
+            Ok(value)
+        }
         NodesCommand::List {
             parent_path,
             limit,
@@ -50,25 +61,27 @@ pub fn run(client: &ApiClient, command: NodesCommand) -> Result<Value, CliError>
             None,
             None,
         ),
-        NodesCommand::Set {
-            node_path,
-            property,
-            value,
-            value_json,
-        } => call(
-            client,
-            "update_node_property",
-            json!({
-                "node_path": node_path,
-                "property_name": property,
-                "property_value": parse_value(value, value_json)?
-            }),
-            false,
-            false,
-            None,
-            None,
-            None,
-        ),
+        NodesCommand::Properties(props) => match props {
+            NodesPropertiesCommand::Set {
+                node_path,
+                property,
+                value,
+                value_json,
+            } => call(
+                client,
+                "update_node_property",
+                json!({
+                    "node_path": node_path,
+                    "property_name": property,
+                    "property_value": parse_value(value, value_json)?
+                }),
+                false,
+                false,
+                None,
+                None,
+                None,
+            ),
+        },
         NodesCommand::Delete { node_path, apply } => {
             require_apply(apply, "nodes delete")?;
             call(
@@ -81,6 +94,15 @@ pub fn run(client: &ApiClient, command: NodesCommand) -> Result<Value, CliError>
                 None,
                 None,
             )
+        }
+    }
+}
+
+fn filter_node_properties(value: &mut Value, fields: &[String]) {
+    if let Some(props) = value.pointer_mut("/data/properties") {
+        if let Some(obj) = props.as_object_mut() {
+            let keep: Vec<String> = fields.to_vec();
+            obj.retain(|key, _| keep.contains(key));
         }
     }
 }

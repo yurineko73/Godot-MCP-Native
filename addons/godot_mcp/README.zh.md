@@ -21,6 +21,14 @@
   - **调试工具**（3 核心 + 68 高级）：日志、调试会话、断点、栈帧/变量读取、性能分析器、运行时探针，动画/音频/着色器/瓦片地图运行时控制，调试执行控制，场景就绪等待
   - **项目工具**（3 核心 + 23 高级）：访问项目设置、列出资源、创建资源，运行测试、管理输入映射、检查自动加载/全局类，资源诊断与健康审计
 
+## 🖥️ gdmcp CLI
+
+本插件包含配套的 **gdmcp CLI**，供编程代理（Codex、Claude Code 等）使用，
+相比 MCP 可减少约 30,000 tokens 的上下文消耗。在 MCP 停靠面板的 **CLI Tools** 标签页中安装，
+或从 [GitHub Releases](https://github.com/yurineko73/Godot-MCP-Native/releases) 下载。
+
+详见 [CLI README](../../cli/gdmcp/README.md)。
+
 ## 📦 安装
 
 ### 方法 1：资源库（推荐）

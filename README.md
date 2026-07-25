@@ -21,6 +21,29 @@ A powerful Godot Engine plugin that integrates AI assistants (Claude, etc.) via 
   - **Debug Tools** (3 core + 68 advanced): Logging, debugger sessions, breakpoints, stack/variable inspection, profilers, runtime probe, animation/audio/shader/tilemap runtime control, debug execution control, await_scene_ready
   - **Project Tools** (3 core + 23 advanced): Access project settings, list resources, create resources, run tests, manage input mappings, inspect autoloads/global classes, resource diagnostics & health audit
 
+## 🖥️ gdmcp CLI (Agent-First Interface)
+
+For coding agents (Codex, Claude Code, Cursor) that have shell access, the **gdmcp CLI**
+is the recommended way to interact with Godot MCP. Instead of loading all 155 tool
+schemas into model context, the CLI uses progressive discovery — ~33 domain commands
+for common operations, and on-demand schema retrieval for supplementary tools.
+
+```bash
+# Quick start
+gdmcp --json doctor
+gdmcp --json scenes tree --depth 4
+gdmcp --json scripts read res://player.gd --lines 1:200
+gdmcp --json nodes properties set /root/Player --property speed --value 300
+```
+
+**Installation**: Open the Godot editor → MCP dock → **CLI Tools** tab, or download
+from [GitHub Releases](https://github.com/yurineko73/Godot-MCP-Native/releases).
+See the [CLI README](cli/gdmcp/README.md) and [CLI Reference](docs/current/gdmcp-cli-reference.md)
+for full documentation.
+
+**Skill**: Install the companion Codex skill from `skills/gdmcp/` to teach your
+agent the CLI workflow. Copy `skills/gdmcp/` to `~/.codex/skills/gdmcp/`.
+
 ## 📦 Installation
 
 ### Method 1: Asset Library (Recommended)
@@ -384,6 +407,8 @@ For detailed documentation, see the `docs/current/` folder:
 - [Quick Start Guide](docs/current/quickstart.md)
 - [Architecture Design](docs/current/architecture.md)
 - [Tools Reference](docs/current/tools-reference.md)
+- [CLI Reference](docs/current/gdmcp-cli-reference.md)
+- [Release Workflow](docs/development/release-workflow.md)
 - [Testing Guide](docs/current/testing-guide.md)
 
 ## 🤝 Contributing

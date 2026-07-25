@@ -21,6 +21,15 @@ A powerful Godot Engine plugin that integrates AI assistants (Claude, etc.) via 
   - **Debug Tools** (3 core + 68 advanced): Logging, debugger sessions, breakpoints, stack/variable inspection, profilers, runtime probe, animation/audio/shader/tilemap runtime control, debug execution control, await_scene_ready
   - **Project Tools** (3 core + 23 advanced): Access project settings, list resources, create resources, run tests, manage input mappings, inspect autoloads/global classes, resource diagnostics & health audit
 
+## 🖥️ gdmcp CLI
+
+This plugin includes a companion **gdmcp CLI** for coding agents (Codex, Claude Code, etc.)
+that reduces model context usage by ~30,000 tokens compared to MCP. Install it from the
+**CLI Tools** tab in the MCP dock panel, or download from
+[GitHub Releases](https://github.com/yurineko73/Godot-MCP-Native/releases).
+
+See [CLI README](../../cli/gdmcp/README.md) for details.
+
 ## 📦 Installation
 
 ### Method 1: Asset Library (Recommended)

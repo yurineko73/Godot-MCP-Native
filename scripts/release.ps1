@@ -57,9 +57,24 @@ if (-not $DryRun) {
     $cargo = $cargo -replace '(?m)^version\s*=\s*"[^"]*"', "version = `"$Version`""
     Set-Content $CargoToml $cargo -NoNewline
 
-    Write-Host "  Updated: plugin.cfg (version), cli_release.json (version only; Quark URL preserved), mcp_types.gd, Cargo.toml"
+    # Update README version badges
+    $readmes = @(
+        (Join-Path $RepoRoot "README.md"),
+        (Join-Path $RepoRoot "README.zh.md"),
+        (Join-Path $RepoRoot "addons\godot_mcp\README.md"),
+        (Join-Path $RepoRoot "addons\godot_mcp\README.zh.md")
+    )
+    foreach ($rm in $readmes) {
+        if (Test-Path $rm) {
+            $rmContent = Get-Content $rm -Raw
+            $rmContent = $rmContent -replace 'Version-\d+\.\d+\.\d+', "Version-$Version"
+            Set-Content $rm $rmContent -NoNewline
+        }
+    }
+
+    Write-Host "  Updated: plugin.cfg, cli_release.json, mcp_types.gd, Cargo.toml, README badges (x4)"
 } else {
-    Write-Host "  [DRY RUN] Would update 4 version files"
+    Write-Host "  [DRY RUN] Would update 8 files (4 version files + 4 README badges)"
 }
 
 # Step 2: Tests
@@ -126,5 +141,5 @@ Write-Host ""
 Write-Host "=== Automated steps complete ===" -ForegroundColor Green
 Write-Host "Manual steps remaining:"
 Write-Host "  6. Submit plugin to Godot Asset Library"
-Write-Host "  7. Upload new packages to Quark cloud drive (page_url is pre-configured in cli_release.json)"
+Write-Host "  7. Upload to Quark cloud drive (page_url is pre-configured in cli_release.json)"
 Write-Host "  8. Commit and push version changes"

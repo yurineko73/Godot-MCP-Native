@@ -21,6 +21,27 @@
   - **调试工具**（3 核心 + 68 高级）：日志、调试会话、断点、栈帧/变量读取、性能分析器、运行时探针，动画/音频/着色器/瓦片地图运行时控制，调试执行控制
   - **项目工具**（3 核心 + 23 高级）：访问项目设置、列出资源、创建资源，运行测试、管理输入映射、检查自动加载/全局类，资源诊断与健康审计
 
+## 🖥️ gdmcp CLI（Agent 优先接口）
+
+对于有 Shell 访问权限的编程代理（Codex、Claude Code、Cursor），**gdmcp CLI**
+是与 Godot MCP 交互的推荐方式。CLI 不会将所有 155 个工具 Schema 加载到模型上下文中，
+而是使用渐进式发现——约 33 个领域命令用于常见操作，按需获取补充工具的 Schema。
+
+```bash
+# 快速开始
+gdmcp --json doctor
+gdmcp --json scenes tree --depth 4
+gdmcp --json scripts read res://player.gd --lines 1:200
+gdmcp --json nodes properties set /root/Player --property speed --value 300
+```
+
+**安装**：打开 Godot 编辑器 → MCP 面板 → **CLI Tools** 标签页，或从
+[GitHub Releases](https://github.com/yurineko73/Godot-MCP-Native/releases) 下载。
+完整文档见 [CLI README](cli/gdmcp/README.md) 和 [CLI Reference](docs/current/gdmcp-cli-reference.md)。
+
+**Skill**：从 `skills/gdmcp/` 安装配套 Codex Skill，教你的代理使用 CLI 工作流。
+将 `skills/gdmcp/` 复制到 `~/.codex/skills/gdmcp/`。
+
 ## 📦 安装
 
 ### 方法 1：资源库（推荐）
@@ -382,6 +403,8 @@ url = "http://localhost:9080/mcp"
 - [快速开始指南](docs/current/quickstart.md)
 - [架构设计](docs/current/architecture.md)
 - [工具参考](docs/current/tools-reference.md)
+- [CLI 参考](docs/current/gdmcp-cli-reference.md)
+- [发布流程](docs/development/release-workflow.md)
 - [测试指南](docs/current/testing-guide.md)
 
 ## 🤝 贡献

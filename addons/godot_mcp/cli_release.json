@@ -4,8 +4,9 @@
     "url_template": "https://github.com/yurineko73/Godot-MCP-Native/releases/download/v{version}/gdmcp-{target}.zip"
   },
   "quark": {
-    "page_url": "https://pan.quark.cn/s/your-share-id",
-    "direct_download": ""
+    "page_url": "https://pan.quark.cn/s/69c412007005",
+    "direct_download": "",
+    "share_text": "我用夸克网盘给你分享了「Godot-mcp-native插件」，点击链接或复制整段内容，打开「夸克APP」即可获取。\n/~c0613ZmmXq~:/\n链接：https://pan.quark.cn/s/69c412007005"
   },
   "targets": {
     "x86_64-pc-windows-msvc": "gdmcp.exe",

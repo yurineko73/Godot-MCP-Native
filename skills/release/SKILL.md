@@ -48,7 +48,7 @@ Upload the resulting zip files to the GitHub Release draft.
 ### 3. Manual steps
 
 - Submit `godot-mcp-native-X.Y.Z.zip` to [Godot Asset Library](https://godotengine.org/asset-library/)
-- Upload packages to Quark cloud drive (optional), update `cli_release.json`
+- Upload packages to Quark cloud drive (share link pre-configured in cli_release.json; update only if Quark generates a new link)
 - Publish the GitHub Release draft
 - Commit version bump: `git commit -m "chore: bump version to X.Y.Z"`
 

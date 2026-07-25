@@ -57,7 +57,7 @@ if (-not $DryRun) {
     $cargo = $cargo -replace '(?m)^version\s*=\s*"[^"]*"', "version = `"$Version`""
     Set-Content $CargoToml $cargo -NoNewline
 
-    Write-Host "  Updated: plugin.cfg, cli_release.json, mcp_types.gd, Cargo.toml"
+    Write-Host "  Updated: plugin.cfg (version), cli_release.json (version only; Quark URL preserved), mcp_types.gd, Cargo.toml"
 } else {
     Write-Host "  [DRY RUN] Would update 4 version files"
 }
@@ -126,5 +126,5 @@ Write-Host ""
 Write-Host "=== Automated steps complete ===" -ForegroundColor Green
 Write-Host "Manual steps remaining:"
 Write-Host "  6. Submit plugin to Godot Asset Library"
-Write-Host "  7. Upload to Quark cloud drive (optional)"
+Write-Host "  7. Upload new packages to Quark cloud drive (page_url is pre-configured in cli_release.json)"
 Write-Host "  8. Commit and push version changes"

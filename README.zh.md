@@ -1,6 +1,6 @@
 # Godot MCP Native (模型上下文协议)
 
-[English Version](README.md)
+[English Version](https://github.com/yurineko73/Godot-MCP-Native/blob/main/README.md)
 
 ![Godot 版本](https://img.shields.io/badge/Godot-4.x-blue?logo=godot-engine)
 ![许可证](https://img.shields.io/badge/License-MIT-green)
@@ -413,7 +413,7 @@ url = "http://localhost:9080/mcp"
 
 ## 📄 许可证
 
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
+本项目采用 MIT 许可证 - 详见 [LICENSE](https://github.com/yurineko73/Godot-MCP-Native/blob/main/LICENSE) 文件。
 
 ## 👤 作者
 

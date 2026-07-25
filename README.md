@@ -1,6 +1,6 @@
 # Godot MCP Native (Model Context Protocol)
 
-[中文版本](README.zh.md)
+[中文版本](https://github.com/yurineko73/Godot-MCP-Native/blob/main/README.zh.md)
 
 ![Godot Version](https://img.shields.io/badge/Godot-4.x-blue?logo=godot-engine)
 ![License](https://img.shields.io/badge/License-MIT-green)
@@ -417,7 +417,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/yurineko73/Godot-MCP-Native/blob/main/LICENSE) file for details.
 
 ## 👤 Author
 

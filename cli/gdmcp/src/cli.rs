@@ -164,6 +164,9 @@ pub enum ScenesCommand {
         #[arg(long, value_delimiter = ',')]
         fields: Option<Vec<String>>,
     },
+    Resolve {
+        name: String,
+    },
     Open {
         path: String,
         #[arg(long)]
@@ -193,6 +196,19 @@ pub enum NodesCommand {
         #[arg(long = "type")]
         node_type: String,
         #[arg(long)]
+        name: String,
+    },
+    Move {
+        node_path: String,
+        #[arg(long)]
+        new_parent: String,
+    },
+    Rename {
+        node_path: String,
+        #[arg(long)]
+        new_name: String,
+    },
+    Resolve {
         name: String,
     },
     #[command(subcommand)]
@@ -230,6 +246,14 @@ pub enum ScriptsCommand {
         #[arg(long, value_parser = parse_line_range)]
         lines: Option<LineRange>,
     },
+    Create {
+        path: String,
+        #[arg(long, default_value = "GDScript")]
+        script_type: String,
+    },
+    Resolve {
+        name: String,
+    },
     Validate {
         path: String,
     },
@@ -253,6 +277,14 @@ pub enum ResourcesCommand {
         limit: usize,
         #[arg(long)]
         cursor: Option<String>,
+    },
+    Get {
+        path: String,
+        #[arg(long, value_delimiter = ',')]
+        fields: Option<Vec<String>>,
+    },
+    Resolve {
+        name: String,
     },
 }
 

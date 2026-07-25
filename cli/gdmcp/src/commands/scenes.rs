@@ -38,6 +38,36 @@ pub fn run(client: &ApiClient, command: ScenesCommand) -> Result<Value, CliError
             None,
             None,
         ),
+        ScenesCommand::Resolve { name } => {
+            let result = call_with_options(
+                client,
+                "list_project_scenes",
+                json!({"search_path": "res://"}),
+                false,
+                false,
+                None,
+                Some(200),
+                None,
+                None,
+                None,
+            )?;
+            let items: Vec<&str> = result
+                .pointer("/data/scenes")
+                .and_then(Value::as_array)
+                .map(|arr| arr.iter().filter_map(Value::as_str).collect())
+                .unwrap_or_default();
+            let name_lower = name.to_lowercase();
+            let matches: Vec<&str> = items
+                .iter()
+                .filter(|item| item.to_lowercase().contains(&name_lower))
+                .copied()
+                .collect();
+            Ok(json!({
+                "query": name,
+                "matches": matches,
+                "count": matches.len()
+            }))
+        }
         ScenesCommand::Open { path, apply } => {
             require_apply(apply, "scenes open")?;
             call(

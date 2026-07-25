@@ -36,6 +36,24 @@ pub fn run(client: &ApiClient, command: ScriptsCommand) -> Result<Value, CliErro
             }
             Ok(value)
         }
+        ScriptsCommand::Create { path, script_type } => call(
+            client,
+            "create_script",
+            json!({"script_path": path, "script_type": script_type}),
+            false,
+            false,
+            None,
+            None,
+            None,
+        ),
+        ScriptsCommand::Resolve { name } => resolve(
+            client,
+            &name,
+            "list_project_scripts",
+            json!({"search_path": "res://"}),
+            "scripts",
+            "resolved_scripts",
+        ),
         ScriptsCommand::Validate { path } => call(
             client,
             "validate_script",
@@ -67,6 +85,39 @@ pub fn run(client: &ApiClient, command: ScriptsCommand) -> Result<Value, CliErro
             )
         }
     }
+}
+
+fn resolve(
+    client: &ApiClient,
+    query: &str,
+    list_tool: &str,
+    list_args: Value,
+    _kind: &str,
+    data_key: &str,
+) -> Result<Value, CliError> {
+    let result = call(client, list_tool, list_args, false, false, None, None, None)?;
+    let items: Vec<&str> = result
+        .pointer(&format!("/data/{}", data_key))
+        .and_then(Value::as_array)
+        .map(|arr| arr.iter().filter_map(Value::as_str).collect())
+        .or_else(|| {
+            result
+                .pointer("/data/scripts")
+                .and_then(Value::as_array)
+                .map(|arr| arr.iter().filter_map(Value::as_str).collect())
+        })
+        .unwrap_or_default();
+    let name_lower = query.to_lowercase();
+    let matches: Vec<&str> = items
+        .iter()
+        .filter(|item| item.to_lowercase().contains(&name_lower))
+        .copied()
+        .collect();
+    Ok(json!({
+        "query": query,
+        "matches": matches,
+        "count": matches.len()
+    }))
 }
 
 fn slice_read_script_content(

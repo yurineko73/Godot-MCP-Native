@@ -284,3 +284,85 @@ fn runtime_nodes_subcommands_are_accepted() {
         command.args(args).assert().code(4);
     }
 }
+
+#[test]
+fn scripts_create_accepts_path_and_type() {
+    let mut command = Command::cargo_bin("gdmcp").unwrap();
+    command
+        .args([
+            "--json",
+            "--url",
+            "http://127.0.0.1:1",
+            "--timeout",
+            "1",
+            "scripts",
+            "create",
+            "res://new.gd",
+            "--script-type",
+            "GDScript",
+        ])
+        .assert()
+        .code(4);
+}
+
+#[test]
+fn nodes_move_and_rename_accepted() {
+    for (sub, extra) in [
+        ("move", vec!["--new-parent", "/root/Other"]),
+        ("rename", vec!["--new-name", "Enemy"]),
+    ] {
+        let mut command = Command::cargo_bin("gdmcp").unwrap();
+        let mut args = vec![
+            "--json",
+            "--url",
+            "http://127.0.0.1:1",
+            "--timeout",
+            "1",
+            "nodes",
+            sub,
+            "/root/Main/Player",
+        ];
+        args.extend(extra);
+        command.args(args).assert().code(4);
+    }
+}
+
+#[test]
+fn resolve_commands_accepted() {
+    for cmd in ["scenes", "nodes", "scripts", "resources"] {
+        let mut command = Command::cargo_bin("gdmcp").unwrap();
+        command
+            .args([
+                "--json",
+                "--url",
+                "http://127.0.0.1:1",
+                "--timeout",
+                "1",
+                cmd,
+                "resolve",
+                "Main",
+            ])
+            .assert()
+            .code(4);
+    }
+}
+
+#[test]
+fn resources_get_accepts_path_and_fields() {
+    let mut command = Command::cargo_bin("gdmcp").unwrap();
+    command
+        .args([
+            "--json",
+            "--url",
+            "http://127.0.0.1:1",
+            "--timeout",
+            "1",
+            "resources",
+            "get",
+            "res://test.tres",
+            "--fields",
+            "a,b",
+        ])
+        .assert()
+        .code(4);
+}

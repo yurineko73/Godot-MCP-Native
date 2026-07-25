@@ -9,6 +9,15 @@ gdmcp --json scenes current
 gdmcp --json debug logs --level Error --limit 50
 ```
 
+## Resolve names to paths
+
+```bash
+gdmcp --json nodes resolve Player
+gdmcp --json scenes resolve Main
+gdmcp --json scripts resolve player
+gdmcp --json resources resolve icon
+```
+
 ## Inspect a scene
 
 ```bash
@@ -23,10 +32,30 @@ gdmcp --json scripts list --limit 50
 gdmcp --json scripts read res://scripts/player.gd --lines 1:200
 ```
 
+## Create a script
+
+```bash
+gdmcp --json scripts create res://scripts/enemy.gd --script-type GDScript
+```
+
+## Inspect a resource
+
+```bash
+gdmcp --json resources get res://player.tres
+gdmcp --json resources get res://player.tres --fields resource_path,resource_name
+```
+
 ## Modify a node property
 
 ```bash
 gdmcp --json nodes properties set /root/Main/Player --property speed --value 300
+```
+
+## Move or rename a node
+
+```bash
+gdmcp --json nodes move /root/Main/Enemy --new-parent /root/World
+gdmcp --json nodes rename /root/Main/Enemy --new-name Boss
 ```
 
 ## Replace a script explicitly
@@ -73,15 +102,3 @@ gdmcp --json batch apply ./operations.json --apply
 Batch operations use registered tool names with JSON object arguments. They are
 validated before the first request, then executed sequentially and are not
 atomic; a later failure does not roll back earlier operations.
-
-## Commands not yet available as domain commands
-
-Use `tool-call` with the appropriate underlying tool for these operations:
-
-- Resource resolution / retrieval / creation → `list_project_resources`, etc.
-- Script creation → `create_script`
-- Node move / rename → `move_node`, `rename_node`
-- Scene / node / script resolution → list then match by exact path
-- Runtime node property modification or method calls → use `tool-call` with
-  `update_runtime_node_property` or `call_runtime_node_method` and
-  `--allow-open-world`

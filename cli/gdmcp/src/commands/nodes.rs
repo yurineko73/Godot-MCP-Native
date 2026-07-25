@@ -61,6 +61,60 @@ pub fn run(client: &ApiClient, command: NodesCommand) -> Result<Value, CliError>
             None,
             None,
         ),
+        NodesCommand::Move {
+            node_path,
+            new_parent,
+        } => call(
+            client,
+            "move_node",
+            json!({"node_path": node_path, "new_parent_path": new_parent}),
+            false,
+            false,
+            None,
+            None,
+            None,
+        ),
+        NodesCommand::Rename {
+            node_path,
+            new_name,
+        } => call(
+            client,
+            "rename_node",
+            json!({"node_path": node_path, "new_name": new_name}),
+            false,
+            false,
+            None,
+            None,
+            None,
+        ),
+        NodesCommand::Resolve { name } => {
+            let result = call(
+                client,
+                "list_nodes",
+                json!({"parent_path": "."}),
+                false,
+                false,
+                None,
+                None,
+                None,
+            )?;
+            let items: Vec<&str> = result
+                .pointer("/data/nodes")
+                .and_then(Value::as_array)
+                .map(|arr| arr.iter().filter_map(Value::as_str).collect())
+                .unwrap_or_default();
+            let name_lower = name.to_lowercase();
+            let matches: Vec<&str> = items
+                .iter()
+                .filter(|item| item.to_lowercase().contains(&name_lower))
+                .copied()
+                .collect();
+            Ok(json!({
+                "query": name,
+                "matches": matches,
+                "count": matches.len()
+            }))
+        }
         NodesCommand::Properties(props) => match props {
             NodesPropertiesCommand::Set {
                 node_path,

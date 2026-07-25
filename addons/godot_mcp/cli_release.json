@@ -1,5 +1,5 @@
 {
-  "version": "0.1.0",
+  "version": "1.0.8",
   "github": {
     "url_template": "https://github.com/yurineko73/Godot-MCP-Native/releases/download/v{version}/gdmcp-{target}.zip"
   },

@@ -4,7 +4,7 @@
 
 ![Godot Version](https://img.shields.io/badge/Godot-4.x-blue?logo=godot-engine)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Version](https://img.shields.io/badge/Version-1.0.7-brightgreen)
+![Version](https://img.shields.io/badge/Version-1.0.8-brightgreen)
 
 A powerful Godot Engine plugin that integrates AI assistants (Claude, etc.) via the Model Context Protocol (MCP). Enable AI to directly read and modify your Godot projects - scenes, scripts, nodes, and resources - all through natural language.
 

@@ -85,9 +85,9 @@ if (-not $SkipTests) {
         $env:CARGO_HOME = Join-Path $RepoRoot ".gdmcp\cargo"
         $env:RUSTUP_HOME = Join-Path $RepoRoot ".gdmcp\rustup"
         $env:PATH = "$env:CARGO_HOME\bin;$env:PATH"
-        cargo test --manifest-path cli/gdmcp/Cargo.toml --locked
+        cargo test --manifest-path cli/gdmcp/Cargo.toml
         if ($LASTEXITCODE -ne 0) { throw "Rust tests failed" }
-        cargo clippy --manifest-path cli/gdmcp/Cargo.toml --all-targets --locked -- -D warnings
+        cargo clippy --manifest-path cli/gdmcp/Cargo.toml --all-targets -- -D warnings
         if ($LASTEXITCODE -ne 0) { throw "Clippy failed" }
 
         Write-Host "  GUT tests..."

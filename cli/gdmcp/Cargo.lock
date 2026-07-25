@@ -346,7 +346,7 @@ dependencies = [
 
 [[package]]
 name = "gdmcp"
-version = "0.1.0"
+version = "1.0.8"
 dependencies = [
  "assert_cmd",
  "clap",

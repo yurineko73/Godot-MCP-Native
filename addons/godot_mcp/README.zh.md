@@ -4,7 +4,7 @@
 
 ![Godot 版本](https://img.shields.io/badge/Godot-4.x-blue?logo=godot-engine)
 ![许可证](https://img.shields.io/badge/License-MIT-green)
-![版本](https://img.shields.io/badge/Version-1.0.7-brightgreen)
+![版本](https://img.shields.io/badge/Version-1.0.8-brightgreen)
 
 一个强大的 Godot 引擎插件，通过模型上下文协议 (MCP) 集成 AI 助手（如 Claude 等）。让 AI 可以直接通过自然语言读取和修改您的 Godot 项目——场景、脚本、节点和资源。
 

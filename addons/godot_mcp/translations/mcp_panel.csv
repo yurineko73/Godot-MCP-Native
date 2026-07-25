@@ -34,7 +34,7 @@ ui.connection_stdio,Mode: stdio (via stdin/stdout),Mode: stdio (via stdin/stdout
 ui.tools_init,Tools: 0,Tools: 0,工具：0
 ui.cli_tools,CLI Tools,CLI Tools,CLI 工具
 ui.cli_title,gdmcp CLI,gdmcp CLI,gdmcp CLI
-ui.cli_description,"gdmcp is a companion command-line tool that lets AI coding agents control Godot without loading all MCP tool schemas into context. Install the binary for your platform below.","gdmcp is a companion command-line tool that lets AI coding agents control Godot without loading all MCP tool schemas into context. Install the binary for your platform below.","gdmcp 是一个配套命令行工具，让 AI 编码代理在不加载全部 MCP 工具 Schema 的情况下控制 Godot。请在下方安装对应平台的二进制文件。"
+ui.cli_description,"gdmcp is a companion CLI that lets AI agents control Godot without loading 154 MCP tool schemas into context. Install the binary below, then install the Codex skill from the GitHub repository (skills/gdmcp/).","gdmcp is a companion CLI that lets AI agents control Godot without loading 154 MCP tool schemas into context. Install the binary below, then install the Codex skill from the GitHub repository (skills/gdmcp/).","gdmcp 是一个配套 CLI 工具，让 AI 代理在不加载 154 个 MCP 工具 Schema 的情况下控制 Godot。请在下方安装二进制文件，然后从 GitHub 仓库安装 Codex 技能 (skills/gdmcp/)。"
 ui.cli_status,"Status: ","Status: ","状态："
 ui.cli_installed,"Installed (v%s)","Installed (v%s)","已安装 (v%s)"
 ui.cli_not_installed,Not installed,Not installed,未安装

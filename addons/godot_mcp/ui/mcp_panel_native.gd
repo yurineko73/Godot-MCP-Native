@@ -51,6 +51,9 @@ var _max_log_file_size: int = 5242880
 var _translation_manager: MCPTranslationManager = null
 var _settings_manager: MCPSettingsManager = null
 var _cli_installer: MCPCliInstaller = null
+var _cli_title_label: Label = null
+var _cli_desc_label: Label = null
+var _cli_status_title_label: Label = null
 var _cli_status_label: Label = null
 var _cli_install_button: Button = null
 var _cli_source_option: OptionButton = null
@@ -128,6 +131,7 @@ func _create_ui() -> void:
 	var cli_tab: VBoxContainer = _create_cli_tab()
 	_tab_container.add_child(cli_tab)
 	_tab_container.set_tab_title(2, _tr("ui.cli_tools"))
+	_refresh_cli_translations()
 
 	_update_ui_state()
 	_refresh_tools_list()
@@ -688,6 +692,7 @@ func _refresh_translations() -> void:
 		_tab_container.set_tab_title(0, _tr("ui.settings"))
 		_tab_container.set_tab_title(1, _tr("ui.tool_manager"))
 		_tab_container.set_tab_title(2, _tr("ui.cli_tools"))
+	_refresh_cli_translations()
 	if _start_button:
 		_start_button.text = _tr("ui.start_server")
 	if _stop_button:
@@ -886,70 +891,55 @@ func _create_cli_tab() -> VBoxContainer:
 	var tab: VBoxContainer = VBoxContainer.new()
 	tab.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tab.add_theme_constant_override("separation", 8)
+	tab.add_theme_constant_override("separation", 4)
 
 	var margin: MarginContainer = MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 12)
 	margin.add_theme_constant_override("margin_right", 12)
 	margin.add_theme_constant_override("margin_top", 8)
 	margin.add_theme_constant_override("margin_bottom", 8)
+	margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	tab.add_child(margin)
 
 	var content: VBoxContainer = VBoxContainer.new()
-	content.add_theme_constant_override("separation", 8)
+	content.add_theme_constant_override("separation", 6)
 	margin.add_child(content)
 
-	var title: Label = Label.new()
-	title.text = "gdmcp CLI Tools"
-	title.add_theme_font_size_override("font_size", 14)
-	content.add_child(title)
+	_cli_title_label = Label.new()
+	_cli_title_label.text = _tr("ui.cli_title")
+	_cli_title_label.add_theme_font_size_override("font_size", 13)
+	content.add_child(_cli_title_label)
 
-	var desc: Label = Label.new()
-	desc.text = "gdmcp is a companion CLI that lets AI agents control Godot without loading 154 MCP tool schemas into context. Install the binary, the Codex skill, and add the AGENTS.md snippet."
-	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	content.add_child(desc)
+	_cli_desc_label = Label.new()
+	_cli_desc_label.text = _tr("ui.cli_description")
+	_cli_desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	content.add_child(_cli_desc_label)
 
-	# Separator
 	var sep: HSeparator = HSeparator.new()
 	content.add_child(sep)
 
-	# Status section
 	var status_hbox: HBoxContainer = HBoxContainer.new()
 	content.add_child(status_hbox)
-	var status_title: Label = Label.new()
-	status_title.text = "Status: "
-	status_hbox.add_child(status_title)
+	_cli_status_title_label = Label.new()
+	_cli_status_title_label.text = _tr("ui.cli_status")
+	status_hbox.add_child(_cli_status_title_label)
 	_cli_status_label = Label.new()
-	_cli_status_label.text = "Checking..."
+	_cli_status_label.text = ""
 	status_hbox.add_child(_cli_status_label)
 
-	# Install section
 	var install_hbox: HBoxContainer = HBoxContainer.new()
 	content.add_child(install_hbox)
 
 	_cli_source_option = OptionButton.new()
-	_cli_source_option.add_item("GitHub Releases")
-	_cli_source_option.add_item("Quark Cloud Drive")
+	_cli_source_option.add_item(_tr("ui.cli_source_github"))
+	_cli_source_option.add_item(_tr("ui.cli_source_quark"))
 	install_hbox.add_child(_cli_source_option)
 
 	_cli_install_button = Button.new()
-	_cli_install_button.text = "Install CLI"
+	_cli_install_button.text = _tr("ui.cli_install")
 	_cli_install_button.pressed.connect(_on_cli_install_pressed)
 	install_hbox.add_child(_cli_install_button)
-
-	# Skill section
-	var skill_hbox: HBoxContainer = HBoxContainer.new()
-	content.add_child(skill_hbox)
-	var skill_label: Label = Label.new()
-	skill_label.text = "Codex Skill: "
-	skill_hbox.add_child(skill_label)
-
-	# AGENTS snippet section
-	var agents_hbox: HBoxContainer = HBoxContainer.new()
-	content.add_child(agents_hbox)
-	var agents_label: Label = Label.new()
-	agents_label.text = "AGENTS.md: "
-	agents_hbox.add_child(agents_label)
 
 	return tab
 
@@ -964,24 +954,32 @@ func _ensure_cli_installer() -> void:
 		_cli_installer = MCPCliInstaller.new()
 		_cli_installer.set_scene_tree(get_tree())
 
+func _refresh_cli_translations() -> void:
+	if _cli_title_label:
+		_cli_title_label.text = _tr("ui.cli_title")
+	if _cli_desc_label:
+		_cli_desc_label.text = _tr("ui.cli_description")
+	if _cli_status_title_label:
+		_cli_status_title_label.text = _tr("ui.cli_status")
+	if _cli_source_option:
+		_cli_source_option.set_item_text(0, _tr("ui.cli_source_github"))
+		_cli_source_option.set_item_text(1, _tr("ui.cli_source_quark"))
+	_refresh_cli_status()
+
 func _refresh_cli_status() -> void:
 	_ensure_cli_installer()
 	if _cli_installer == null:
 		return
-	var project_path: String = ""
-	if _plugin:
-		project_path = _plugin.get_editor_interface().get_base_control().get_tree().root.scene_file_path.get_base_dir()
-	if project_path.is_empty():
-		project_path = ProjectSettings.globalize_path("res://")
+	var project_path: String = ProjectSettings.globalize_path("res://")
 	var state: Dictionary = _cli_installer.detect_state(project_path)
 	if state.installed:
-		_cli_status_label.text = "Installed (%s)" % _cli_installer.cli_version()
+		_cli_status_label.text = _trf("ui.cli_installed", [state.version])
 		_cli_status_label.add_theme_color_override("font_color", Color.GREEN)
-		_cli_install_button.text = "Reinstall CLI"
+		_cli_install_button.text = _tr("ui.cli_reinstall")
 	else:
-		_cli_status_label.text = "Not installed"
+		_cli_status_label.text = _tr("ui.cli_not_installed")
 		_cli_status_label.add_theme_color_override("font_color", Color.ORANGE)
-		_cli_install_button.text = "Install CLI"
+		_cli_install_button.text = _tr("ui.cli_install")
 
 func _on_cli_install_pressed() -> void:
 	_ensure_cli_installer()
@@ -991,18 +989,18 @@ func _on_cli_install_pressed() -> void:
 	var project_path: String = ProjectSettings.globalize_path("res://")
 	var install_dir: String = project_path.path_join(".gdmcp/bin")
 	_cli_install_button.disabled = true
-	_cli_install_button.text = "Downloading..."
+	_cli_install_button.text = _tr("ui.cli_downloading")
 	_cli_installer.install_from(source, install_dir, _on_cli_install_completed)
 
 func _on_cli_install_completed(success: bool, message: String) -> void:
 	_cli_install_button.disabled = false
 	if success:
-		_cli_status_label.text = "Installed (%s)" % _cli_installer.cli_version()
+		_cli_status_label.text = _trf("ui.cli_installed", [_cli_installer.cli_version()])
 		_cli_status_label.add_theme_color_override("font_color", Color.GREEN)
-		_cli_install_button.text = "Reinstall CLI"
-		_show_cli_message("CLI installed successfully:\n%s" % message)
+		_cli_install_button.text = _tr("ui.cli_reinstall")
+		_show_cli_message(_tr("ui.cli_install_success") + "\n" + message)
 	else:
-		_show_cli_message("Installation failed:\n%s" % message)
+		_show_cli_message(_tr("ui.cli_install_failed") + "\n" + message)
 	_refresh_cli_status()
 
 

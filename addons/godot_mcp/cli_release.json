@@ -1,0 +1,16 @@
+{
+  "version": "0.1.0",
+  "github": {
+    "url_template": "https://github.com/yurineko73/Godot-MCP-Native/releases/download/v{version}/gdmcp-{target}.zip"
+  },
+  "quark": {
+    "page_url": "https://pan.quark.cn/s/your-share-id",
+    "direct_download": ""
+  },
+  "targets": {
+    "x86_64-pc-windows-msvc": "gdmcp.exe",
+    "x86_64-unknown-linux-gnu": "gdmcp",
+    "aarch64-apple-darwin": "gdmcp",
+    "x86_64-apple-darwin": "gdmcp"
+  }
+}

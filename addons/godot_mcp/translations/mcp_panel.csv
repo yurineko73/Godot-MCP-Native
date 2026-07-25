@@ -32,3 +32,16 @@ ui.enabled_format,Enabled: %d / %d,Enabled: %d / %d,已启用：%d / %d
 ui.connection_url,URL: http://localhost:%d/mcp,URL: http://localhost:%d/mcp,地址：http://localhost:%d/mcp
 ui.connection_stdio,Mode: stdio (via stdin/stdout),Mode: stdio (via stdin/stdout),模式：stdio（标准输入/输出）
 ui.tools_init,Tools: 0,Tools: 0,工具：0
+ui.cli_tools,CLI Tools,CLI Tools,CLI 工具
+ui.cli_title,gdmcp CLI,gdmcp CLI,gdmcp CLI
+ui.cli_description,"gdmcp is a companion command-line tool that lets AI coding agents control Godot without loading all MCP tool schemas into context. Install the binary for your platform below.","gdmcp is a companion command-line tool that lets AI coding agents control Godot without loading all MCP tool schemas into context. Install the binary for your platform below.","gdmcp 是一个配套命令行工具，让 AI 编码代理在不加载全部 MCP 工具 Schema 的情况下控制 Godot。请在下方安装对应平台的二进制文件。"
+ui.cli_status,"Status: ","Status: ","状态："
+ui.cli_installed,"Installed (v%s)","Installed (v%s)","已安装 (v%s)"
+ui.cli_not_installed,Not installed,Not installed,未安装
+ui.cli_install,Install CLI,Install CLI,安装 CLI
+ui.cli_reinstall,Reinstall CLI,Reinstall CLI,重新安装 CLI
+ui.cli_downloading,Downloading...,Downloading...,下载中...
+ui.cli_source_github,GitHub Releases,GitHub Releases,GitHub Releases
+ui.cli_source_quark,Quark Cloud Drive,Quark Cloud Drive,夸克网盘
+ui.cli_install_success,Installation successful:,Installation successful:,安装成功：
+ui.cli_install_failed,Installation failed:,Installation failed:,安装失败：

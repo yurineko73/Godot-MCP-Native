@@ -54,8 +54,6 @@ var _cli_installer: MCPCliInstaller = null
 var _cli_status_label: Label = null
 var _cli_install_button: Button = null
 var _cli_source_option: OptionButton = null
-var _cli_skill_button: Button = null
-var _cli_agents_button: Button = null
 
 func _ready() -> void:
 	_translation_manager = MCPTranslationManager.new()
@@ -129,7 +127,7 @@ func _create_ui() -> void:
 	_tab_container.set_tab_title(1, _tr("ui.tool_manager"))
 	var cli_tab: VBoxContainer = _create_cli_tab()
 	_tab_container.add_child(cli_tab)
-	_tab_container.set_tab_title(2, "CLI Tools")
+	_tab_container.set_tab_title(2, _tr("ui.cli_tools"))
 
 	_update_ui_state()
 	_refresh_tools_list()
@@ -689,9 +687,7 @@ func _refresh_translations() -> void:
 	if _tab_container:
 		_tab_container.set_tab_title(0, _tr("ui.settings"))
 		_tab_container.set_tab_title(1, _tr("ui.tool_manager"))
-	var cli_tab: VBoxContainer = _create_cli_tab()
-	_tab_container.add_child(cli_tab)
-	_tab_container.set_tab_title(2, "CLI Tools")
+		_tab_container.set_tab_title(2, _tr("ui.cli_tools"))
 	if _start_button:
 		_start_button.text = _tr("ui.start_server")
 	if _stop_button:

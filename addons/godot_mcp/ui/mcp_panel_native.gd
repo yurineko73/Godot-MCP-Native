@@ -57,6 +57,7 @@ var _cli_status_title_label: Label = null
 var _cli_status_label: Label = null
 var _cli_install_button: Button = null
 var _cli_source_option: OptionButton = null
+var _cli_skill_button: Button = null
 
 func _ready() -> void:
 	_translation_manager = MCPTranslationManager.new()
@@ -941,6 +942,13 @@ func _create_cli_tab() -> VBoxContainer:
 	_cli_install_button.pressed.connect(_on_cli_install_pressed)
 	install_hbox.add_child(_cli_install_button)
 
+	var skill_hbox: HBoxContainer = HBoxContainer.new()
+	content.add_child(skill_hbox)
+	_cli_skill_button = Button.new()
+	_cli_skill_button.text = _tr("ui.cli_skill_download")
+	_cli_skill_button.pressed.connect(_on_cli_skill_download_pressed)
+	skill_hbox.add_child(_cli_skill_button)
+
 	return tab
 
 func _init_cli_installer() -> void:
@@ -964,6 +972,8 @@ func _refresh_cli_translations() -> void:
 	if _cli_source_option:
 		_cli_source_option.set_item_text(0, _tr("ui.cli_source_github"))
 		_cli_source_option.set_item_text(1, _tr("ui.cli_source_quark"))
+	if _cli_skill_button:
+		_cli_skill_button.text = _tr("ui.cli_skill_download")
 	_refresh_cli_status()
 
 func _refresh_cli_status() -> void:
@@ -1003,6 +1013,9 @@ func _on_cli_install_completed(success: bool, message: String) -> void:
 		_show_cli_message(_tr("ui.cli_install_failed") + "\n" + message)
 	_refresh_cli_status()
 
+
+func _on_cli_skill_download_pressed() -> void:
+	OS.shell_open("https://github.com/yurineko73/Godot-MCP-Native/tree/main/skills/gdmcp")
 
 func _show_cli_message(text: String) -> void:
 	var dialog: AcceptDialog = AcceptDialog.new()

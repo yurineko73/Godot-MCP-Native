@@ -45,3 +45,5 @@ ui.cli_source_github,GitHub Releases,GitHub Releases,GitHub Releases
 ui.cli_source_quark,Quark Cloud Drive,Quark Cloud Drive,夸克网盘
 ui.cli_install_success,Installation successful:,Installation successful:,安装成功：
 ui.cli_install_failed,Installation failed:,Installation failed:,安装失败：
+
+ui.cli_skill_download,"Open Skill on GitHub","Open Skill on GitHub","在 GitHub 上查看 Skill"

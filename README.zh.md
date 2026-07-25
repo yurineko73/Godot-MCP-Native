@@ -37,10 +37,10 @@ gdmcp --json nodes properties set /root/Player --property speed --value 300
 
 **安装**：打开 Godot 编辑器 → MCP 面板 → **CLI Tools** 标签页，或从
 [GitHub Releases](https://github.com/yurineko73/Godot-MCP-Native/releases) 下载。
-完整文档见 [CLI README](cli/gdmcp/README.md) 和 [CLI Reference](docs/current/gdmcp-cli-reference.md)。
+完整文档见 [CLI README](https://github.com/yurineko73/Godot-MCP-Native/blob/main/cli/gdmcp/README.md) 和 [CLI Reference](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/gdmcp-cli-reference.md)。
 
-**Skill**：从 `skills/gdmcp/` 安装配套 Codex Skill，教你的代理使用 CLI 工作流。
-将 `skills/gdmcp/` 复制到 `~/.codex/skills/gdmcp/`。
+**Skill**：从 [skills/gdmcp/](https://github.com/yurineko73/Godot-MCP-Native/blob/main/skills/gdmcp) 安装配套 Codex Skill，教你的代理使用 CLI 工作流。
+将 [skills/gdmcp/](https://github.com/yurineko73/Godot-MCP-Native/blob/main/skills/gdmcp) 复制到 `~/.codex/skills/gdmcp/`。
 
 ## 📦 安装
 
@@ -400,12 +400,12 @@ url = "http://localhost:9080/mcp"
 ## 📖 文档
 
 详细文档请查看 `docs/current/` 文件夹：
-- [快速开始指南](docs/current/quickstart.md)
-- [架构设计](docs/current/architecture.md)
-- [工具参考](docs/current/tools-reference.md)
-- [CLI 参考](docs/current/gdmcp-cli-reference.md)
-- [发布流程](docs/development/release-workflow.md)
-- [测试指南](docs/current/testing-guide.md)
+- [快速开始指南](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/quickstart.md)
+- [架构设计](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/architecture.md)
+- [工具参考](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/tools-reference.md)
+- [CLI 参考](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/gdmcp-cli-reference.md)
+- [发布流程](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/development/release-workflow.md)
+- [测试指南](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/testing-guide.md)
 
 ## 🤝 贡献
 

@@ -38,11 +38,11 @@ gdmcp --json nodes properties set /root/Player --property speed --value 300
 
 **Installation**: Open the Godot editor → MCP dock → **CLI Tools** tab, or download
 from [GitHub Releases](https://github.com/yurineko73/Godot-MCP-Native/releases).
-See the [CLI README](cli/gdmcp/README.md) and [CLI Reference](docs/current/gdmcp-cli-reference.md)
+See the [CLI README](https://github.com/yurineko73/Godot-MCP-Native/blob/main/cli/gdmcp/README.md) and [CLI Reference](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/gdmcp-cli-reference.md)
 for full documentation.
 
-**Skill**: Install the companion Codex skill from `skills/gdmcp/` to teach your
-agent the CLI workflow. Copy `skills/gdmcp/` to `~/.codex/skills/gdmcp/`.
+**Skill**: Install the companion Codex skill from [skills/gdmcp/](https://github.com/yurineko73/Godot-MCP-Native/blob/main/skills/gdmcp) to teach your
+agent the CLI workflow. Copy [skills/gdmcp/](https://github.com/yurineko73/Godot-MCP-Native/blob/main/skills/gdmcp) to `~/.codex/skills/gdmcp/`.
 
 ## 📦 Installation
 
@@ -404,12 +404,12 @@ Implement a day/night cycle system with dynamic lighting
 ## 📖 Documentation
 
 For detailed documentation, see the `docs/current/` folder:
-- [Quick Start Guide](docs/current/quickstart.md)
-- [Architecture Design](docs/current/architecture.md)
-- [Tools Reference](docs/current/tools-reference.md)
-- [CLI Reference](docs/current/gdmcp-cli-reference.md)
-- [Release Workflow](docs/development/release-workflow.md)
-- [Testing Guide](docs/current/testing-guide.md)
+- [Quick Start Guide](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/quickstart.md)
+- [Architecture Design](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/architecture.md)
+- [Tools Reference](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/tools-reference.md)
+- [CLI Reference](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/gdmcp-cli-reference.md)
+- [Release Workflow](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/development/release-workflow.md)
+- [Testing Guide](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/testing-guide.md)
 
 ## 🤝 Contributing
 

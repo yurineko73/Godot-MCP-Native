@@ -27,7 +27,7 @@
 相比 MCP 可减少约 30,000 tokens 的上下文消耗。在 MCP 停靠面板的 **CLI Tools** 标签页中安装，
 或从 [GitHub Releases](https://github.com/yurineko73/Godot-MCP-Native/releases) 下载。
 
-详见 [CLI README](../../cli/gdmcp/README.md)。
+详见 [CLI README](https://github.com/yurineko73/Godot-MCP-Native/blob/main/cli/gdmcp/README.md)。
 
 ## 📦 安装
 
@@ -368,10 +368,10 @@ url = "http://localhost:9080/mcp"
 ## 📖 文档
 
 详细文档请查看 `docs/current/` 文件夹：
-- [快速开始指南](docs/current/quickstart.md)
-- [架构设计](docs/current/architecture.md)
-- [工具参考](docs/current/tools-reference.md)
-- [测试指南](docs/current/testing-guide.md)
+- [快速开始指南](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/quickstart.md)
+- [架构设计](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/architecture.md)
+- [工具参考](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/tools-reference.md)
+- [测试指南](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/testing-guide.md)
 
 ## 🤝 贡献
 

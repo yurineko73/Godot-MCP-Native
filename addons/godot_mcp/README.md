@@ -28,7 +28,7 @@ that reduces model context usage by ~30,000 tokens compared to MCP. Install it f
 **CLI Tools** tab in the MCP dock panel, or download from
 [GitHub Releases](https://github.com/yurineko73/Godot-MCP-Native/releases).
 
-See [CLI README](../../cli/gdmcp/README.md) for details.
+See [CLI README](https://github.com/yurineko73/Godot-MCP-Native/blob/main/cli/gdmcp/README.md) for details.
 
 ## 📦 Installation
 
@@ -367,10 +367,10 @@ Implement a day/night cycle system with dynamic lighting
 ## 📖 Documentation
 
 For detailed documentation, see the `docs/current/` folder:
-- [Quick Start Guide](docs/current/quickstart.md)
-- [Architecture Design](docs/current/architecture.md)
-- [Tools Reference](docs/current/tools-reference.md)
-- [Testing Guide](docs/current/testing-guide.md)
+- [Quick Start Guide](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/quickstart.md)
+- [Architecture Design](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/architecture.md)
+- [Tools Reference](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/tools-reference.md)
+- [Testing Guide](https://github.com/yurineko73/Godot-MCP-Native/blob/main/docs/current/testing-guide.md)
 
 ## 🤝 Contributing
 

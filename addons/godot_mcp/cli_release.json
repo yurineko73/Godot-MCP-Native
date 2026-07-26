@@ -1,7 +1,7 @@
 {
   "version": "1.0.8",
   "github": {
-    "url_template": "https://github.com/yurineko73/Godot-MCP-Native/releases/download/v{version}/gdmcp-{target}.zip"
+    "url_template": "https://github.com/yurineko73/Godot-MCP-Native/releases/download/v{version}/gdmcp-{version}-{target}.zip"
   },
   "quark": {
     "page_url": "https://pan.quark.cn/s/69c412007005",

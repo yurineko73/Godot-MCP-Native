@@ -118,7 +118,7 @@ if (-not $DryRun) {
 Write-Step "Step 4: Create plugin archive"
 if (-not $DryRun) {
     New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
-    Compress-Archive -Path "$RepoRoot\addons\godot_mcp\*" -DestinationPath $PluginZip -Force
+    Compress-Archive -Path "$RepoRoot\addons\godot_mcp" -DestinationPath $PluginZip -Force
     Write-Host "  $PluginZip"
 } else {
     Write-Host "  [DRY RUN] Would create $PluginZip"

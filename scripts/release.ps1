@@ -118,12 +118,13 @@ if (-not $DryRun) {
 Write-Step "Step 4: Create plugin archive"
 if (-not $DryRun) {
     New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
-    # Stage with addons/ prefix so extracted path is addons/godot_mcp/
+    # Stage: godot-mcp-native-X.Y.Z/addons/godot_mcp/
     $staging = Join-Path ([IO.Path]::GetTempPath()) "gdmcp-zip-staging"
     if (Test-Path $staging) { Remove-Item -Recurse -Force $staging }
-    New-Item -Path "$staging\addons" -ItemType Directory -Force | Out-Null
-    Copy-Item -Recurse -Force "$RepoRoot\addons\godot_mcp" "$staging\addons\godot_mcp"
-    Compress-Archive -Path "$staging\addons" -DestinationPath $PluginZip -Force
+    $inner = "$staging\godot-mcp-native-$Version\addons\godot_mcp"
+    New-Item -Path $inner -ItemType Directory -Force | Out-Null
+    Copy-Item -Recurse -Force "$RepoRoot\addons\godot_mcp\*" $inner
+    Compress-Archive -Path "$staging\godot-mcp-native-$Version" -DestinationPath $PluginZip -Force
     Remove-Item -Recurse -Force $staging
     Write-Host "  $PluginZip"
 } else {

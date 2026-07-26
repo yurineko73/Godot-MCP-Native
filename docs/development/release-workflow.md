@@ -89,7 +89,9 @@ dist/gdmcp-X.Y.Z-aarch64-apple-darwin.zip
 Package the `addons/godot_mcp/` directory for Godot Asset Library:
 
 ```powershell
-Compress-Archive -Path addons/godot_mcp -DestinationPath dist/godot-mcp-native-X.Y.Z.zip
+# Stage with addons/ prefix
+Copy-Item -Recurse addons/godot_mcp $env:TEMP/staging/addons/godot_mcp
+Compress-Archive -Path $env:TEMP/staging/addons -DestinationPath dist/godot-mcp-native-X.Y.Z.zip
 ```
 
 ### Step 5: Create GitHub Release

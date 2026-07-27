@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$InstallRoot,
+    [string]$ExpectedVersion,
+    [string]$ExpectedTarget,
     [switch]$AddPath,
     [switch]$Uninstall,
     [switch]$DryRun
@@ -24,10 +26,28 @@ if (-not (Test-Path -LiteralPath $checksumsPath)) {
 }
 
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$schemaVersion = [int]$manifest.schema_version
+$packageName = [string]$manifest.package
+$manifestVersion = [string]$manifest.version
+$manifestTarget = [string]$manifest.target
 $executableName = [string]$manifest.executable
+
+if ($schemaVersion -ne 1) {
+    throw "Unsupported release manifest schema: $schemaVersion"
+}
+if ($packageName -ne "gdmcp") {
+    throw "Release manifest package is not gdmcp: $packageName"
+}
+if (-not [string]::IsNullOrWhiteSpace($ExpectedVersion) -and $manifestVersion -ne $ExpectedVersion) {
+    throw "Release manifest version mismatch: expected $ExpectedVersion but found $manifestVersion"
+}
+if (-not [string]::IsNullOrWhiteSpace($ExpectedTarget) -and $manifestTarget -ne $ExpectedTarget) {
+    throw "Release manifest target mismatch: expected $ExpectedTarget but found $manifestTarget"
+}
 if ([string]::IsNullOrWhiteSpace($executableName) -or $executableName -match '[\\/]') {
     throw "Release manifest contains an invalid executable name."
 }
+
 $source = Join-Path $ArchiveRoot $executableName
 $destination = Join-Path $InstallRoot $executableName
 

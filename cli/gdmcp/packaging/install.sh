@@ -3,12 +3,14 @@ set -eu
 
 archive_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 install_root=${GDMCP_INSTALL_ROOT:-"$HOME/.local/gdmcp/bin"}
+expected_version=
+expected_target=
 add_path=0
 uninstall=0
 dry_run=0
 
 usage() {
-    printf '%s\n' "Usage: install.sh [--install-root DIR] [--add-path] [--uninstall] [--dry-run]"
+    printf '%s\n' "Usage: install.sh [--install-root DIR] [--expected-version VERSION] [--expected-target TARGET] [--add-path] [--uninstall] [--dry-run]"
 }
 
 while [ "$#" -gt 0 ]; do
@@ -16,6 +18,16 @@ while [ "$#" -gt 0 ]; do
         --install-root)
             [ "$#" -ge 2 ] || { usage >&2; exit 2; }
             install_root=$2
+            shift 2
+            ;;
+        --expected-version)
+            [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+            expected_version=$2
+            shift 2
+            ;;
+        --expected-target)
+            [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+            expected_target=$2
             shift 2
             ;;
         --add-path) add_path=1; shift ;;
@@ -31,7 +43,27 @@ checksums_path=$archive_root/SHA256SUMS
 [ -f "$manifest_path" ] || { printf 'Release manifest not found: %s\n' "$manifest_path" >&2; exit 1; }
 [ -f "$checksums_path" ] || { printf 'Checksum file not found: %s\n' "$checksums_path" >&2; exit 1; }
 
-executable=$(awk -F '"' '/"executable"[[:space:]]*:/ { print $4; exit }' "$manifest_path")
+json_string_value() {
+    key=$1
+    sed -n 's/.*"'"$key"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest_path" | head -n 1
+}
+
+schema_version=$(sed -n 's/.*"schema_version"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$manifest_path" | head -n 1)
+package_name=$(json_string_value package)
+manifest_version=$(json_string_value version)
+manifest_target=$(json_string_value target)
+executable=$(json_string_value executable)
+
+[ "$schema_version" = "1" ] || { printf 'Unsupported release manifest schema: %s\n' "$schema_version" >&2; exit 1; }
+[ "$package_name" = "gdmcp" ] || { printf 'Release manifest package is not gdmcp: %s\n' "$package_name" >&2; exit 1; }
+if [ -n "$expected_version" ] && [ "$manifest_version" != "$expected_version" ]; then
+    printf 'Release manifest version mismatch: expected %s but found %s\n' "$expected_version" "$manifest_version" >&2
+    exit 1
+fi
+if [ -n "$expected_target" ] && [ "$manifest_target" != "$expected_target" ]; then
+    printf 'Release manifest target mismatch: expected %s but found %s\n' "$expected_target" "$manifest_target" >&2
+    exit 1
+fi
 [ -n "$executable" ] || { printf 'Manifest executable is missing.\n' >&2; exit 1; }
 case "$executable" in */*|*\\*) printf 'Manifest executable is invalid.\n' >&2; exit 1 ;; esac
 

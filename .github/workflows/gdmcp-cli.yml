@@ -7,6 +7,7 @@ on:
       - "addons/godot_mcp/cli_release.json"
       - "addons/godot_mcp/ui/mcp_cli_installer.gd"
       - "addons/godot_mcp/ui/mcp_panel_native.gd"
+      - "addons/godot_mcp/translations/mcp_panel.csv"
       - "addons/godot_mcp/native_mcp/cli_*.gd"
       - "addons/godot_mcp/native_mcp/tool_*.gd"
       - "addons/godot_mcp/native_mcp/mcp_server_core*.gd"
@@ -25,6 +26,7 @@ on:
       - "addons/godot_mcp/cli_release.json"
       - "addons/godot_mcp/ui/mcp_cli_installer.gd"
       - "addons/godot_mcp/ui/mcp_panel_native.gd"
+      - "addons/godot_mcp/translations/mcp_panel.csv"
       - "addons/godot_mcp/native_mcp/cli_*.gd"
       - "addons/godot_mcp/native_mcp/tool_*.gd"
       - "addons/godot_mcp/native_mcp/mcp_server_core*.gd"
@@ -63,11 +65,13 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile integration tests
-        run: python -m py_compile test/integration/test_cli_api_flow.py test/integration/test_gdmcp_packaging.py test/integration/test_manual_release_workflow.py
+        run: python -m py_compile test/integration/test_cli_api_flow.py test/integration/test_gdmcp_packaging.py test/integration/test_manual_release_workflow.py test/integration/test_cli_installer_contract.py
       - name: Packaging contract tests
         run: python test/integration/test_gdmcp_packaging.py
       - name: Manual release workflow contracts
         run: python test/integration/test_manual_release_workflow.py
+      - name: CLI installer contracts
+        run: python test/integration/test_cli_installer_contract.py
       - name: POSIX script syntax
         run: bash -n cli/gdmcp/scripts/install-dev.sh cli/gdmcp/scripts/package.sh cli/gdmcp/packaging/install.sh
 

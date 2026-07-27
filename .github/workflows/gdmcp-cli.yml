@@ -4,6 +4,9 @@ on:
   push:
     paths:
       - "cli/gdmcp/**"
+      - "addons/godot_mcp/cli_release.json"
+      - "addons/godot_mcp/ui/mcp_cli_installer.gd"
+      - "addons/godot_mcp/ui/mcp_panel_native.gd"
       - "addons/godot_mcp/native_mcp/cli_*.gd"
       - "addons/godot_mcp/native_mcp/tool_*.gd"
       - "addons/godot_mcp/native_mcp/mcp_server_core*.gd"
@@ -12,12 +15,16 @@ on:
       - "test/integration/test_cli_api_flow.py"
       - "test/integration/test_gdmcp_packaging.py"
       - "test/integration/test_manual_release_workflow.py"
+      - "test/integration/test_cli_installer_contract.py"
       - "docs/current/gdmcp-cli-reference.md"
       - ".github/workflows/gdmcp-cli.yml"
       - ".github/workflows/manual-gdmcp-release.yml"
   pull_request:
     paths:
       - "cli/gdmcp/**"
+      - "addons/godot_mcp/cli_release.json"
+      - "addons/godot_mcp/ui/mcp_cli_installer.gd"
+      - "addons/godot_mcp/ui/mcp_panel_native.gd"
       - "addons/godot_mcp/native_mcp/cli_*.gd"
       - "addons/godot_mcp/native_mcp/tool_*.gd"
       - "addons/godot_mcp/native_mcp/mcp_server_core*.gd"
@@ -26,6 +33,7 @@ on:
       - "test/integration/test_cli_api_flow.py"
       - "test/integration/test_gdmcp_packaging.py"
       - "test/integration/test_manual_release_workflow.py"
+      - "test/integration/test_cli_installer_contract.py"
       - "docs/current/gdmcp-cli-reference.md"
       - ".github/workflows/gdmcp-cli.yml"
       - ".github/workflows/manual-gdmcp-release.yml"
@@ -62,3 +70,24 @@ jobs:
         run: python test/integration/test_manual_release_workflow.py
       - name: POSIX script syntax
         run: bash -n cli/gdmcp/scripts/install-dev.sh cli/gdmcp/scripts/package.sh cli/gdmcp/packaging/install.sh
+
+  godot-script-parse:
+    runs-on: ubuntu-latest
+    env:
+      GODOT_VERSION: "4.6.1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Godot
+        run: |
+          curl --fail --location --retry 3 \
+            "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" \
+            --output /tmp/godot.zip
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          chmod +x "/tmp/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64"
+      - name: Parse CLI installer script
+        run: |
+          "/tmp/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" \
+            --headless \
+            --path . \
+            --script addons/godot_mcp/ui/mcp_cli_installer.gd \
+            --check-only

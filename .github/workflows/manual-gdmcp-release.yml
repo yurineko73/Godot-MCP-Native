@@ -237,7 +237,7 @@ jobs:
       - name: Upload CLI package
         uses: actions/upload-artifact@v4
         with:
-          name: gdmcp-${{ matrix.target }}
+          name: gdmcp-${{ needs.prepare.outputs.version }}-${{ matrix.target }}
           path: dist/gdmcp-${{ needs.prepare.outputs.version }}-${{ matrix.target }}.zip
           if-no-files-found: error
           retention-days: 7
@@ -295,7 +295,7 @@ jobs:
       - name: Upload plugin package
         uses: actions/upload-artifact@v4
         with:
-          name: godot-mcp-native
+          name: godot-mcp-native-${{ needs.prepare.outputs.version }}
           path: dist/godot-mcp-native-${{ needs.prepare.outputs.version }}.zip
           if-no-files-found: error
           retention-days: 7

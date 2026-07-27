@@ -11,6 +11,7 @@
   "targets": {
     "x86_64-pc-windows-msvc": "gdmcp.exe",
     "x86_64-unknown-linux-gnu": "gdmcp",
+    "aarch64-unknown-linux-gnu": "gdmcp",
     "aarch64-apple-darwin": "gdmcp",
     "x86_64-apple-darwin": "gdmcp"
   }

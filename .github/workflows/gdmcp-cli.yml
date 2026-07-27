@@ -84,7 +84,7 @@ jobs:
       - name: Download Godot
         run: |
           curl --fail --location --retry 3 \
-            "https://downloads.godotengine.org/?flavor=stable&platform=linux.64&slug=linux.x86_64.zip&version=${GODOT_VERSION}" \
+            "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" \
             --output /tmp/godot.zip
           unzip -q /tmp/godot.zip -d /tmp/godot
           chmod +x "/tmp/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64"

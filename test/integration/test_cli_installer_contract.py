@@ -56,8 +56,9 @@ class CliInstallerContractTests(unittest.TestCase):
             install_root = Path(temp_dir) / "installed"
             archive_root.mkdir()
             executable = archive_root / "gdmcp"
-            executable.write_bytes(b"#!/bin/sh\necho gdmcp 1.2.3\n")
-            digest = hashlib.sha256(executable.read_bytes()).hexdigest()
+            original_bytes = b"#!/bin/sh\necho gdmcp 1.2.3\n"
+            executable.write_bytes(original_bytes)
+            digest = hashlib.sha256(original_bytes).hexdigest()
             (archive_root / "SHA256SUMS").write_text(
                 f"{digest}  gdmcp\n",
                 encoding="utf-8",
@@ -95,7 +96,7 @@ class CliInstallerContractTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             installed = install_root / "gdmcp"
-            self.assertEqual(installed.read_bytes(), executable.read_bytes())
+            self.assertEqual(installed.read_bytes(), original_bytes)
             self.assertTrue(os.access(installed, os.X_OK))
 
             mismatch_root = Path(temp_dir) / "mismatch"
@@ -117,6 +118,27 @@ class CliInstallerContractTests(unittest.TestCase):
             self.assertNotEqual(mismatch.returncode, 0)
             self.assertIn("target mismatch", (mismatch.stdout + mismatch.stderr).lower())
             self.assertFalse((mismatch_root / "gdmcp").exists())
+
+            executable.write_bytes(original_bytes + b"# tampered\n")
+            tampered_root = Path(temp_dir) / "tampered"
+            tampered = subprocess.run(
+                [
+                    "/bin/sh",
+                    str(installer),
+                    "--install-root",
+                    str(tampered_root),
+                    "--expected-version",
+                    "1.2.3",
+                    "--expected-target",
+                    "aarch64-unknown-linux-gnu",
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(tampered.returncode, 0)
+            self.assertIn("sha-256 verification failed", (tampered.stdout + tampered.stderr).lower())
+            self.assertFalse((tampered_root / "gdmcp").exists())
 
 
 if __name__ == "__main__":

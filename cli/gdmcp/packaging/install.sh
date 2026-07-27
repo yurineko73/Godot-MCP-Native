@@ -43,11 +43,16 @@ checksums_path=$archive_root/SHA256SUMS
 [ -f "$manifest_path" ] || { printf 'Release manifest not found: %s\n' "$manifest_path" >&2; exit 1; }
 [ -f "$checksums_path" ] || { printf 'Checksum file not found: %s\n' "$checksums_path" >&2; exit 1; }
 
-schema_version=$(awk -F ':' '/"schema_version"[[:space:]]*:/ { value=$2; gsub(/[^0-9]/, "", value); print value; exit }' "$manifest_path")
-package_name=$(awk -F '"' '/"package"[[:space:]]*:/ { print $4; exit }' "$manifest_path")
-manifest_version=$(awk -F '"' '/"version"[[:space:]]*:/ { print $4; exit }' "$manifest_path")
-manifest_target=$(awk -F '"' '/"target"[[:space:]]*:/ { print $4; exit }' "$manifest_path")
-executable=$(awk -F '"' '/"executable"[[:space:]]*:/ { print $4; exit }' "$manifest_path")
+json_string_value() {
+    key=$1
+    sed -n 's/.*"'"$key"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest_path" | head -n 1
+}
+
+schema_version=$(sed -n 's/.*"schema_version"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$manifest_path" | head -n 1)
+package_name=$(json_string_value package)
+manifest_version=$(json_string_value version)
+manifest_target=$(json_string_value target)
+executable=$(json_string_value executable)
 
 [ "$schema_version" = "1" ] || { printf 'Unsupported release manifest schema: %s\n' "$schema_version" >&2; exit 1; }
 [ "$package_name" = "gdmcp" ] || { printf 'Release manifest package is not gdmcp: %s\n' "$package_name" >&2; exit 1; }

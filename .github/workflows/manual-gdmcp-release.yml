@@ -1,0 +1,407 @@
+name: Manual gdmcp Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      replace_existing_assets:
+        description: Replace workflow-managed assets when the release already exists
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.prepare.outputs.version }}
+      tag: ${{ steps.prepare.outputs.tag }}
+      source_sha: ${{ steps.prepare.outputs.source_sha }}
+      tag_exists: ${{ steps.prepare.outputs.tag_exists }}
+      release_exists: ${{ steps.prepare.outputs.release_exists }}
+    steps:
+      - name: Check out selected revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Resolve version, tag, and source commit
+        id: prepare
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPLACE_EXISTING_ASSETS: ${{ inputs.replace_existing_assets }}
+        run: |
+          set -euo pipefail
+
+          validate_versions() {
+            python - <<'PY'
+          import json
+          import re
+          import sys
+          import tomllib
+          from pathlib import Path
+
+          cargo_version = tomllib.loads(Path("cli/gdmcp/Cargo.toml").read_text(encoding="utf-8"))["package"]["version"]
+
+          plugin_text = Path("addons/godot_mcp/plugin.cfg").read_text(encoding="utf-8")
+          plugin_match = re.search(r'(?m)^version\s*=\s*"([^"]+)"\s*$', plugin_text)
+          if plugin_match is None:
+              raise SystemExit("plugin.cfg version was not found")
+          plugin_version = plugin_match.group(1)
+
+          release_config = json.loads(Path("addons/godot_mcp/cli_release.json").read_text(encoding="utf-8"))
+          release_version = str(release_config.get("version", ""))
+
+          if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", cargo_version) is None:
+              raise SystemExit(f"Cargo.toml version is not X.Y.Z: {cargo_version}")
+
+          versions = {
+              "cli/gdmcp/Cargo.toml": cargo_version,
+              "addons/godot_mcp/plugin.cfg": plugin_version,
+              "addons/godot_mcp/cli_release.json": release_version,
+          }
+          if len(set(versions.values())) != 1:
+              for path, version in versions.items():
+                  print(f"{path}: {version}", file=sys.stderr)
+              raise SystemExit("release version declarations do not match")
+
+          print(cargo_version)
+          PY
+          }
+
+          candidate_version=$(validate_versions)
+          tag="v${candidate_version}"
+
+          git fetch --force --tags origin
+          if git rev-parse -q --verify "refs/tags/${tag}^{commit}" >/dev/null; then
+            tag_exists=true
+            source_sha=$(git rev-parse "refs/tags/${tag}^{commit}")
+          else
+            tag_exists=false
+            source_sha="$GITHUB_SHA"
+          fi
+
+          git checkout --detach "$source_sha"
+          resolved_version=$(validate_versions)
+          if [[ "$resolved_version" != "$candidate_version" ]]; then
+            echo "::error::Selected revision declares ${candidate_version}, but ${tag} resolves to a commit declaring ${resolved_version}."
+            exit 1
+          fi
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            release_exists=true
+          else
+            release_exists=false
+          fi
+
+          if [[ "$release_exists" == true && "$REPLACE_EXISTING_ASSETS" != true ]]; then
+            echo "::error::Release ${tag} already exists. Re-run with replace_existing_assets enabled to replace only its managed assets."
+            exit 1
+          fi
+
+          {
+            echo "version=$resolved_version"
+            echo "tag=$tag"
+            echo "source_sha=$source_sha"
+            echo "tag_exists=$tag_exists"
+            echo "release_exists=$release_exists"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Version: $resolved_version"
+          echo "Tag: $tag"
+          echo "Source commit: $source_sha"
+          echo "Tag exists: $tag_exists"
+          echo "Release exists: $release_exists"
+
+  build-cli:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            executable: gdmcp.exe
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            executable: gdmcp
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            executable: gdmcp
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            executable: gdmcp
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            executable: gdmcp
+    runs-on: ${{ matrix.os }}
+    name: Build CLI (${{ matrix.target }})
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build locked release binary
+        run: cargo build --manifest-path cli/gdmcp/Cargo.toml --release --locked --target ${{ matrix.target }}
+
+      - name: Create release ZIP
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TARGET: ${{ matrix.target }}
+          EXECUTABLE: ${{ matrix.executable }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import zipfile
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          target = os.environ["TARGET"]
+          executable = os.environ["EXECUTABLE"]
+          cli_root = Path("cli/gdmcp")
+          binary = cli_root / "target" / target / "release" / executable
+          packaging = cli_root / "packaging"
+          output = Path("dist") / f"gdmcp-{version}-{target}.zip"
+
+          if not binary.is_file():
+              raise SystemExit(f"release binary was not produced: {binary}")
+
+          required = {
+              "install.ps1": packaging / "install.ps1",
+              "install.sh": packaging / "install.sh",
+              "README.md": packaging / "README.md",
+              "LICENSE": packaging / "LICENSE",
+          }
+          missing = [str(path) for path in required.values() if not path.is_file()]
+          if missing:
+              raise SystemExit("missing packaging files: " + ", ".join(missing))
+
+          output.parent.mkdir(parents=True, exist_ok=True)
+          digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+          manifest = {
+              "schema_version": 1,
+              "package": "gdmcp",
+              "version": version,
+              "target": target,
+              "executable": executable,
+          }
+
+          def write_bytes(archive: zipfile.ZipFile, name: str, data: bytes, mode: int) -> None:
+              info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+              info.compress_type = zipfile.ZIP_DEFLATED
+              info.create_system = 3
+              info.external_attr = (mode & 0xFFFF) << 16
+              archive.writestr(info, data)
+
+          with zipfile.ZipFile(output, "w") as archive:
+              write_bytes(archive, executable, binary.read_bytes(), 0o755)
+              write_bytes(archive, "install.ps1", required["install.ps1"].read_bytes(), 0o644)
+              write_bytes(archive, "install.sh", required["install.sh"].read_bytes(), 0o755)
+              write_bytes(archive, "README.md", required["README.md"].read_bytes(), 0o644)
+              write_bytes(archive, "LICENSE", required["LICENSE"].read_bytes(), 0o644)
+              write_bytes(archive, "SHA256SUMS", f"{digest}  {executable}\n".encode(), 0o644)
+              write_bytes(
+                  archive,
+                  "release-manifest.json",
+                  (json.dumps(manifest, indent=2) + "\n").encode(),
+                  0o644,
+              )
+
+          print(output)
+          PY
+
+      - name: Upload CLI package
+        uses: actions/upload-artifact@v4
+        with:
+          name: gdmcp-${{ matrix.target }}
+          path: dist/gdmcp-${{ needs.prepare.outputs.version }}-${{ matrix.target }}.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  package-plugin:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Create plugin ZIP
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          python - <<'PY'
+          import os
+          import stat
+          import zipfile
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          source = Path("addons/godot_mcp")
+          output = Path("dist") / f"godot-mcp-native-{version}.zip"
+
+          if not source.is_dir():
+              raise SystemExit(f"plugin directory was not found: {source}")
+
+          output.parent.mkdir(parents=True, exist_ok=True)
+          files = sorted(path for path in source.rglob("*") if path.is_file())
+          if not files:
+              raise SystemExit("plugin directory contains no files")
+
+          with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+              for path in files:
+                  relative = path.relative_to(source)
+                  archive_name = (Path("addons/godot_mcp") / relative).as_posix()
+                  info = zipfile.ZipInfo(archive_name, date_time=(1980, 1, 1, 0, 0, 0))
+                  info.compress_type = zipfile.ZIP_DEFLATED
+                  info.create_system = 3
+                  mode = stat.S_IMODE(path.stat().st_mode) or 0o644
+                  info.external_attr = (mode & 0xFFFF) << 16
+                  archive.writestr(info, path.read_bytes())
+
+          print(output)
+          PY
+
+      - name: Upload plugin package
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-mcp-native
+          path: dist/godot-mcp-native-${{ needs.prepare.outputs.version }}.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs:
+      - prepare
+      - build-cli
+      - package-plugin
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: manual-gdmcp-release-${{ github.repository }}-${{ needs.prepare.outputs.tag }}
+      cancel-in-progress: false
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          fetch-depth: 0
+
+      - name: Download all packages
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Validate complete asset set
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          root = Path("release-assets")
+          expected = {
+              f"godot-mcp-native-{version}.zip",
+              f"gdmcp-{version}-x86_64-pc-windows-msvc.zip",
+              f"gdmcp-{version}-x86_64-unknown-linux-gnu.zip",
+              f"gdmcp-{version}-aarch64-unknown-linux-gnu.zip",
+              f"gdmcp-{version}-aarch64-apple-darwin.zip",
+              f"gdmcp-{version}-x86_64-apple-darwin.zip",
+          }
+          files = [path for path in root.rglob("*") if path.is_file()]
+          names = {path.name for path in files}
+
+          if names != expected or len(files) != len(expected):
+              print("Expected assets:")
+              for name in sorted(expected):
+                  print(f"  {name}")
+              print("Downloaded files:")
+              for path in sorted(files):
+                  print(f"  {path}")
+              raise SystemExit("release artifact set is incomplete or contains unexpected files")
+
+          for path in files:
+              if path.parent != root:
+                  raise SystemExit(f"asset is unexpectedly nested: {path}")
+              if path.stat().st_size == 0:
+                  raise SystemExit(f"asset is empty: {path}")
+          PY
+
+      - name: Create or update GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+          PREPARED_TAG_EXISTS: ${{ needs.prepare.outputs.tag_exists }}
+          REPLACE_EXISTING_ASSETS: ${{ inputs.replace_existing_assets }}
+        run: |
+          set -euo pipefail
+
+          git fetch --force --tags origin
+          if git rev-parse -q --verify "refs/tags/${TAG}^{commit}" >/dev/null; then
+            actual_sha=$(git rev-parse "refs/tags/${TAG}^{commit}")
+            if [[ "$actual_sha" != "$SOURCE_SHA" ]]; then
+              echo "::error::Tag ${TAG} now points to ${actual_sha}, not the prepared source ${SOURCE_SHA}. The tag will not be moved."
+              exit 1
+            fi
+          else
+            if [[ "$PREPARED_TAG_EXISTS" == true ]]; then
+              echo "::error::Tag ${TAG} existed during preparation but no longer exists. Refusing to recreate it automatically."
+              exit 1
+            fi
+            git tag "$TAG" "$SOURCE_SHA"
+            git push origin "refs/tags/$TAG"
+          fi
+
+          mapfile -t assets < <(find release-assets -maxdepth 1 -type f -name '*.zip' -print | sort)
+          if [[ ${#assets[@]} -ne 6 ]]; then
+            echo "::error::Expected six validated release assets, found ${#assets[@]}."
+            exit 1
+          fi
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            if [[ "$REPLACE_EXISTING_ASSETS" != true ]]; then
+              echo "::error::Release ${TAG} was created after preparation. Re-run with replace_existing_assets enabled."
+              exit 1
+            fi
+            gh release upload "$TAG" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+            echo "Replaced workflow-managed assets on existing release ${TAG}; tag and Release metadata were unchanged."
+          else
+            gh release create "$TAG" "${assets[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --draft \
+              --title "$TAG" \
+              --generate-notes
+            echo "Created draft release ${TAG}."
+          fi

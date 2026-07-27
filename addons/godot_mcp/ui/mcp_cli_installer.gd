@@ -224,12 +224,12 @@ func _extract_archive(zip_path: String, archive_root: String) -> String:
 		if parent_error != OK:
 			reader.close()
 			return "Cannot create archive directory: %s" % destination.get_base_dir()
-		var output: FileAccess = FileAccess.open(destination, FileAccess.WRITE)
-		if output == null:
+		var extracted_file: FileAccess = FileAccess.open(destination, FileAccess.WRITE)
+		if extracted_file == null:
 			reader.close()
 			return "Cannot extract archive file: %s" % destination
-		output.store_buffer(reader.read_file(entry))
-		output.close()
+		extracted_file.store_buffer(reader.read_file(entry))
+		extracted_file.close()
 	reader.close()
 	return ""
 
@@ -272,8 +272,9 @@ func _validate_manifest(archive_root: String, target: String, exe_name: String) 
 func _run_packaged_installer(archive_root: String, install_dir: String, target: String) -> Dictionary:
 	var output: Array = []
 	var exit_code: int = -1
+	var script_path: String
 	if OS.get_name() == "Windows":
-		var script_path: String = archive_root.path_join("install.ps1")
+		script_path = archive_root.path_join("install.ps1")
 		exit_code = OS.execute(
 			"powershell.exe",
 			PackedStringArray([
@@ -294,7 +295,7 @@ func _run_packaged_installer(archive_root: String, install_dir: String, target: 
 			true
 		)
 	else:
-		var script_path: String = archive_root.path_join("install.sh")
+		script_path = archive_root.path_join("install.sh")
 		exit_code = OS.execute(
 			"/bin/sh",
 			PackedStringArray([

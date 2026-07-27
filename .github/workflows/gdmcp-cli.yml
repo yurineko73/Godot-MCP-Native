@@ -11,8 +11,10 @@ on:
       - "test/unit/native_mcp/**"
       - "test/integration/test_cli_api_flow.py"
       - "test/integration/test_gdmcp_packaging.py"
+      - "test/integration/test_manual_release_workflow.py"
       - "docs/current/gdmcp-cli-reference.md"
       - ".github/workflows/gdmcp-cli.yml"
+      - ".github/workflows/manual-gdmcp-release.yml"
   pull_request:
     paths:
       - "cli/gdmcp/**"
@@ -23,8 +25,10 @@ on:
       - "test/unit/native_mcp/**"
       - "test/integration/test_cli_api_flow.py"
       - "test/integration/test_gdmcp_packaging.py"
+      - "test/integration/test_manual_release_workflow.py"
       - "docs/current/gdmcp-cli-reference.md"
       - ".github/workflows/gdmcp-cli.yml"
+      - ".github/workflows/manual-gdmcp-release.yml"
 
 jobs:
   rust:
@@ -50,9 +54,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Compile integration test
-        run: python -m py_compile test/integration/test_cli_api_flow.py test/integration/test_gdmcp_packaging.py
+      - name: Compile integration tests
+        run: python -m py_compile test/integration/test_cli_api_flow.py test/integration/test_gdmcp_packaging.py test/integration/test_manual_release_workflow.py
       - name: Packaging contract tests
         run: python test/integration/test_gdmcp_packaging.py
+      - name: Manual release workflow contracts
+        run: python test/integration/test_manual_release_workflow.py
       - name: POSIX script syntax
         run: bash -n cli/gdmcp/scripts/install-dev.sh cli/gdmcp/scripts/package.sh cli/gdmcp/packaging/install.sh

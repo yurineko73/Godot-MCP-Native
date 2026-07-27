@@ -15,9 +15,18 @@ POSIX_INSTALLER_PATH = REPO_ROOT / "cli" / "gdmcp" / "packaging" / "install.sh"
 
 
 class CliInstallerContractTests(unittest.TestCase):
-    def test_supported_release_targets_include_linux_arm64(self) -> None:
+    def test_supported_release_target_matrix(self) -> None:
         config = json.loads(RELEASE_CONFIG_PATH.read_text(encoding="utf-8"))
-        self.assertEqual(config["targets"]["aarch64-unknown-linux-gnu"], "gdmcp")
+        self.assertEqual(
+            config["targets"],
+            {
+                "x86_64-pc-windows-msvc": "gdmcp.exe",
+                "x86_64-unknown-linux-gnu": "gdmcp",
+                "aarch64-unknown-linux-gnu": "gdmcp",
+                "aarch64-apple-darwin": "gdmcp",
+                "x86_64-apple-darwin": "gdmcp",
+            },
+        )
 
     def test_ui_uses_godot_architecture_and_platform_install_scripts(self) -> None:
         installer = INSTALLER_PATH.read_text(encoding="utf-8")

@@ -1,5 +1,7 @@
 # Godot MCP Native (Model Context Protocol)
 
+[![MCP Toplist](https://mcptoplist.com/badge/pulsemcp%2Fyurineko73-godot-mcp-native.svg)](https://mcptoplist.com/server/pulsemcp%2Fyurineko73-godot-mcp-native)
+
 [中文版本](https://github.com/yurineko73/Godot-MCP-Native/blob/main/README.zh.md)
 
 ![Godot Version](https://img.shields.io/badge/Godot-4.x-blue?logo=godot-engine)

@@ -31,6 +31,22 @@ class ManualReleaseWorkflowTests(unittest.TestCase):
             text,
         )
 
+    def test_plugin_zip_wraps_addons_in_versioned_root(self) -> None:
+        # Godot's asset installer detects a single root directory and strips it by
+        # default ("Ignore asset root"). Without the versioned wrapper the zip root
+        # is addons/, which gets stripped and installs to res://godot_mcp/ instead
+        # of res://addons/godot_mcp/.
+        text = WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn(
+            'root = Path(f"godot-mcp-native-{version}")',
+            text,
+        )
+        self.assertIn(
+            'archive_name = (root / "addons/godot_mcp" / relative).as_posix()',
+            text,
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -269,6 +269,10 @@ jobs:
           version = os.environ["VERSION"]
           source = Path("addons/godot_mcp")
           output = Path("dist") / f"godot-mcp-native-{version}.zip"
+          # Godot's asset installer strips the single root directory by default
+          # ("Ignore asset root"), so wrap addons/ in a versioned folder to make
+          # the plugin land in res://addons/godot_mcp/ instead of res://godot_mcp/.
+          root = Path(f"godot-mcp-native-{version}")
 
           if not source.is_dir():
               raise SystemExit(f"plugin directory was not found: {source}")
@@ -281,7 +285,7 @@ jobs:
           with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
               for path in files:
                   relative = path.relative_to(source)
-                  archive_name = (Path("addons/godot_mcp") / relative).as_posix()
+                  archive_name = (root / "addons/godot_mcp" / relative).as_posix()
                   info = zipfile.ZipInfo(archive_name, date_time=(1980, 1, 1, 0, 0, 0))
                   info.compress_type = zipfile.ZIP_DEFLATED
                   info.create_system = 3

@@ -5,3 +5,8 @@
 /**        export-ignore
 /addons    !export-ignore
 /addons/** !export-ignore
+
+# Keep the agent skills in the source archive so skill managers that install
+# from the GitHub archive URL can discover skills/*/SKILL.md.
+/skills    !export-ignore
+/skills/** !export-ignore

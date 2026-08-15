@@ -140,3 +140,47 @@ func test_get_class_api_metadata_reports_missing_class():
 	var project_tools: RefCounted = load("res://addons/godot_mcp/tools/project_tools_native.gd").new()
 	var result: Dictionary = project_tools._tool_get_class_api_metadata({"class_name": "DefinitelyMissingClass123"})
 	assert_has(result, "error", "Missing classes should return an error payload")
+
+func test_list_project_tests_uses_default_test_root_for_missing_or_blank_search_path():
+	var project_tools: RefCounted = load("res://addons/godot_mcp/tools/project_tools_native.gd").new()
+	var default_result: Dictionary = project_tools._tool_list_project_tests({})
+	var blank_result: Dictionary = project_tools._tool_list_project_tests({"search_path": "   "})
+	assert_false(default_result.has("error"), "Default search should reach test discovery")
+	assert_false(blank_result.has("error"), "Blank search should use the default test root")
+	assert_eq(default_result.search_path, "res://test/", "Default search should use the test root directory")
+	assert_eq(blank_result.search_path, "res://test/", "Blank search should use the test root directory")
+	for entry in default_result.tests:
+		assert_true(str(entry.get("test_path", "")).begins_with("res://test/"), "Default search should only return tests under the test root")
+	for entry in blank_result.tests:
+		assert_true(str(entry.get("test_path", "")).begins_with("res://test/"), "Blank search should only return tests under the test root")
+
+func test_run_project_tests_uses_default_test_root_without_executing_discovered_tests():
+	var project_tools: RefCounted = load("res://addons/godot_mcp/tools/project_tools_native.gd").new()
+	var default_result: Dictionary = project_tools._tool_run_project_tests({"framework": "unsupported"})
+	var blank_result: Dictionary = project_tools._tool_run_project_tests({"search_path": "   ", "framework": "unsupported"})
+	assert_false(default_result.has("error"), "Default batch run should reach discovery")
+	assert_false(blank_result.has("error"), "Blank batch search should use the default test root")
+	assert_eq(default_result.search_path, "res://test/", "Default batch run should use the test root directory")
+	assert_eq(blank_result.search_path, "res://test/", "Blank batch run should use the test root directory")
+	assert_eq(default_result.total_count, 0, "An unsupported framework should avoid executing project tests")
+	assert_eq(blank_result.total_count, 0, "An unsupported framework should avoid executing project tests")
+
+func test_project_test_tools_reject_paths_outside_test_tree_and_traversal():
+	var project_tools: RefCounted = load("res://addons/godot_mcp/tools/project_tools_native.gd").new()
+	var outside_result: Dictionary = project_tools._tool_list_project_tests({"search_path": "res://addons"})
+	var traversal_result: Dictionary = project_tools._tool_list_project_tests({"search_path": "res://test/../addons"})
+	var batch_outside_result: Dictionary = project_tools._tool_run_project_tests({"search_path": "res://addons"})
+	assert_has(outside_result, "error", "Test discovery must reject directories outside the test tree")
+	assert_has(traversal_result, "error", "Test discovery must reject traversal outside the test tree")
+	assert_has(batch_outside_result, "error", "Batch test execution must preserve the discovery path boundary")
+
+func test_validate_test_path_rejects_traversal_segments_before_sanitization():
+	var project_tools: RefCounted = load("res://addons/godot_mcp/tools/project_tools_native.gd").new()
+	for traversal_path in ["res://test/../addons", "res://test/../../addons", "res://test//../addons"]:
+		var result: Dictionary = project_tools._validate_test_path(traversal_path, true)
+		assert_has(result, "error", "Test path traversal must be rejected before sanitization: " + traversal_path)
+
+func test_validate_test_path_allows_temporary_integration_directory():
+	var project_tools: RefCounted = load("res://addons/godot_mcp/tools/project_tools_native.gd").new()
+	var result: Dictionary = project_tools._validate_test_path("res://test/integration/.tmp_project_test_path", true)
+	assert_false(result.has("error"), "Temporary integration directories should remain valid test roots")

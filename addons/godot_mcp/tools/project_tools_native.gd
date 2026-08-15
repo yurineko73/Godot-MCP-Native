@@ -784,7 +784,10 @@ func _validate_test_path(path: String, expect_directory: bool) -> Dictionary:
 		return {"error": "Test path cannot be empty"}
 	if not path.begins_with("res://"):
 		return {"error": "Test path must start with res://"}
-	if not (path.begins_with("res://test/") or path.begins_with("res://.tmp_") or path.contains("/.tmp_")):
+	for path_segment in path.split("/", false):
+		if path_segment == "..":
+			return {"error": "Test path cannot contain traversal segments"}
+	if not ((expect_directory and path == "res://test") or path.begins_with("res://test/") or path.begins_with("res://.tmp_") or path.contains("/.tmp_")):
 		return {"error": "Test path must stay under res://test/ or a temporary test directory"}
 	var validation: Dictionary = PathValidator.validate_directory_path(path) if expect_directory else PathValidator.validate_path(path)
 	if not validation.get("valid", false):

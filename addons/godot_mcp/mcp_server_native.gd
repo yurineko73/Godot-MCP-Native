@@ -319,6 +319,40 @@ func _apply_cmdline_overrides() -> void:
 		transport_mode = transport_override
 		_log_info("MCP transport overridden via command line: " + transport_mode)
 
+static func sync_server_start_config(
+	server: RefCounted,
+	current_transport_mode: String,
+	current_http_port: int,
+	current_allow_remote: bool,
+	current_cors_origin: String,
+	current_auth_enabled: bool,
+	current_auth_token: String
+) -> void:
+	if server == null:
+		return
+	var type: int = MCPServerCore.TransportType.TRANSPORT_STDIO \
+		if current_transport_mode == "stdio" else MCPServerCore.TransportType.TRANSPORT_HTTP
+	server.set_transport_type(type)
+	server.set_http_port(current_http_port)
+	server.set_remote_config(current_allow_remote, current_cors_origin)
+	var auth_manager: McpAuthManager = null
+	if current_auth_enabled and current_transport_mode == "http":
+		auth_manager = McpAuthManager.new()
+		auth_manager.set_token(current_auth_token)
+		auth_manager.set_enabled(true)
+	server.set_auth_manager(auth_manager)
+
+func _sync_server_start_config() -> void:
+	sync_server_start_config(
+		_native_server,
+		transport_mode,
+		http_port,
+		allow_remote,
+		cors_origin,
+		auth_enabled,
+		auth_token
+	)
+
 # ============================================================================
 # 插件配置（根据godot-dev-guide优化）
 # ============================================================================
@@ -496,6 +530,7 @@ func _start_native_server() -> bool:
 	# distinct ports regardless of mcp_settings.cfg. A pure no-op without
 	# overrides (parse_mcp_overrides returns -1 / "").
 	_apply_cmdline_overrides()
+	_sync_server_start_config()
 
 	_log_info("Starting native MCP server...")
 	var success: bool = _native_server.start()

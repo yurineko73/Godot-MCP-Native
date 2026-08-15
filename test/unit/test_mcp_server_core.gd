@@ -197,6 +197,42 @@ func test_set_rate_limit():
 func test_is_running_initially():
 	assert_false(_core.is_running(), "Should not be running initially")
 
+func test_remote_config_is_applied_when_http_transport_is_created():
+	_core.set_transport_type(MCPServerCore.TransportType.TRANSPORT_HTTP)
+	_core.set_remote_config(true, "https://editor.example")
+	assert_null(_core._transport, "Transport should not exist before initialization")
+	assert_true(_core._init_transport(), "HTTP transport should initialize")
+	assert_true(_core._transport._allow_remote, "Cached remote access should reach the new transport")
+	assert_eq(_core._transport._cors_origin, "https://editor.example", "Cached CORS origin should reach the new transport")
+
+func test_recreated_http_transport_uses_latest_remote_config():
+	_core.set_transport_type(MCPServerCore.TransportType.TRANSPORT_HTTP)
+	_core.set_remote_config(false, "https://first.example")
+	assert_true(_core._init_transport(), "First HTTP transport should initialize")
+	_core.set_remote_config(true, "https://second.example")
+	_core._transport = null
+	assert_true(_core._init_transport(), "Recreated HTTP transport should initialize")
+	assert_true(_core._transport._allow_remote, "Recreated transport should use the latest remote access setting")
+	assert_eq(_core._transport._cors_origin, "https://second.example", "Recreated transport should use the latest CORS origin")
+
+func test_recreated_http_transport_uses_latest_auth_manager():
+	_core.set_transport_type(MCPServerCore.TransportType.TRANSPORT_HTTP)
+	var first_auth: McpAuthManager = McpAuthManager.new()
+	first_auth.set_token("first-auth-token-1234")
+	_core.set_auth_manager(first_auth)
+	assert_true(_core._init_transport(), "First HTTP transport should initialize")
+	assert_same(_core._transport._auth_manager, first_auth, "First auth manager should reach the transport")
+	var second_auth: McpAuthManager = McpAuthManager.new()
+	second_auth.set_token("second-auth-token-123")
+	_core.set_auth_manager(second_auth)
+	_core._transport = null
+	assert_true(_core._init_transport(), "Recreated HTTP transport should initialize")
+	assert_same(_core._transport._auth_manager, second_auth, "Recreated transport should use the latest auth manager")
+	_core.set_auth_manager(null)
+	_core._transport = null
+	assert_true(_core._init_transport(), "Transport should initialize after auth is disabled")
+	assert_null(_core._transport._auth_manager, "Recreated transport should clear stale auth")
+
 func test_protocol_version_constant():
 	assert_eq(MCPTypes.PROTOCOL_VERSION, "2025-11-25", "Protocol version should be 2025-11-25")
 

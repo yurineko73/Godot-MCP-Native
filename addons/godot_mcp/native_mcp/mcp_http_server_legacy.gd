@@ -104,7 +104,7 @@ func start() -> bool:
 	
 	_tcp_server = TCPServer.new()
 	
-	var error: Error = _tcp_server.listen(_port)
+	var error: Error = _tcp_server.listen(_port, _get_bind_address())
 	if error != OK:
 		var error_msg: String = "Failed to listen on port " + str(_port) + ": " + str(error)
 		server_error.emit(error_msg)
@@ -121,6 +121,9 @@ func start() -> bool:
 		_log_callback.call("INFO", "Server started on port " + str(_port))
 	
 	return true
+
+func _get_bind_address() -> String:
+	return "*" if _allow_remote else "127.0.0.1"
 
 func _check_port_conflict(port: int) -> String:
 	var os_name: String = OS.get_name()

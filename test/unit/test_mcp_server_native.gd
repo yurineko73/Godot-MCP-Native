@@ -1,5 +1,17 @@
 extends "res://addons/gut/test.gd"
 
+class FakeSecurityServer extends RefCounted:
+	var auth_manager: McpAuthManager = null
+	var allow_remote: bool = false
+	var cors_origin: String = ""
+
+	func set_auth_manager(manager: McpAuthManager) -> void:
+		auth_manager = manager
+
+	func set_remote_config(remote_enabled: bool, allowed_origin: String) -> void:
+		allow_remote = remote_enabled
+		cors_origin = allowed_origin
+
 var _plugin_script: GDScript = null
 
 func before_each():
@@ -44,6 +56,37 @@ func test_plugin_has_get_server_status():
 	var methods: Array = _plugin_script.get_script_method_list()
 	var method_names: Array = methods.map(func(m): return m["name"])
 	assert_true(method_names.has("get_server_status"), "Should have get_server_status method")
+
+func test_http_security_sync_applies_current_remote_and_auth_config():
+	var server: FakeSecurityServer = FakeSecurityServer.new()
+	_plugin_script.apply_http_security_config(
+		server,
+		true,
+		"1234567890abcdef",
+		true,
+		"https://editor.example"
+	)
+	assert_ne(server.auth_manager, null, "Enabled auth should install a manager")
+	assert_true(
+		server.auth_manager.validate_request({"authorization": "Bearer 1234567890abcdef"}),
+		"Installed auth manager should use the latest token"
+	)
+	assert_true(server.allow_remote, "Latest remote access setting should be applied")
+	assert_eq(server.cors_origin, "https://editor.example", "Latest CORS origin should be applied")
+
+func test_http_security_sync_clears_stale_auth_manager():
+	var server: FakeSecurityServer = FakeSecurityServer.new()
+	server.auth_manager = McpAuthManager.new()
+	_plugin_script.apply_http_security_config(server, false, "", false, "*")
+	assert_null(server.auth_manager, "Disabled auth should clear a manager from an earlier start")
+
+func test_start_syncs_http_security_before_transport_start():
+	var start_source: String = _get_function_source("_start_native_server")
+	var sync_position: int = start_source.find("_sync_http_security_config()")
+	var start_position: int = start_source.find("_native_server.start()")
+	assert_true(sync_position >= 0, "Start should refresh HTTP security configuration")
+	assert_true(start_position >= 0, "Start should invoke the server core")
+	assert_true(sync_position < start_position, "Security configuration should refresh before the listener starts")
 
 func test_find_files_recursive():
 	var result: Array = []

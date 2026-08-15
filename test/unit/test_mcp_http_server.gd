@@ -91,6 +91,13 @@ func test_set_remote_config():
 	assert_eq(_http_server._allow_remote, true, "Allow remote should be true")
 	assert_eq(_http_server._cors_origin, "http://localhost:3000", "CORS origin should be set")
 
+func test_listener_bind_address_defaults_to_loopback():
+	assert_eq(_http_server._get_bind_address(), "127.0.0.1", "Default listener should bind to loopback")
+
+func test_listener_bind_address_allows_all_interfaces_when_remote_enabled():
+	_http_server.set_remote_config(true, "*")
+	assert_eq(_http_server._get_bind_address(), "*", "Remote-enabled listener should bind to all interfaces")
+
 func test_max_request_size_constant():
 	assert_eq(_http_server.MAX_REQUEST_SIZE, 1024 * 1024, "Max request size should be 1MB")
 

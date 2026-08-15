@@ -22,6 +22,7 @@ func _init_transport() -> bool:
 		TransportType.TRANSPORT_HTTP:
 			_transport = load("res://addons/godot_mcp/native_mcp/mcp_http_server.gd").new()
 			_transport.set_port(_http_port)
+			_transport.set_remote_config(_allow_remote, _cors_origin)
 			if _auth_manager:
 				_transport.set_auth_manager(_auth_manager)
 			if _transport.has_method("set_log_callback"):

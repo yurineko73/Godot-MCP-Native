@@ -50,6 +50,8 @@ var _transport_type: TransportType = TransportType.TRANSPORT_STDIO
 var _transport: McpTransportBase = null  # 传输层实例（使用基类类型）
 var _auth_manager: McpAuthManager = null  # 认证管理器（HTTP 模式使用）
 var _http_port: int = 9080  # HTTP 监听端口
+var _allow_remote: bool = false
+var _cors_origin: String = "*"
 
 # 消息队列（使用类型化数组 - 根据godot-dev-guide）
 var _message_queue: Array[Dictionary] = []
@@ -113,6 +115,8 @@ func set_sse_enabled(enabled: bool) -> void:
 	_log_info("SSE enabled: " + str(enabled))
 
 func set_remote_config(allow_remote: bool, cors_origin: String) -> void:
+	_allow_remote = allow_remote
+	_cors_origin = cors_origin
 	if _transport and _transport.has_method("set_remote_config"):
 		_transport.set_remote_config(allow_remote, cors_origin)
 	_log_info("Remote config - allow: " + str(allow_remote) + ", CORS: " + cors_origin)
@@ -130,6 +134,7 @@ func _init_transport() -> bool:
 		TransportType.TRANSPORT_HTTP:
 			_transport = McpHttpServer.new()
 			_transport.set_port(_http_port)
+			_transport.set_remote_config(_allow_remote, _cors_origin)
 			if _auth_manager:
 				_transport.set_auth_manager(_auth_manager)
 			if _transport.has_method("set_log_callback"):

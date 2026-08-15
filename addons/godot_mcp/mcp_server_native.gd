@@ -319,6 +319,34 @@ func _apply_cmdline_overrides() -> void:
 		transport_mode = transport_override
 		_log_info("MCP transport overridden via command line: " + transport_mode)
 
+static func apply_http_security_config(
+		server: RefCounted,
+		enable_auth: bool,
+		token: String,
+		enable_remote: bool,
+		allowed_origin: String
+) -> void:
+	var auth_manager: McpAuthManager = null
+	if enable_auth:
+		auth_manager = McpAuthManager.new()
+		auth_manager.set_token(token)
+		auth_manager.set_enabled(true)
+	server.set_auth_manager(auth_manager)
+	if server.has_method("set_remote_config"):
+		server.set_remote_config(enable_remote, allowed_origin)
+
+func _sync_http_security_config() -> void:
+	if not _native_server or transport_mode != "http":
+		return
+	apply_http_security_config(
+		_native_server,
+		auth_enabled,
+		auth_token,
+		allow_remote,
+		cors_origin
+	)
+	_log_info("HTTP security config refreshed: auth=" + str(auth_enabled) + ", allow_remote=" + str(allow_remote))
+
 # ============================================================================
 # 插件配置（根据godot-dev-guide优化）
 # ============================================================================
@@ -496,6 +524,7 @@ func _start_native_server() -> bool:
 	# distinct ports regardless of mcp_settings.cfg. A pure no-op without
 	# overrides (parse_mcp_overrides returns -1 / "").
 	_apply_cmdline_overrides()
+	_sync_http_security_config()
 
 	_log_info("Starting native MCP server...")
 	var success: bool = _native_server.start()

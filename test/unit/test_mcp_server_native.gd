@@ -1,5 +1,26 @@
 extends "res://addons/gut/test.gd"
 
+class FakeServer:
+	extends RefCounted
+	var transport_type: int = -1
+	var port: int = -1
+	var remote_allowed: bool = false
+	var cors_origin: String = ""
+	var auth_manager: RefCounted = null
+
+	func set_transport_type(value: int) -> void:
+		transport_type = value
+
+	func set_http_port(value: int) -> void:
+		port = value
+
+	func set_remote_config(value: bool, origin: String) -> void:
+		remote_allowed = value
+		cors_origin = origin
+
+	func set_auth_manager(value: RefCounted) -> void:
+		auth_manager = value
+
 var _plugin_script: GDScript = null
 
 func before_each():
@@ -21,6 +42,38 @@ func _get_function_source(function_name: String) -> String:
 
 func test_plugin_script_loads():
 	assert_ne(_plugin_script, null, "Plugin script should load successfully")
+
+func test_start_config_sync_uses_current_remote_and_auth_values():
+	var server := FakeServer.new()
+
+	_plugin_script.sync_server_start_config(
+		server,
+		"http",
+		19123,
+		true,
+		"https://example.test",
+		true,
+		"current-auth-token-123"
+	)
+
+	assert_eq(server.transport_type, MCPServerCore.TransportType.TRANSPORT_HTTP)
+	assert_eq(server.port, 19123)
+	assert_true(server.remote_allowed)
+	assert_eq(server.cors_origin, "https://example.test")
+	assert_not_null(server.auth_manager, "Current auth settings should create a manager")
+	assert_true(
+		server.auth_manager.validate_request({"authorization": "Bearer current-auth-token-123"}),
+		"The synchronized manager should use the current token"
+	)
+
+func test_start_config_sync_clears_stale_auth_manager():
+	var server := FakeServer.new()
+	server.auth_manager = McpAuthManager.new()
+
+	_plugin_script.sync_server_start_config(server, "http", 9080, false, "*", false, "")
+
+	assert_null(server.auth_manager, "Disabled auth should clear a manager from an earlier start")
+	assert_false(server.remote_allowed, "Each start should also apply the current remote setting")
 
 func test_plugin_has_enter_tree():
 	assert_true(_plugin_script.has_method("_enter_tree") or _plugin_script.get_script_method_list().any(func(m): return m.name == "_enter_tree"), "Should have _enter_tree method")

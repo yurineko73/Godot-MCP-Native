@@ -35,8 +35,8 @@ const AUTH_SCHEME: String = "Bearer"
 # 状态变量（带类型提示 - 根据 godot-dev-guide）
 # ==============================================================================
 
-## TCP 服务器实例
-var _tcp_server: TCPServer = null
+## Active TCP listeners
+var _tcp_servers: Array[TCPServer] = []
 
 ## 监听端口
 var _port: int = 9080
@@ -93,24 +93,22 @@ func set_auth_manager(manager: RefCounted) -> void:
 ## 启动 HTTP 服务器
 ## @returns: bool - 启动成功返回 true，失败返回 false
 func start() -> bool:
-	var conflict_info: String = _check_port_conflict(_port)
-	if not conflict_info.is_empty():
-		var error_msg: String = "Port " + str(_port) + " is already in use! " + conflict_info + " Please change the port in MCP settings or close the conflicting application."
-		server_error.emit(error_msg)
-		if _log_callback.is_valid():
-			_log_callback.call("ERROR", error_msg)
-		push_error(error_msg)
+	if _active:
 		return false
-	
-	_tcp_server = TCPServer.new()
-	
-	var error: Error = _tcp_server.listen(_port)
-	if error != OK:
-		var error_msg: String = "Failed to listen on port " + str(_port) + ": " + str(error)
-		server_error.emit(error_msg)
-		if _log_callback.is_valid():
-			_log_callback.call("ERROR", error_msg)
-		return false
+
+	for bind_address in _get_bind_addresses():
+		var tcp_server: TCPServer = TCPServer.new()
+		var error: Error = tcp_server.listen(_port, bind_address)
+		if error != OK:
+			tcp_server.stop()
+			_stop_listeners()
+			var error_msg: String = "Failed to listen on " + bind_address + ":" + str(_port) + ": " + str(error)
+			server_error.emit(error_msg)
+			if _log_callback.is_valid():
+				_log_callback.call("ERROR", error_msg)
+			push_error(error_msg)
+			return false
+		_tcp_servers.append(tcp_server)
 	
 	_active = true
 	_thread = Thread.new()
@@ -118,9 +116,20 @@ func start() -> bool:
 	
 	server_started.emit()
 	if _log_callback.is_valid():
-		_log_callback.call("INFO", "Server started on port " + str(_port))
+		_log_callback.call("INFO", "Server started on " + ", ".join(_get_bind_addresses()) + ":" + str(_port))
 	
 	return true
+
+func _get_bind_addresses() -> PackedStringArray:
+	if _allow_remote:
+		return PackedStringArray(["*"])
+	return PackedStringArray(["127.0.0.1", "::1"])
+
+func _stop_listeners() -> void:
+	for tcp_server in _tcp_servers:
+		if tcp_server:
+			tcp_server.stop()
+	_tcp_servers.clear()
 
 func _check_port_conflict(port: int) -> String:
 	var os_name: String = OS.get_name()
@@ -214,15 +223,16 @@ func _resolve_process_name_linux(pid: String) -> String:
 func stop() -> void:
 	_active = false
 	
-	# 停止 TCP 服务器（不再接受新连接）
-	if _tcp_server:
-		_tcp_server.stop()
-		_tcp_server = null
+	# Stop accepting new connections before joining the server thread.
+	for tcp_server in _tcp_servers:
+		if tcp_server:
+			tcp_server.stop()
 	
 	# 等待线程结束（必须在线程退出后再修改共享数据）
 	if _thread and _thread.is_alive():
 		_thread.wait_to_finish()
 	_thread = null
+	_tcp_servers.clear()
 	
 	# 线程已退出，安全清理连接
 	for peer in _connections:
@@ -238,7 +248,12 @@ func stop() -> void:
 ## 检查传输层是否正在运行
 ## @returns: bool - 运行中返回 true，否则返回 false
 func is_running() -> bool:
-	return _active and _tcp_server != null and _tcp_server.is_listening()
+	if not _active or _tcp_servers.is_empty():
+		return false
+	for tcp_server in _tcp_servers:
+		if not tcp_server or not tcp_server.is_listening():
+			return false
+	return true
 
 
 # ==============================================================================
@@ -253,17 +268,17 @@ func _http_server_loop() -> void:
 	var last_keepalive: int = Time.get_ticks_msec()
 	
 	while _active:
-		if not _tcp_server:
+		if _tcp_servers.is_empty():
 			break
 		
-		# 检查新连接
-		var peer: StreamPeerTCP = null
-		if _tcp_server.is_connection_available():
-			peer = _tcp_server.take_connection()
-		if peer:
-			_connections.append(peer)
-			if _log_callback.is_valid():
-				_log_callback.call("INFO", "New connection: " + str(peer.get_status()))
+		# Accept new connections from every configured address.
+		for tcp_server in _tcp_servers:
+			if tcp_server.is_connection_available():
+				var peer: StreamPeerTCP = tcp_server.take_connection()
+				if peer:
+					_connections.append(peer)
+					if _log_callback.is_valid():
+						_log_callback.call("INFO", "New connection: " + str(peer.get_status()))
 		
 		# 处理所有活跃连接（复制一份避免并发修改）
 		var disconnected: Array[StreamPeerTCP] = []

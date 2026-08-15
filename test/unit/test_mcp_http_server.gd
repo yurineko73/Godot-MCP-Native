@@ -91,6 +91,22 @@ func test_set_remote_config():
 	assert_eq(_http_server._allow_remote, true, "Allow remote should be true")
 	assert_eq(_http_server._cors_origin, "http://localhost:3000", "CORS origin should be set")
 
+func test_bind_addresses_cover_both_local_ip_families():
+	_http_server.set_remote_config(false, "*")
+	assert_eq(
+		_http_server._get_bind_addresses(),
+		PackedStringArray(["127.0.0.1", "::1"]),
+		"Local mode should bind both IPv4 and IPv6 loopback"
+	)
+
+func test_remote_bind_address_covers_all_interfaces():
+	_http_server.set_remote_config(true, "*")
+	assert_eq(
+		_http_server._get_bind_addresses(),
+		PackedStringArray(["*"]),
+		"Remote mode should bind all interfaces"
+	)
+
 func test_max_request_size_constant():
 	assert_eq(_http_server.MAX_REQUEST_SIZE, 1024 * 1024, "Max request size should be 1MB")
 

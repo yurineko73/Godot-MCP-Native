@@ -197,6 +197,22 @@ func test_set_rate_limit():
 func test_is_running_initially():
 	assert_false(_core.is_running(), "Should not be running initially")
 
+func test_http_transport_replays_cached_remote_config_when_recreated():
+	_core.set_transport_type(_core.TransportType.TRANSPORT_HTTP)
+	_core.set_remote_config(true, "https://example.test")
+	assert_true(_core._init_transport(), "HTTP transport should initialize")
+	assert_true(_core._transport._allow_remote, "Recreated transport should allow remote access")
+	assert_eq(
+		_core._transport._cors_origin,
+		"https://example.test",
+		"Recreated transport should preserve the configured CORS origin"
+	)
+	_core._transport = null
+	_core.set_remote_config(false, "https://local.test")
+	assert_true(_core._init_transport(), "Replacement HTTP transport should initialize")
+	assert_false(_core._transport._allow_remote, "Replacement transport should use current local mode")
+	assert_eq(_core._transport._cors_origin, "https://local.test")
+
 func test_protocol_version_constant():
 	assert_eq(MCPTypes.PROTOCOL_VERSION, "2025-11-25", "Protocol version should be 2025-11-25")
 

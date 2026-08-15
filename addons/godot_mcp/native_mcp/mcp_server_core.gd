@@ -24,6 +24,7 @@ func _init_transport() -> bool:
 			_transport.set_port(_http_port)
 			if _auth_manager:
 				_transport.set_auth_manager(_auth_manager)
+			_transport.set_remote_config(_allow_remote, _cors_origin)
 			if _transport.has_method("set_log_callback"):
 				_transport.set_log_callback(_log_transport_message)
 			_log_info("Initialized HTTP transport on port " + str(_http_port))

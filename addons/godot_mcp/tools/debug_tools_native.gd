@@ -2874,7 +2874,7 @@ func _compare_values(actual: String, expected: String, operator: String) -> bool
 			return float(actual) <= float(expected)
 	return false
 
-func _request_runtime_probe(command: String, payload: Array, response_messages: Array, params: Dictionary, match_fields: Dictionary = {}) -> Dictionary:
+func _request_runtime_probe(command: String, payload: Array, response_messages: Array, params: Dictionary, match_fields: Dictionary = {}, allow_send: bool = true) -> Dictionary:
 	var bridge: RefCounted = _get_debugger_bridge()
 	if not bridge:
 		return {"error": "Debugger bridge is not available"}
@@ -2887,6 +2887,8 @@ func _request_runtime_probe(command: String, payload: Array, response_messages: 
 	if pending_entry.is_empty() or now_ms > int(pending_entry.get("expires_at_ms", 0)):
 		if not pending_entry.is_empty():
 			_pending_runtime_probe_requests.erase(request_key)
+		if not allow_send:
+			return {"status": "timeout", "response_messages": response_messages}
 		var baseline_sequence: int = bridge.get_message_sequence() if bridge.has_method("get_message_sequence") else 0
 		var refresh_result: Dictionary = bridge.send_debugger_message("mcp:" + command, payload, session_id)
 		if refresh_result.has("error"):
@@ -2953,10 +2955,7 @@ func _extract_pending_runtime_probe_response(bridge: RefCounted, pending_entry: 
 			return {"status": "success", "value": runtime_payload}
 
 	# No fresh response yet. Return pending so the poll loop keeps waiting for the
-	# newly-sent probe response. The eager stale fallback that lived here caused
-	# repeated identical expressions to return "stale" immediately, which the poll
-	# loop treated as retryable, burning the full timeout window on every call.
-	# Stale fallback now happens only after the poll loop times out.
+	# response to the command already sent by this invocation.
 	return {}
 
 func _request_runtime_probe_poll(
@@ -2988,26 +2987,15 @@ func _request_runtime_probe_poll(
 				await tree.process_frame
 			else:
 				OS.delay_msec(16)
-			result = _request_runtime_probe(command, payload, response_messages, params, match_fields)
+			result = _request_runtime_probe(command, payload, response_messages, params, match_fields, false)
 			if result.get("status") not in ["pending", "stale"]:
 				break
-	# Timeout expired without a fresh response. Fall back to the latest cached
-	# payload matching the request (if any) so callers still get data rather than
-	# an empty result. This is the only place stale data is served now.
+	# A timeout is an unknown outcome. Never resend the command or promote cached
+	# data to success for the current invocation.
 	if result.get("status") in ["pending", "stale"]:
-		for message_name in response_messages:
-			var cached_payload: Variant = bridge.get_latest_message_payload(message_name, match_fields) if bridge else null
-			if cached_payload is Dictionary:
-				result = cached_payload.duplicate(true)
-				result["status"] = "success"
-				result["from_cache"] = true
-				result["stale"] = true
-				return result
-			if cached_payload != null:
-				return {"status": "success", "from_cache": true, "stale": true, "value": cached_payload}
-		# No cached payload either - return the pending status as-is
-		result["status"] = "timeout"
-		return result
+		var request_key: String = _make_runtime_probe_request_key(command, payload, int(params.get("session_id", -1)), response_messages, match_fields)
+		_pending_runtime_probe_requests.erase(request_key)
+		return {"status": "timeout", "response_messages": response_messages}
 	return result
 
 func _is_truthy_runtime_value(value: Variant) -> bool:

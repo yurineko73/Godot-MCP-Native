@@ -39,6 +39,32 @@ class FakeRuntimeBridge:
 			return latest_payload
 		return null
 
+class TimeoutRuntimeBridge:
+	extends RefCounted
+
+	var send_count: int = 0
+	var cached_payload: Dictionary = {
+		"fps": 30.0,
+		"current_scene": "/root/StaleScene",
+		"node_count": 99
+	}
+
+	func get_message_sequence() -> int:
+		return 0
+
+	func send_debugger_message(message: String, data: Array, session_id: int = -1) -> Dictionary:
+		send_count += 1
+		return {"status": "success", "sessions_updated": 1}
+
+	func get_captured_messages(count: int = 100, offset: int = 0, order: String = "desc") -> Dictionary:
+		return {"messages": [], "count": 0, "total_available": 0}
+
+	func get_captured_message_after_sequence(sequence: int, response_messages: Array, error_messages: Array = [], match_fields: Dictionary = {}) -> Dictionary:
+		return {}
+
+	func get_latest_message_payload(message: String, match_fields: Dictionary = {}) -> Variant:
+		return cached_payload
+
 class FakeRuntimePlugin:
 	extends RefCounted
 
@@ -181,37 +207,41 @@ func test_runtime_probe_polling_reuses_pending_request():
 	assert_eq(first_result.get("node_count"), 3, "Runtime info payload should come from the bridge response")
 	assert_eq(_runtime_bridge.send_count, 1, "First poll should send exactly one runtime probe message")
 
-	# Second call sends a new debugger message since the pending entry was consumed
+	# A second call sends once, but must not reuse the prior response as fresh evidence.
 	var second_result: Dictionary = await debug_tools._tool_get_runtime_info({"timeout_ms": 1500})
-	assert_eq(second_result.get("status"), "success", "Second call should return success (from cache or fresh)")
-	assert_eq(second_result.get("node_count"), 3, "Runtime info payload should come from the bridge response")
-	assert_eq(_runtime_bridge.send_count, 2, "Second call re-sends debugger message since first call consumed the pending entry")
+	assert_eq(second_result.get("status"), "timeout", "Second call should time out without a fresh response")
+	assert_false(second_result.has("node_count"), "Prior runtime data should not satisfy the second request")
+	assert_eq(_runtime_bridge.send_count, 2, "Each tool call should send one runtime probe message")
 
-func test_timeout_fallback_marks_stale():
-	var debug_tools_script: GDScript = load("res://addons/godot_mcp/tools/debug_tools_native.gd")
-	var source_code: String = debug_tools_script.source_code
-	# The stale fallback moved from _extract_pending_runtime_probe_response to
-	# _request_runtime_probe_poll after the poll loop times out.
-	# Verify the timeout handler sets from_cache + stale flags.
-	assert_true(source_code.contains('result["from_cache"] = true'), "Timeout fallback should mark from_cache")
-	assert_true(source_code.contains('result["stale"] = true'), "Timeout fallback should mark stale=true")
-	# The fresh path in _extract_pending_runtime_probe_response should still use "success"
-	assert_true(source_code.contains('response["status"] = "success"'), "Fresh response path should use success")
+func test_runtime_probe_timeout_sends_once_and_does_not_promote_cache():
+	var debug_tools: RefCounted = load("res://addons/godot_mcp/tools/debug_tools_native.gd").new()
+	_runtime_bridge = TimeoutRuntimeBridge.new()
+	Engine.set_meta("GodotMCPPlugin", FakeRuntimePlugin.new(_runtime_bridge))
 
-func test_poll_loop_continues_on_stale():
-	var debug_tools_script: GDScript = load("res://addons/godot_mcp/tools/debug_tools_native.gd")
-	var source_code: String = debug_tools_script.source_code
-	# The poll loop should continue when status is "stale" (not exit early)
-	assert_true(source_code.contains('not in ["pending", "stale"]'), "Poll loop should continue on stale status")
-	# Timeout fallback should convert stale to success with from_cache
-	assert_true(source_code.contains('result["status"] = "success"'), "Timeout should convert to success")
-	assert_true(source_code.contains('result["from_cache"] = true'), "Timeout should mark from_cache")
-	# Verify ordering: the from_cache mark should appear AFTER the poll loop
-	var poll_loop_pos: int = source_code.find('not in ["pending", "stale"]')
-	var from_cache_pos: int = source_code.find('result["from_cache"] = true')
-	assert_true(poll_loop_pos >= 0, "Poll loop condition should exist")
-	assert_true(from_cache_pos >= 0, "from_cache marker should exist")
-	assert_true(poll_loop_pos < from_cache_pos, "from_cache should be set AFTER poll loop completes")
+	var result: Dictionary = await debug_tools._tool_get_runtime_info({"timeout_ms": 1})
+
+	assert_eq(_runtime_bridge.send_count, 1, "One tool call should send one runtime probe message")
+	assert_eq(result.get("status"), "timeout", "Missing fresh evidence should remain a timeout")
+	assert_false(result.get("from_cache", false), "Timeout should not be promoted from cache")
+	assert_false(result.get("stale", false), "Timeout should not masquerade as stale success")
+	assert_false(result.has("node_count"), "Cached runtime data should not satisfy the timed-out request")
+	assert_true(debug_tools._pending_runtime_probe_requests.is_empty(), "Timed-out requests should be removed")
+
+func test_runtime_mutation_timeout_sends_exactly_once():
+	var debug_tools: RefCounted = load("res://addons/godot_mcp/tools/debug_tools_native.gd").new()
+	_runtime_bridge = TimeoutRuntimeBridge.new()
+	Engine.set_meta("GodotMCPPlugin", FakeRuntimePlugin.new(_runtime_bridge))
+
+	var result: Dictionary = await debug_tools._tool_create_runtime_node({
+		"parent_path": "/root/Main",
+		"node_type": "Node",
+		"node_name": "CreatedOnce",
+		"timeout_ms": 1
+	})
+
+	assert_eq(_runtime_bridge.send_count, 1, "A timed-out mutation must not be sent again")
+	assert_eq(result.get("status"), "timeout", "An unconfirmed mutation should remain a timeout")
+	assert_true(debug_tools._pending_runtime_probe_requests.is_empty(), "Timed-out mutations should be removed")
 
 func test_poll_loop_enters_on_initial_stale():
 	var debug_tools_script: GDScript = load("res://addons/godot_mcp/tools/debug_tools_native.gd")
